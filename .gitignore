@@ -1,0 +1,10 @@
+.env
+backend/data/videos/
+backend/.venv/
+frontend/node_modules/
+frontend/dist/
+.mcpenv-kaggle/
+__pycache__/
+*.pyc
+
+
