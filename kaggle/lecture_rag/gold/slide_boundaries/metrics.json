@@ -1,0 +1,159 @@
+{
+ "primary_policy": "scroll_is_slide",
+ "strict": {
+  "L25_V001": {
+   "split": "tuning",
+   "tp": 5,
+   "fp": 32,
+   "fn": 0
+  },
+  "L25_V002": {
+   "split": "tuning",
+   "tp": 6,
+   "fp": 0,
+   "fn": 3
+  },
+  "L25_V003": {
+   "split": "held-out",
+   "tp": 10,
+   "fp": 0,
+   "fn": 0
+  },
+  "L25_V004": {
+   "split": "held-out",
+   "tp": 8,
+   "fp": 1,
+   "fn": 1
+  },
+  "L25_V005": {
+   "split": "tuning",
+   "tp": 10,
+   "fp": 0,
+   "fn": 0
+  },
+  "L25_V006": {
+   "split": "held-out",
+   "tp": 14,
+   "fp": 0,
+   "fn": 4
+  },
+  "L25_V007": {
+   "split": "tuning",
+   "tp": 59,
+   "fp": 0,
+   "fn": 1
+  },
+  "L25_V008": {
+   "split": "held-out",
+   "tp": 6,
+   "fp": 0,
+   "fn": 0
+  },
+  "L25_V009": {
+   "split": "held-out",
+   "tp": 8,
+   "fp": 0,
+   "fn": 0
+  },
+  "L25_V010": {
+   "split": "held-out",
+   "tp": 6,
+   "fp": 45,
+   "fn": 0
+  },
+  "_tuning": {
+   "tp": 80,
+   "fp": 32,
+   "fn": 4,
+   "precision": 0.714,
+   "recall": 0.952,
+   "f1": 0.816
+  },
+  "_held-out": {
+   "tp": 52,
+   "fp": 46,
+   "fn": 5,
+   "precision": 0.531,
+   "recall": 0.912,
+   "f1": 0.671
+  }
+ },
+ "scroll_is_slide": {
+  "L25_V001": {
+   "split": "tuning",
+   "tp": 35,
+   "fp": 2,
+   "fn": 0
+  },
+  "L25_V002": {
+   "split": "tuning",
+   "tp": 6,
+   "fp": 0,
+   "fn": 3
+  },
+  "L25_V003": {
+   "split": "held-out",
+   "tp": 10,
+   "fp": 0,
+   "fn": 0
+  },
+  "L25_V004": {
+   "split": "held-out",
+   "tp": 8,
+   "fp": 1,
+   "fn": 1
+  },
+  "L25_V005": {
+   "split": "tuning",
+   "tp": 10,
+   "fp": 0,
+   "fn": 0
+  },
+  "L25_V006": {
+   "split": "held-out",
+   "tp": 14,
+   "fp": 0,
+   "fn": 4
+  },
+  "L25_V007": {
+   "split": "tuning",
+   "tp": 59,
+   "fp": 0,
+   "fn": 1
+  },
+  "L25_V008": {
+   "split": "held-out",
+   "tp": 6,
+   "fp": 0,
+   "fn": 0
+  },
+  "L25_V009": {
+   "split": "held-out",
+   "tp": 8,
+   "fp": 0,
+   "fn": 0
+  },
+  "L25_V010": {
+   "split": "held-out",
+   "tp": 51,
+   "fp": 0,
+   "fn": 0
+  },
+  "_tuning": {
+   "tp": 110,
+   "fp": 2,
+   "fn": 4,
+   "precision": 0.982,
+   "recall": 0.965,
+   "f1": 0.973
+  },
+  "_held-out": {
+   "tp": 97,
+   "fp": 1,
+   "fn": 5,
+   "precision": 0.99,
+   "recall": 0.951,
+   "f1": 0.97
+  }
+ }
+}
