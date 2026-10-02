@@ -9,3 +9,4 @@ __pycache__/
 *.pyc
 kaggle/lecture_rag/runs/
 
+kaggle/lecture_rag/gold/*/review/
