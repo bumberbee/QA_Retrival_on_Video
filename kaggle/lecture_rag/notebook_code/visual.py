@@ -403,6 +403,7 @@ def load_hybrid_ocr(ocr_device="cuda:0", vlm_device="cuda:1", work_dir="/tmp/unl
         with lock:
             return hybrid_read_slide(image, unlimited, read_crop)
 
+    read.ocr_model, read.vlm = ocr_model, vlm   # for experiments (e.g. fp16 timing)
     return read
 
 
