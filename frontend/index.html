@@ -1,10 +1,25 @@
 <!doctype html>
-<html lang="en">
+<html lang="vi" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>frontend</title>
+    <meta name="theme-color" content="#0c0b0a" />
+    <meta
+      name="description"
+      content="A focused workspace for your videos. Explore lecture slides, browse transcripts, and ask AI questions with clickable timestamps."
+    />
+    <title>Video Q&A</title>
+    <script>
+      try {
+        const theme = localStorage.getItem("theme");
+        const lang = localStorage.getItem("lang");
+        if (theme === "dark" || theme === "light")
+          document.documentElement.dataset.theme = theme;
+        if (lang === "en" || lang === "vi")
+          document.documentElement.lang = lang;
+      } catch {}
+    </script>
   </head>
   <body>
     <div id="root"></div>
