@@ -127,6 +127,11 @@ class ReviewPageTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 eval_ocr.evaluate(gold, eval_ocr.load_visuals(export))
 
+            only = build_ocr_review.build(export, Path(tmp) / "dev", per_video=4, blind=0, only=["V2"])
+            self.assertEqual((only["videos"], only["keyframes"], only["missing_videos"]), (["V2"], 30, []))
+            with self.assertRaises(SystemExit):
+                build_ocr_review.build(export, Path(tmp) / "bad", only=["V7"])
+
 
 if __name__ == "__main__":
     unittest.main()
