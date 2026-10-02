@@ -1,16 +1,42 @@
-# React + Vite
+# Video Q&A frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+A React and Vite workspace for importing videos, exploring slides and transcripts, and asking questions about a video's content. The interface supports Vietnamese and English, the original warm amber palette, and saved light/dark preferences (dark by default).
 
-Currently, two official plugins are available:
+## Development
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+```powershell
+npm install
+npm run dev
+```
 
-## React Compiler
+Open `http://localhost:5173`. Start the FastAPI backend on port `8001` as described in the root README, using `--port 8001`.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+The API defaults to `http://localhost:8001/api`. To use a different backend, create `frontend/.env.local` and restart Vite:
 
-## Expanding the Oxlint configuration
+```dotenv
+VITE_API_BASE_URL=http://localhost:8000/api
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+For a deployment with a reverse proxy, this can be `/api`. The backend must allow requests from the frontend's origin.
+
+## Interface
+
+- Search, sort, filter by transcript availability, and switch between grid and list views in the library.
+- Open **Ask AI** for a dedicated conversation page: browse videos with transcripts, open their chat directly, or prepare a suggested question. Videos awaiting transcripts are linked back to the library.
+- Choose **Paste a link** to import a public YouTube, Facebook, or TikTok video. The dialog shows download progress, failures, and an action to open the finished video. It can be closed while downloading; the status indicator reopens it. Pending imports resume polling after a page refresh in the same tab; temporary connection failures retry automatically. The backend needs yt-dlp and ffmpeg as described in the root README.
+- Upload MP4, WebM, MOV, or MKV files. AI questions require a transcript to be added through the existing backend workflow.
+- Browse slides, open them with keyboard navigation, or search the transcript and jump to its timestamps.
+- Rewind or advance by 10 seconds with the player buttons. Use left/right arrows for 5 seconds or J/L for 10; double-tap either side of the video on touch screens. The speed selector supports 0.25×–2× and remembers your preference.
+- Ask questions alongside the video on desktop or in the chat sheet on mobile. Answer timestamps seek the player; slide positions are approximate.
+- Press `Ctrl+K` or `Cmd+K` to search the library, and `Escape` to close a dialog.
+
+The player/chat code is loaded when a video is opened. Slide previews load near the viewport, slide metadata is shared between previews and the player, and transcripts load when their tab is opened. Large libraries and transcripts render in batches.
+
+## Checks
+
+```powershell
+npm run lint
+npm run build
+```
+
+`src/App.jsx` manages the application shell and uploads. `src/components/Library.jsx` and `src/components/Workspace.jsx` contain the two main views. `src/components/ImportDialog.jsx` handles the link/file choices, while `src/lib/useVideoImport.js` manages import jobs and polling. Shared controls are in `src/components/UI.jsx`, translations and API helpers are in `src/lib`, and the responsive styles are in `src/index.css` and `src/components/import-dialog.css`.

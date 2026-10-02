@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pipeline trích xuất bài giảng</title>
+<style>
+  :root{
+    --cream:#fbf3ea; --card:#fffaf3; --ink:#3a3a3a; --sub:#8a7f74;
+    --orange:#e8734a; --orange-deep:#c95a30; --orange-soft:#f2ceba; --dash:#e3ceb8;
+    --green:#5a8f6b; --green-soft:#e7f1e9; --red:#c85c4a; --red-soft:#fbe4de;
+    --blue:#5b7fa6; --blue-soft:#e6edf5; --chip:#f2e9dd;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+  body{margin:0;background:var(--cream);color:var(--ink);font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.55}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--chip);border-radius:4px;padding:0 4px;font-size:.87em}
+
+  .topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:10px;padding:12px 20px;background:var(--card);border-bottom:2px solid var(--orange-soft)}
+  .brand{display:flex;align-items:center;gap:8px;font-weight:800;color:#333}
+  .brand .dot{width:9px;height:9px;border-radius:50%;background:var(--orange)}
+  .topbar .sub{color:var(--sub);font-size:.8rem}
+
+  .shell{max-width:1320px;margin:0 auto;display:grid;grid-template-columns:230px minmax(0,1fr)}
+  @media (max-width:860px){.shell{grid-template-columns:1fr}}
+  .side{position:sticky;top:50px;align-self:start;height:calc(100vh - 50px);overflow-y:auto;padding:22px 14px;border-right:1px solid var(--dash)}
+  @media (max-width:860px){.side{position:static;height:auto;border-right:none;border-bottom:2px solid var(--orange-soft);padding:14px 16px}}
+  .side .group{font-size:.68rem;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 6px 10px}
+  .side .group:first-child{margin-top:0}
+  .side ul{list-style:none;margin:0;padding:0}
+  .side a{display:block;padding:6px 10px;border-radius:8px;font-size:.84rem;color:var(--ink);text-decoration:none;border-left:2px solid transparent}
+  .side a:hover{background:var(--chip)}
+  .side a.active{background:var(--orange-soft);color:#7a3d1f;font-weight:700;border-left-color:var(--orange)}
+
+  main{min-width:0;padding:28px 34px 80px}
+  @media (max-width:600px){main{padding:20px 16px 60px}}
+  section{scroll-margin-top:66px}
+  section + section{margin-top:36px;padding-top:34px;border-top:1px dashed var(--dash)}
+  .eyebrow{font-size:.72rem;color:var(--sub);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+  h1{margin:0 0 8px;font-size:1.65rem;color:#2b2b2b;text-wrap:balance}
+  h2{margin:0 0 8px;font-size:1.3rem;color:#2b2b2b;text-wrap:balance}
+  h3{margin:26px 0 10px;font-size:1rem;color:#333}
+  p{max-width:76ch;margin:0 0 12px}
+  .lead{color:var(--sub);font-size:.95rem;max-width:74ch}
+
+  .tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:18px 0 6px}
+  @media (max-width:900px){.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  .tile{background:var(--card);border:2px solid var(--orange-soft);border-radius:14px;padding:14px}
+  .tile .k{font-size:.72rem;color:var(--sub);text-transform:uppercase;letter-spacing:.04em}
+  .tile .v{font-size:1.55rem;font-weight:800;color:#2b2b2b;font-variant-numeric:tabular-nums}
+  .tile .n{font-size:.78rem;color:var(--sub)}
+
+  .figure{background:var(--card);border:1px solid var(--dash);border-radius:14px;padding:14px 16px;margin:14px 0;overflow-x:auto}
+  .figure svg{display:block;width:100%;height:auto;min-width:760px}
+  .figure .cap{font-size:.78rem;color:var(--sub);margin-top:8px}
+  .box{fill:#fff;stroke:var(--orange-soft);stroke-width:2}
+  .box.cpu{fill:var(--green-soft);stroke:var(--green)}
+  .box.gpu{fill:var(--blue-soft);stroke:var(--blue)}
+  .box.io{fill:var(--chip);stroke:var(--dash)}
+  .box.out{fill:#fff;stroke:var(--orange);stroke-dasharray:5 4}
+  .box.ad{fill:#fff1e8;stroke:var(--orange);stroke-width:2.4}
+  .newtag{display:inline-block;background:var(--orange);color:#fff;border-radius:999px;padding:0 9px;font-size:.72rem;font-weight:800;vertical-align:middle;margin-left:6px}
+  .t-title{font:700 13px -apple-system,Segoe UI,Roboto,sans-serif;fill:#2b2b2b}
+  .t-sub{font:11px -apple-system,Segoe UI,Roboto,sans-serif;fill:var(--sub)}
+  .t-tag{font:700 10px ui-monospace,Consolas,monospace;fill:var(--orange-deep);letter-spacing:.04em}
+  .edge{stroke:var(--sub);stroke-width:1.6;fill:none}
+  .edge.par{stroke:var(--blue);stroke-dasharray:5 4}
+  .ahead{fill:var(--sub)}
+  .legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:.75rem;color:var(--sub);margin-top:6px}
+  .legend span::before{content:"";display:inline-block;width:12px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px;background:var(--c);border:1px solid var(--b)}
+
+  .steps{list-style:none;margin:10px 0 0;padding:0;counter-reset:s}
+  .steps li{counter-increment:s;position:relative;padding:4px 0 16px 42px;border-left:2px solid var(--dash);margin-left:13px}
+  .steps li:last-child{border-left-color:transparent;padding-bottom:0}
+  .steps li::before{content:counter(s);position:absolute;left:-14px;top:0;width:26px;height:26px;border-radius:50%;background:var(--orange);color:#fff;font-weight:800;font-size:.8rem;display:flex;align-items:center;justify-content:center}
+  .steps h4{margin:0 0 4px;font-size:.93rem;color:#2b2b2b}
+  .steps p{font-size:.86rem;margin:0 0 6px}
+  .why{display:block;font-size:.8rem;color:var(--sub)}
+  .param{display:inline-block;background:#fff;border:1px solid var(--orange-soft);border-radius:6px;padding:1px 7px;font:12px ui-monospace,Consolas,monospace;color:var(--orange-deep);margin:2px 4px 2px 0}
+
+  .rules{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media (max-width:760px){.rules{grid-template-columns:1fr}}
+  .rule{background:var(--card);border:1px solid var(--orange-soft);border-radius:12px;padding:12px 14px}
+  .rule h4{margin:0 0 6px;font-size:.9rem}
+  .rule p{font-size:.83rem;margin:6px 0 0}
+  .rule svg{width:100%;height:auto;display:block;min-width:0}
+  .sig{fill:none;stroke:var(--orange);stroke-width:2}
+  .thr{stroke:var(--red);stroke-dasharray:4 4;stroke-width:1.2}
+  .split{stroke:var(--green);stroke-width:2}
+  .axis{stroke:var(--dash);stroke-width:1}
+
+  .cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+  @media (max-width:760px){.cards{grid-template-columns:1fr}}
+  .card{background:var(--card);border:2px solid var(--orange-soft);border-radius:12px;padding:12px 14px}
+  .card h4{margin:0 0 6px;font-size:.9rem}
+  .card p{font-size:.83rem;margin:0 0 6px}
+  .card .io{font-size:.76rem;color:var(--sub)}
+
+  .table-wrap{overflow-x:auto;background:var(--card);border:1px solid var(--dash);border-radius:12px}
+  table{border-collapse:collapse;width:100%;font-size:.8rem;min-width:920px}
+  th,td{padding:8px 10px;border-bottom:1px dashed var(--dash);text-align:left;vertical-align:top}
+  th{font-size:.66rem;text-transform:uppercase;letter-spacing:.04em;color:var(--sub);background:var(--chip);border-bottom:1px solid var(--dash)}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  tr:last-child td{border-bottom:none}
+
+  .bars{display:grid;gap:8px;background:var(--card);border:1px solid var(--dash);border-radius:12px;padding:14px 16px}
+  .bar-row{display:grid;grid-template-columns:90px minmax(0,1fr) 60px;gap:10px;align-items:center;font-size:.78rem}
+  .stack{display:flex;height:14px;background:var(--chip);border-radius:7px;overflow:hidden}
+  .stack span{height:100%}
+  .c1{background:var(--green)} .c2{background:var(--blue)} .c3{background:var(--orange)}
+  .bar-val{text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
+
+  .tl-cpu{fill:var(--green)} .tl-gpu{fill:var(--blue)}
+  .tl-label{font:11px ui-monospace,Consolas,monospace;fill:var(--ink)}
+  .tl-tick{font:10px -apple-system,Segoe UI,sans-serif;fill:var(--sub)}
+  .tl-grid{stroke:var(--dash);stroke-width:1}
+
+  .strip-title{margin:16px 0 8px;font-size:.86rem}
+  .strip{display:flex;gap:10px;overflow-x:auto;padding-bottom:6px}
+  .strip figure{margin:0;flex:0 0 190px}
+  .strip img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;border:1px solid var(--dash);border-radius:7px;background:var(--chip)}
+  .strip figcaption{font-size:.72rem;color:var(--sub);margin-top:3px;font-variant-numeric:tabular-nums}
+
+  .callout{margin:14px 0;border:1px solid var(--orange-soft);border-left:4px solid var(--orange);border-radius:10px;background:var(--card);padding:12px 16px;font-size:.86rem;max-width:90ch}
+  .callout.warn{border-left-color:var(--red)}
+  .limits{list-style:none;margin:0;padding:0}
+  .limits li{padding:10px 0;border-top:1px dashed var(--dash);font-size:.86rem;max-width:90ch}
+  .limits li:first-child{border-top:none}
+  .limits b{color:var(--orange-deep)}
+  .stepbox{background:var(--card);border:1px solid var(--orange-soft);border-radius:14px;padding:16px 18px;margin:16px 0;scroll-margin-top:66px}
+  .stephead{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-bottom:8px}
+  .stephead h3{margin:0;font-size:1.02rem}
+  .badge-step{display:inline-grid;place-items:center;min-width:34px;height:26px;border-radius:999px;background:var(--orange);color:#fff;font-weight:800;font-size:.8rem;padding:0 8px}
+  .stepbox h4{margin:16px 0 6px;font-size:.9rem}
+  .stepbox p{font-size:.86rem}
+  .kv{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 4px}
+  .kv span{background:#fff;border:1px solid var(--orange-soft);border-radius:8px;padding:4px 10px;font-size:.8rem;font-variant-numeric:tabular-nums}
+  .kv b{color:var(--orange-deep)}
+  .pair2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:14px;align-items:start}
+  @media (max-width:800px){.pair2{grid-template-columns:1fr}}
+  .pair2 img,.record img{width:100%;border:1px solid var(--dash);border-radius:8px;display:block}
+  .table-wrap.small table{min-width:0;font-size:.78rem}
+  .record{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:16px;align-items:start}
+  @media (max-width:800px){.record{grid-template-columns:1fr}}
+  .record dl{margin:0;display:grid;grid-template-columns:110px minmax(0,1fr);gap:6px 12px;font-size:.82rem}
+  .record dt{color:var(--sub);font-weight:600}
+  .record dd{margin:0;overflow-wrap:anywhere}
+  .note{font-size:.8rem;color:var(--sub)}
+  details summary{cursor:pointer;font-size:.84rem;color:var(--orange-deep);font-weight:700;margin-top:10px}
+  .strip figure{flex-basis:200px}
+  pre{background:var(--chip);border:1px solid var(--dash);border-radius:10px;padding:12px 14px;overflow-x:auto;font-size:.8rem;margin:8px 0}
+  .side a.key::after{content:" ★";color:var(--orange)}
+  .side .legend-star{font-size:.72rem;color:var(--sub);margin:0 0 10px 10px}
+  .ok{color:var(--green);font-weight:700} .wait{color:var(--orange-deep);font-weight:700} .no{color:var(--red);font-weight:700}
+  .part{margin:44px 0 0;padding:12px 16px;border-radius:12px;background:var(--orange-soft);color:#7a3d1f}
+  .part b{font-size:1.15rem}
+  .bp-lane{fill:none;stroke:var(--dash);stroke-width:1.2}
+  .bp-lane-h{fill:var(--chip);stroke:var(--dash);stroke-width:1.2}
+  .bp-lane-t{font:700 11px -apple-system,Segoe UI,Roboto,sans-serif;fill:var(--sub);letter-spacing:.04em}
+  .bp-ev{fill:#fff;stroke:var(--green);stroke-width:2}
+  .bp-ev.end{stroke:var(--red);stroke-width:4}
+  .bp-gw{fill:#fff;stroke:var(--orange-deep);stroke-width:1.6}
+  .bp-mark{stroke:var(--orange-deep);stroke-width:2.4;stroke-linecap:round}
+  .bp-lab{font:10.5px -apple-system,Segoe UI,Roboto,sans-serif;fill:var(--sub)}
+  .bp-yes{font:700 10.5px -apple-system,Segoe UI,Roboto,sans-serif;fill:var(--orange-deep)}
+</style>
+</head>
+<body>
+<div class="topbar"><div class="brand"><span class="dot"></span>Lecture RAG</div><span class="sub">· hỏi đáp trên video bài giảng · cập nhật 03/10/2026</span></div>
+
+<div class="shell">
+  <aside class="side">
+    <nav>
+      <div class="legend-star">★ = quan trọng</div>
+      <div class="group">Tổng quan</div>
+      <ul><li><a href="#overview" class="key">Tóm tắt</a></li></ul>
+      <div class="group">Phần 1 · Dữ liệu</div>
+      <ul><li><a href="#datasets" class="key">Bộ dữ liệu</a></li><li><a href="#gold">Nhãn</a></li></ul>
+      <div class="group">Phần 2 · Trích xuất</div>
+      <ul><li><a href="#flow">Sơ đồ</a></li><li><a href="#steps">Các bước</a></li><li><a href="#quality" class="key">Độ chính xác</a></li><li><a href="#ads" class="key">Lọc quảng cáo</a></li><li><a href="#ads-general">Dùng cho kênh khác</a></li><li><a href="#limits" class="key">Lỗi còn lại</a></li><li><a href="#howto">Chạy lại</a></li></ul>
+      <div class="group">Phần 3 · Triển khai</div>
+      <ul><li><a href="#webapp" class="key">Web app</a></li><li><a href="#deploy">Đưa cho người dùng</a></li><li><a href="#cost">Chi phí</a></li><li><a href="#next">Hướng phát triển</a></li></ul>
+    </nav>
+  </aside>
+
+  <main>
+    <section id="overview">
+      <div class="eyebrow">Tổng quan</div>
+      <h1>Hỏi đáp trên video bài giảng tiếng Việt</h1>
+      <p class="lead">Video bài giảng → slide, chữ trên slide, lời giảng có giờ từng từ, chỉ mục tìm kiếm → web app hỏi AI.</p>
+      <div class="table-wrap small"><table>
+        <thead><tr><th>Kết quả chính</th><th class="num">Số đo</th><th>Đo trên</th></tr></thead>
+        <tbody>
+          <tr><td>Tách slide (F1)</td><td class="num"><b>0,970</b></td><td>6 video test L25</td></tr>
+          <tr><td>Lọc quảng cáo theo giây (F1)</td><td class="num"><b>0,996</b></td><td>6 video test L25 (chỉ kênh L25)</td></tr>
+          <tr><td>Thời gian / video 30 phút</td><td class="num">~17 phút</td><td>Kaggle T4 x2</td></tr>
+        </tbody>
+      </table></div>
+      <h3>Việc quan trọng nhất tiếp theo</h3>
+      <ol>
+        <li><b>Sửa OCR mất chữ</b> ở ~12% slide (<a href="#limits">Lỗi còn lại</a>).</li>
+        <li><b>Nối chỉ mục tìm kiếm vào web app</b>: web app đang gửi cả transcript cho Gemini (<a href="#webapp">Web app</a>).</li>
+        <li><b>Gán nhãn 12 video tiếng Việt</b> làm bộ test chính (<a href="#gold">Nhãn</a>).</li>
+      </ol>
+    </section>
+
+    <div class="part">Phần 1 · <b>Dữ liệu</b></div>
+
+    <section id="datasets">
+      <div class="eyebrow">Phần 1 · Dữ liệu</div>
+      <h2>Bộ dữ liệu</h2>
+      <p>Tất cả là dataset riêng tư của Kaggle <code>thnhtrungnguynmif</code>, có kèm video. Số chính đo trên <b>tiếng Việt, kênh chưa từng thấy</b>.</p>
+      <div class="table-wrap small"><table>
+        <thead><tr><th>Vai trò</th><th>Nguồn</th><th>Quy mô</th><th>Trạng thái</th></tr></thead>
+        <tbody>
+          <tr><td><b>Train</b></td><td>L25 (4 video) + LPM (4 giảng viên) + SlideSpeech (100 video)</td><td>~330 video</td><td><span class="wait">đang tải</span></td></tr>
+          <tr><td><b>Test chính</b> · tiếng Việt</td><td>12 video, 5 kiểu: truyền hình, báo ôn thi, livestream, đại học, lập trình</td><td>~7 giờ</td><td><span class="wait">11/12 video, đang đưa lên</span></td></tr>
+          <tr><td>Test phụ · tiếng Anh</td><td>SlideSpeech dev+test (46) + LPM 2 giảng viên giữ riêng (14)</td><td>60 video</td><td><span class="wait">đang tải</span></td></tr>
+          <tr><td>Test L25</td><td>6 video test + bộ gold 1</td><td>6 video</td><td><span class="ok">xong</span></td></tr>
+          <tr><td>Chấm OCR công thức</td><td>M3AV · Oxford Mathematics (OCR + LaTeX gán tay)</td><td>51 video</td><td><span class="wait">nhãn xong, video đang tải</span></td></tr>
+        </tbody>
+      </table></div>
+      <ul class="limits">
+        <li><b>YouTube chặn Kaggle</b> → video YouTube tải ở máy (<code>relay_youtube_datasets.py</code>), bản lưu ở <code>D:\thesis-datasets\</code>.</li>
+        <li><b>LPM:</b> 244/332 video, thiếu 4 giảng viên (YouTube chặn). Notebook xong → bấm <b>Output → New Dataset</b>.</li>
+        <li><b>SlideSpeech:</b> tác giả đã gỡ video nén → tải lại từ YouTube theo bảng ID chính thức.</li>
+      </ul>
+    </section>
+
+    <section id="gold">
+      <div class="eyebrow">Phần 1 · Dữ liệu</div>
+      <h2>Nhãn</h2>
+      <div class="table-wrap small"><table>
+        <thead><tr><th>Nhãn</th><th>Nội dung</th><th>Trạng thái</th></tr></thead>
+        <tbody>
+          <tr><td>Bộ gold 1</td><td>549 ranh giới slide, 10 video L25 (4 tuning, 6 test)</td><td><span class="ok">xong</span></td></tr>
+          <tr><td>Quảng cáo theo giây</td><td>2.068 s quảng cáo trên 10 video L25</td><td><span class="ok">xong</span></td></tr>
+          <tr><td><b>Bộ gold 2</b></td><td>12 video tiếng Việt: ranh giới slide, quảng cáo/nghỉ/ngoài lề, chữ 20 slide (CER), 3 phút lời giảng (WER)</td><td><span class="no">cần làm</span></td></tr>
+          <tr><td>Nhãn có sẵn</td><td>LPM (mốc slide), SlideSpeech (lời giảng, OCR), M3AV (OCR + LaTeX)</td><td><span class="ok">có</span></td></tr>
+        </tbody>
+      </table></div>
+      <p class="note">Ký hiệu bộ gold 1: S slide mới · R hiện thêm · SC cuộn trang · C quảng cáo/chuyển cảnh · L đổi khung · X không đổi. Xem kèm ảnh: <code>gold/slide_boundaries/gold_table.html</code>.</p>
+    </section>
+
+    <div class="part">Phần 2 · <b>Trích xuất</b></div>
+
+    <section id="flow">
+      <div class="eyebrow">Phần 2 · Trích xuất</div>
+      <h2>Sơ đồ</h2>
+      <p>03 chỉ cần âm thanh nên chạy song song với 01 và 02. Đoạn quảng cáo được cắt ở bước 01 và bỏ qua ở các bước sau.</p>
+      <div class="figure">
+        <svg viewBox="0 0 1000 250" role="img" aria-label="Video vào 01, lọc quảng cáo, rồi 02; song song video vào thẳng 03; 02 và 03 gặp nhau ở 04, rồi 05 và web app">
+          <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="ahead"/></marker></defs>
+          <rect class="box io" x="10" y="95" width="110" height="62" rx="10"/>
+          <text class="t-title" x="65" y="121" text-anchor="middle">Video MP4</text>
+          <text class="t-sub" x="65" y="139" text-anchor="middle">20–45 phút</text>
+          <rect class="box cpu" x="150" y="14" width="150" height="86" rx="12"/>
+          <text class="t-tag" x="164" y="34">01 · CPU</text>
+          <text class="t-title" x="164" y="54">Tách slide</text>
+          <text class="t-sub" x="164" y="72">quét một lượt</text>
+          <text class="t-sub" x="164" y="88">→ slide + keyframe</text>
+          <a href="#ads"><title>Xem phần Lọc quảng cáo</title>
+          <rect class="box ad" x="325" y="14" width="150" height="86" rx="12" style="cursor:pointer"/>
+          <text class="t-tag" x="339" y="34">GPU · SIGLIP</text>
+          <text class="t-title" x="339" y="54">Lọc quảng cáo</text>
+          <text class="t-sub" x="339" y="72">chấm từng giây theo ảnh</text>
+          <text class="t-sub" x="339" y="88">→ cắt đoạn quảng cáo</text></a>
+          <rect class="box gpu" x="500" y="14" width="150" height="86" rx="12"/>
+          <text class="t-tag" x="514" y="34">02 · GPU</text>
+          <text class="t-title" x="514" y="54">OCR kết hợp</text>
+          <text class="t-sub" x="514" y="72">chỉ slide thật</text>
+          <text class="t-sub" x="514" y="88">→ chữ, công thức, biểu đồ</text>
+          <rect class="box gpu" x="150" y="150" width="500" height="86" rx="12"/>
+          <text class="t-tag" x="164" y="170">03 · GPU · chỉ cần âm thanh, chạy cùng lúc với 01 và 02</text>
+          <text class="t-title" x="164" y="190">Nhận dạng giọng nói</text>
+          <text class="t-sub" x="164" y="208">Whisper medium + VAD</text>
+          <text class="t-sub" x="164" y="224">→ lời giảng, giờ từng từ</text>
+          <rect class="box" x="690" y="78" width="140" height="104" rx="12"/>
+          <text class="t-tag" x="704" y="100">04</text>
+          <text class="t-title" x="704" y="120">Đồng bộ</text>
+          <text class="t-sub" x="704" y="138">gán từ vào slide,</text>
+          <text class="t-sub" x="704" y="154">bỏ lời nằm trong</text>
+          <text class="t-sub" x="704" y="170">khoảng quảng cáo</text>
+          <rect class="box" x="855" y="30" width="140" height="80" rx="12"/>
+          <text class="t-tag" x="869" y="50">05</text>
+          <text class="t-title" x="869" y="70">Chỉ mục</text>
+          <text class="t-sub" x="869" y="88">E5 + SQLite FTS5</text>
+          <rect class="box out" x="855" y="142" width="140" height="80" rx="12"/>
+          <text class="t-title" x="869" y="172">Web app</text>
+          <text class="t-sub" x="869" y="190">slide · lời giảng</text>
+          <text class="t-sub" x="869" y="206">hỏi AI</text>
+          <path class="edge" d="M120,112 C135,112 135,57 148,57" marker-end="url(#ar)"/>
+          <path class="edge par" d="M120,140 C135,140 135,193 148,193" marker-end="url(#ar)"/>
+          <path class="edge" d="M300,57 L323,57" marker-end="url(#ar)"/>
+          <path class="edge" d="M475,57 L498,57" marker-end="url(#ar)"/>
+          <path class="edge" d="M650,57 C672,57 672,110 688,110" marker-end="url(#ar)"/>
+          <path class="edge" d="M650,193 C672,193 672,142 688,142" marker-end="url(#ar)"/>
+          <path class="edge" d="M830,110 C843,110 843,70 853,70" marker-end="url(#ar)"/>
+          <path class="edge" d="M830,142 C843,142 843,182 853,182" marker-end="url(#ar)"/>
+        </svg>
+        <div class="legend"><span style="--c:var(--green-soft);--b:var(--green)">CPU</span><span style="--c:var(--blue-soft);--b:var(--blue)">GPU · 03 chạy song song với 01 và 02</span><span style="--c:#fff1e8;--b:var(--orange)">Lọc quảng cáo</span><span style="--c:#fff;--b:var(--orange)">Nơi dùng kết quả</span></div>
+      </div>
+    </section>
+
+    <section id="steps">
+      <div class="eyebrow">Phần 2 · Trích xuất</div>
+      <h2>Các bước</h2>
+      <div class="figure">
+        <svg viewBox="0 0 1250 312" role="img" aria-label="BPMN: video tách song song làn hình (tách slide, lọc quảng cáo, rẽ nhánh quảng cáo, bộ gác OCR, OCR kết hợp) và làn âm thanh (nhận dạng giọng nói); gộp lại ở đồng bộ, rồi chỉ mục">
+          <defs><marker id="arb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="ahead"/></marker></defs>
+          <rect class="bp-lane" x="4" y="6" width="1242" height="196" rx="8"/>
+          <rect class="bp-lane" x="4" y="202" width="1242" height="104" rx="8"/>
+          <rect class="bp-lane-h" x="4" y="6" width="26" height="196" rx="8"/>
+          <rect class="bp-lane-h" x="4" y="202" width="26" height="104" rx="8"/>
+          <text class="bp-lane-t" transform="translate(21,104) rotate(-90)" text-anchor="middle">HÌNH</text>
+          <text class="bp-lane-t" transform="translate(21,254) rotate(-90)" text-anchor="middle">ÂM THANH</text>
+          <circle class="bp-ev" cx="62" cy="112" r="15"/>
+          <text class="bp-lab" x="62" y="144" text-anchor="middle">Video MP4</text>
+          <polygon class="bp-gw" points="116,93 135,112 116,131 97,112"/><line class="bp-mark" x1="109" y1="112" x2="123" y2="112"/><line class="bp-mark" x1="116" y1="105" x2="116" y2="119"/>
+          <path class="edge" d="M77,112 L95,112" marker-end="url(#arb)"/>
+          <rect class="box cpu" x="150" y="78" width="132" height="68" rx="10"/>
+          <text class="t-tag" x="160" y="94">01 · CPU</text>
+          <text class="t-title" x="160" y="111">Tách slide</text>
+          <text class="t-sub" x="160" y="127">OpenCV · 2–4 phút</text>
+          <path class="edge" d="M135,112 L148,112" marker-end="url(#arb)"/>
+          <rect class="box ad" x="302" y="78" width="132" height="68" rx="10"/>
+          <text class="t-tag" x="312" y="94">GPU 0</text>
+          <text class="t-title" x="312" y="111">Lọc quảng cáo</text>
+          <text class="t-sub" x="312" y="127">SigLIP + logistic · 17 s</text>
+          <path class="edge" d="M282,112 L300,112" marker-end="url(#arb)"/>
+          <polygon class="bp-gw" points="476,93 495,112 476,131 457,112"/><line class="bp-mark" x1="470" y1="106" x2="482" y2="118"/><line class="bp-mark" x1="482" y1="106" x2="470" y2="118"/>
+          <text class="bp-lab" x="476" y="146" text-anchor="middle">Đoạn là</text>
+          <text class="bp-lab" x="476" y="158" text-anchor="middle">quảng cáo?</text>
+          <path class="edge" d="M434,112 L455,112" marker-end="url(#arb)"/>
+          <rect class="box " x="512" y="10" width="150" height="44" rx="10"/>
+          <text class="t-tag" x="522" y="26"></text>
+          <text class="t-title" x="522" y="43"></text>
+          <text class="t-title" x="522" y="29">Đánh dấu đoạn ad</text>
+          <text class="t-sub" x="522" y="45">không OCR, không chỉ mục</text>
+          <path class="edge" d="M476,93 L476,32 L510,32" marker-end="url(#arb)"/>
+          <text class="bp-yes" x="482" y="60">có</text>
+          <polygon class="bp-gw" points="588,93 607,112 588,131 569,112"/><line class="bp-mark" x1="582" y1="106" x2="594" y2="118"/><line class="bp-mark" x1="594" y1="106" x2="582" y2="118"/>
+          <path class="edge" d="M495,112 L567,112" marker-end="url(#arb)"/>
+          <text class="bp-yes" x="508" y="106">không</text>
+          <text class="bp-lab" x="588" y="72" text-anchor="middle">Có phải slide không?</text>
+          <text class="bp-lab" x="588" y="84" text-anchor="middle">(bộ gác SigLIP · 1 s)</text>
+          <rect class="box gpu" x="668" y="78" width="140" height="68" rx="10"/>
+          <text class="t-tag" x="678" y="94">02 · GPU 0 + 1</text>
+          <text class="t-title" x="678" y="111">OCR kết hợp</text>
+          <text class="t-sub" x="678" y="127">Unlimited-OCR</text>
+          <text class="t-sub" x="678" y="141">+ Qwen3-VL · 8–20 phút</text>
+          <path class="edge" d="M607,112 L666,112" marker-end="url(#arb)"/>
+          <text class="bp-yes" x="609" y="105">có → OCR</text>
+          <path class="edge" d="M588,131 L588,168 L840,168 L840,133" marker-end="url(#arb)"/>
+          <text class="bp-yes" x="596" y="162">không</text>
+          <text class="bp-lab" x="636" y="182">không đưa vào OCR (giảng viên nói, logo) · vẫn giữ đoạn và lời giảng</text>
+          <polygon class="bp-gw" points="840,93 859,112 840,131 821,112"/><line class="bp-mark" x1="834" y1="106" x2="846" y2="118"/><line class="bp-mark" x1="846" y1="106" x2="834" y2="118"/>
+          <path class="edge" d="M808,112 L819,112" marker-end="url(#arb)"/>
+          <path class="edge" d="M662,32 L840,32 L840,91" marker-end="url(#arb)"/>
+          <path class="edge" d="M116,131 L116,262 L300,262" marker-end="url(#arb)"/>
+          <rect class="box gpu" x="302" y="232" width="492" height="60" rx="10"/>
+          <text class="t-tag" x="312" y="248">03 · GPU 1 · chỉ cần âm thanh, chạy song song với 01 và 02</text>
+          <text class="t-title" x="312" y="265">Nhận dạng giọng nói</text>
+          <text class="t-sub" x="312" y="281">Whisper medium + VAD · 3–4 phút · giờ từng từ</text>
+          <polygon class="bp-gw" points="900,93 919,112 900,131 881,112"/><line class="bp-mark" x1="893" y1="112" x2="907" y2="112"/><line class="bp-mark" x1="900" y1="105" x2="900" y2="119"/>
+          <path class="edge" d="M859,112 L879,112" marker-end="url(#arb)"/>
+          <path class="edge" d="M794,262 L900,262 L900,133" marker-end="url(#arb)"/>
+          <rect class="box cpu" x="940" y="78" width="102" height="68" rx="10"/>
+          <text class="t-tag" x="950" y="94">04 · CPU</text>
+          <text class="t-title" x="950" y="111">Đồng bộ</text>
+          <text class="t-sub" x="950" y="127">gán từ vào slide</text>
+          <text class="t-sub" x="950" y="141">&lt; 1 phút</text>
+          <path class="edge" d="M919,112 L938,112" marker-end="url(#arb)"/>
+          <rect class="box " x="1064" y="78" width="102" height="68" rx="10"/>
+          <text class="t-tag" x="1074" y="94">05</text>
+          <text class="t-title" x="1074" y="111">Chỉ mục</text>
+          <text class="t-sub" x="1074" y="127">E5 + FTS5</text>
+          <text class="t-sub" x="1074" y="141">&lt; 1 phút</text>
+          <path class="edge" d="M1042,112 L1062,112" marker-end="url(#arb)"/>
+          <circle class="bp-ev end" cx="1208" cy="112" r="15"/>
+          <path class="edge" d="M1166,112 L1191,112" marker-end="url(#arb)"/>
+          <text class="bp-lab" x="1208" y="144" text-anchor="middle">Dữ liệu</text>
+          <text class="bp-lab" x="1208" y="156" text-anchor="middle">cho web app</text>
+        </svg>
+        <div class="legend"><span style="--c:#fff;--b:var(--green)">sự kiện bắt đầu</span><span style="--c:#fff;--b:var(--red)">kết thúc</span><span style="--c:#fff;--b:var(--orange-deep)">cổng: + song song, × rẽ nhánh</span><span style="--c:var(--green-soft);--b:var(--green)">CPU</span><span style="--c:var(--blue-soft);--b:var(--blue)">GPU</span><span style="--c:#fff1e8;--b:var(--orange)">lọc quảng cáo</span></div>
+      </div>
+      <p class="note">Thời gian cho video 30 phút trên Kaggle T4 x2, tổng ~17 phút. Xem pipeline chạy từng giai đoạn trên video toán V008: <a href="walkthrough-v008.html"><code>docs/walkthrough-v008.html</code></a>.</p>
+    </section>
+
+    <section id="quality">
+      <div class="eyebrow">Phần 2 · Trích xuất</div>
+      <h2>Độ chính xác tách slide</h2>
+      <div class="table-wrap small"><table>
+        <thead><tr><th>6 video test L25</th><th class="num">P</th><th class="num">R</th><th class="num">F1</th></tr></thead>
+        <tbody>
+          <tr><td><b>Chính</b> · cuộn trang là slide mới</td><td class="num">0,990</td><td class="num">0,951</td><td class="num"><b>0,970</b></td></tr>
+          <tr><td>Có lọc quảng cáo</td><td class="num">0,980</td><td class="num">0,951</td><td class="num">0,965</td></tr>
+          <tr><td>Phụ · chỉ tính slide PowerPoint</td><td class="num">0,531</td><td class="num">0,912</td><td class="num">0,671</td></tr>
+        </tbody>
+      </table></div>
+      <p class="note">Lỗi còn lại: câu trắc nghiệm cùng bố cục bị gộp (V006), 1 chỗ ở V004.</p>
+    </section>
+
+    <section id="ads">
+      <div class="eyebrow">Phần 2 · Trích xuất</div>
+      <h2>Lọc quảng cáo</h2>
+      <p>L25 chèn quảng cáo 60–85 s, 3–4 lần/video. Cách lọc: SigLIP biến mỗi giây thành vector → hồi quy logistic cho điểm "là quảng cáo" → làm mượt, ghép đoạn ≥ 5 s → đoạn <code>ad</code> bị bỏ qua ở OCR, lời giảng, chỉ mục, web app.</p>
+      <div class="table-wrap small"><table>
+        <thead><tr><th>6 video test L25</th><th class="num">F1 theo giây</th><th class="num">Tốc độ</th></tr></thead>
+        <tbody>
+          <tr><td><b>Trò</b> (học nhãn L25, đang dùng)</td><td class="num"><b>0,994</b></td><td class="num">7 ms/khung</td></tr>
+          <tr><td>Thầy (zero-shot, không học)</td><td class="num">0,94–0,96</td><td class="num">58 ms/khung</td></tr>
+          <tr><td>Trò trong pipeline thật</td><td class="num"><b>0,996</b> · 39/40 đầu/cuối</td><td class="num">~17 s/video</td></tr>
+        </tbody>
+      </table></div>
+      <div class="callout warn"><b>Chưa chứng minh cho kênh khác:</b> L25 dùng chung một bộ quảng cáo nên trò có thể đã "học thuộc" L25.</div>
+    </section>
+
+    <section id="ads-general">
+      <div class="eyebrow">Phần 2 · Trích xuất</div>
+      <h2>Dùng cho kênh khác <span class="newtag">đề xuất</span></h2>
+      <p>Ý chính: học <b>"bài giảng trông thế nào"</b> thay vì học từng kiểu quảng cáo.</p>
+      <div class="table-wrap small"><table>
+        <thead><tr><th>Cách</th><th>Làm gì</th><th>Cần nhãn</th><th>Điểm yếu</th></tr></thead>
+        <tbody>
+          <tr><td>1 · So với chính video</td><td>Phần lớn video là bài giảng, trông giống nhau; đoạn nào lạc loài ≥ 5 s là quảng cáo</td><td>không</td><td>clip minh họa trong bài</td></tr>
+          <tr><td>2 · Nhận diện slide nhiều nguồn</td><td>Train "có phải bài giảng không" trên LPM + SlideSpeech + L25</td><td>nhãn yếu</td><td>quảng cáo dạng slide</td></tr>
+        </tbody>
+      </table></div>
+      <p class="note">Tín hiệu phụ: nhịp cắt cảnh, thầy zero-shot, từ khóa OCR ("đăng ký", "hotline"). Phải đo trên kênh chưa từng thấy (12 video tiếng Việt).</p>
+    </section>
+
+    <section id="limits">
+      <div class="eyebrow">Phần 2 · Trích xuất</div>
+      <h2>Lỗi còn lại</h2>
+      <ul class="limits">
+        <li><b>OCR mất chữ ở ~12% slide</b> (27/217): Unlimited-OCR coi cả vùng lớn là "hình" nên không đọc chữ. Sửa: OCR lại vùng đó, cho Qwen chép nguyên văn.</li>
+        <li><b>Lọc quảng cáo</b> mới kiểm chứng trên kênh L25.</li>
+        <li><b>OCR và ASR chưa có số đo</b> (CER, WER) → cần bộ gold 2.</li>
+        <li><b>OCR chậm</b> (23–37 s/slide), cần GPU 24 GB hoặc 2 × 16 GB.</li>
+      </ul>
+    </section>
+
+    <section id="howto">
+      <div class="eyebrow">Phần 2 · Trích xuất</div>
+      <h2>Chạy lại</h2>
+      <pre>python kaggle/lecture_rag/build_fast_pipeline.py   # sinh notebooks/fast_pipeline_l25.ipynb
+# Kaggle: GPU T4 x2, Internet, Add Input: l25a-lecture-videos-media
+#         + output kernel l25-ad-filter-e1-e4-20261002 (ad_student.npz); sửa VIDEO_IDS, Run All
+
+cd backend
+.venv/Scripts/python scripts/import_fast_pipeline.py --export &lt;thư mục giải nén&gt; --videos &lt;thư mục mp4&gt;</pre>
+    </section>
+
+    <div class="part">Phần 3 · <b>Triển khai</b></div>
+
+    <section id="webapp">
+      <div class="eyebrow">Phần 3 · Triển khai</div>
+      <h2>Web app</h2>
+      <div class="table-wrap small"><table>
+        <thead><tr><th>Thành phần</th><th>Hiện tại</th></tr></thead>
+        <tbody>
+          <tr><td>Backend</td><td>FastAPI (cổng 8001): thư viện video, nhập link, transcript, slide, hỏi đáp</td></tr>
+          <tr><td>Frontend</td><td>React + Vite (cổng 5173): thư viện, xem video kèm slide và lời giảng, hỏi AI</td></tr>
+          <tr><td>Nạp dữ liệu</td><td><code>import_fast_pipeline.py</code>: slide (ẩn quảng cáo) + transcript</td></tr>
+          <tr><td>Hỏi đáp</td><td>Gửi <b>cả transcript</b> + thời điểm đang xem cho Gemini Flash</td></tr>
+        </tbody>
+      </table></div>
+      <div class="callout warn"><b>Khoảng cách lớn nhất:</b> web app chưa dùng chỉ mục bước 05, chữ OCR hay ảnh slide. Mục tiêu: câu hỏi → tìm bằng chứng (E5 + FTS5) → ngữ cảnh ≤ 6.000 token + ảnh slide → Gemini trả lời kèm nguồn <code>mm:ss</code>.</div>
+    </section>
+
+    <section id="deploy">
+      <div class="eyebrow">Phần 3 · Triển khai</div>
+      <h2>Đưa cho người dùng</h2>
+      <div class="table-wrap small"><table>
+        <thead><tr><th>Hướng</th><th>Cách</th><th>Chi phí</th></tr></thead>
+        <tbody>
+          <tr><td><b>A · Thư viện xử lý sẵn</b> (đề xuất)</td><td>Admin chạy pipeline, người dùng chỉ xem và hỏi</td><td>~10–30 USD/tháng</td></tr>
+          <tr><td>B · Người dùng tự tải video</td><td>Thêm hàng đợi + worker GPU chạy pipeline (Docker)</td><td>+ ~0,15–0,25 USD/video</td></tr>
+        </tbody>
+      </table></div>
+      <p class="note">Cần đổi: JSON → PostgreSQL · ổ máy → S3/R2 · thêm đăng nhập và giới hạn câu hỏi · hàng đợi bền (Redis) · pipeline đóng gói Docker. Nhập link YouTube từ cloud hay bị chặn → nên cho tải file lên.</p>
+    </section>
+
+    <section id="cost">
+      <div class="eyebrow">Phần 3 · Triển khai</div>
+      <h2>Chi phí</h2>
+      <div class="table-wrap small"><table>
+        <thead><tr><th>Chạy trích xuất ở</th><th class="num">/ video 30 phút</th><th>Ghi chú</th></tr></thead>
+        <tbody>
+          <tr><td>Kaggle T4 x2</td><td class="num">0 USD</td><td>~100 video/tuần</td></tr>
+          <tr><td>RunPod L4</td><td class="num">~0,13 USD</td><td>thuê theo giờ</td></tr>
+          <tr><td>Modal L4</td><td class="num">~0,21 USD</td><td>chỉ trả khi chạy</td></tr>
+          <tr><td>AWS g6.xlarge</td><td class="num">~0,20 USD</td><td>dùng 200 USD credit; phải xin quota GPU</td></tr>
+        </tbody>
+      </table></div>
+      <p class="note">Hỏi đáp: ~0,001–0,003 USD/câu (Gemini Flash). Giá L4 là ước tính, giá tháng 09/2026.</p>
+    </section>
+
+    <section id="next">
+      <div class="eyebrow">Phần 3 · Triển khai</div>
+      <h2>Hướng phát triển</h2>
+      <ul class="limits">
+        <li><b>Nối chỉ mục 05 vào web app</b> (làm trước).</li>
+        <li><b>Reranker</b> (bge-reranker-v2-m3) + Gemini viết lại câu hỏi.</li>
+        <li><b>Chỉ mục cây kiểu PageIndex</b> cho câu hỏi trong một bài.</li>
+        <li><b>Bộ ~100 câu hỏi có đáp án</b> để so FTS5 / E5 / hybrid / + reranker / + cây.</li>
+      </ul>
+    </section>
+  </main>
+</div>
+<script>
+  var links = document.querySelectorAll('.side a');
+  var observer = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (!entry.isIntersecting) return;
+      links.forEach(function (link) { link.classList.toggle('active', link.getAttribute('href') === '#' + entry.target.id); });
+    });
+  }, { rootMargin: '-30% 0px -60% 0px' });
+  document.querySelectorAll('main section').forEach(function (section) { observer.observe(section); });
+</script>
+</body>
+</html>
