@@ -63,6 +63,26 @@ Công cụ gán nhãn, theo thứ tự dùng: `extract_candidates.py` → `build
 `eval_ad_detection.py` (chấm bước 01 có lọc quảng cáo theo bộ gold).
 4 video tuning: V001, V002, V005, V007; 6 video test: V003, V004, V006, V008, V009, V010.
 
+## Bộ gold 2: chữ trên slide (`gold/`)
+
+Đo OCR (CER) và bộ gác OCR trên export của pipeline nhanh (`fast_pipeline_export.zip` đã giải nén):
+
+```powershell
+python kaggle/lecture_rag/gold/build_ocr_review.py <export> <thư mục review> --per-video 20 --blind 30
+# mở <thư mục review>/ocr_review.html, gán nhãn, Xuất JSON -> ocr_gold.json
+python kaggle/lecture_rag/gold/eval_ocr.py ocr_gold.json <export> --out ocr_metrics.json
+```
+
+- Mọi keyframe (trừ quảng cáo): có/không có chữ đọc được, để chấm bộ gác. Trang không hiện quyết
+  định hay điểm của bộ gác để người gán không bị ảnh hưởng.
+- `--per-video` keyframe mỗi video: chép chữ. Chọn một keyframe ngẫu nhiên trong mỗi khoảng đều nhau
+  của video, không nhìn kết quả OCR, nên slide OCR đọc sai cũng được chọn như slide khác.
+- `--blind` slide trong số đó để trống thay vì điền sẵn chữ OCR; `eval_ocr.py` báo riêng hai nhóm
+  để biết chữ điền sẵn có làm người gán dễ dãi hay không.
+- Chỉ số: CER (sau chuẩn hoá NFC, bỏ thẻ HTML, kẻ bảng markdown và dấu `$`), recall từ, "mất chữ" =
+  recall từ < 0,5. Keyframe bộ gác bỏ qua tính là OCR rỗng.
+- Chỉnh ngưỡng trên tập dev; `vn-test12` chỉ dùng để đo.
+
 ## Bộ dữ liệu luận văn
 
 `build_dataset_kernels.py` sinh 5 notebook Kaggle (LPM, SlideSpeech dev/test và train, 12 video
