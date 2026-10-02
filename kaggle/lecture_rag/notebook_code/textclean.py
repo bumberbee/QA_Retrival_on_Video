@@ -44,10 +44,35 @@ def repeated_lines(texts, min_share=0.5, min_slides=3):
     return {key for key, count in counts.items() if count >= need}
 
 
+# Unlimited-OCR sometimes loops: L25_V005 seg 9 (lecturer + a small inset slide) came back as one
+# formula line 269 times. Runs of LOOP_RUN or more are kept once; two identical answer options stay.
+LOOP_RUN = 3
+LOOP_PHRASE = re.compile(r"(\S.{5,}?)(?:\s*\1){%d,}" % (LOOP_RUN - 1))
+
+
+def collapse_loops(lines, min_run=LOOP_RUN):
+    """Keep one line of each run of >= min_run consecutive lines with the same line_key."""
+    kept, index = [], 0
+    while index < len(lines):
+        key, end = line_key(lines[index]), index + 1
+        while key and end < len(lines) and line_key(lines[end]) == key:
+            end += 1
+        kept.extend(lines[index:end] if end - index < min_run else lines[index:index + 1])
+        index = end
+    return kept
+
+
+def collapse_phrase_loop(line):
+    """A phrase with letters repeated back to back >= LOOP_RUN times in one line is kept once
+    ("0 0 0 0" in a table row has no letters and stays)."""
+    return LOOP_PHRASE.sub(lambda match: match.group(1) if re.search(r"[^\W\d_]", match.group(1))
+                           else match.group(0), line)
+
+
 def clean_ocr_text(text, repeated=frozenset()):
     kept = []
-    for line in (text or "").splitlines():
-        line = UNREADABLE.sub("", line).strip()
+    for line in collapse_loops((text or "").splitlines()):
+        line = collapse_phrase_loop(UNREADABLE.sub("", line)).strip()
         key = line_key(line)
         if not line or key in repeated:
             continue
