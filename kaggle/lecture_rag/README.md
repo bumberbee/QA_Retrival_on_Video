@@ -82,6 +82,10 @@ python kaggle/lecture_rag/gold/eval_ocr.py ocr_gold.json <export> --out ocr_metr
 - Chỉ số: CER (sau chuẩn hoá NFC, bỏ thẻ HTML, kẻ bảng markdown và dấu `$`), recall từ, "mất chữ" =
   recall từ < 0,5. Keyframe bộ gác bỏ qua tính là OCR rỗng.
 - Chỉnh ngưỡng trên tập dev; `vn-test12` chỉ dùng để đo.
+- Tập dev: 4 video tuning của L25 (`--videos L25_V001 L25_V002 L25_V005 L25_V007`). Trang dựng vào
+  `gold/ocr_dev/review/` (không đưa lên git, dựng lại được). `gold/ocr_dev/claude_draft_has_content.json`
+  là nhãn nháp có/không có chữ do Claude gán từ ảnh thu nhỏ: Nhập JSON vào trang rồi người kiểm lại;
+  chưa có chữ chép tay nào.
 
 ## Bộ dữ liệu luận văn
 
