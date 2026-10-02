@@ -41,7 +41,8 @@ def video_rng(seed, video):
     return random.Random(int(hashlib.sha256(f"{seed}:{video}".encode()).hexdigest()[:16], 16))
 
 
-def build(export_dir, out_dir, per_video=20, blind=30, seed=0):
+def build(export_dir, out_dir, per_video=20, blind=30, seed=0, only=None):
+    """only: video ids to include (all videos of the export when None)."""
     export_dir, out_dir = Path(export_dir), Path(out_dir)
     template = Path(__file__).with_name("ocr_review_template.html").read_text(encoding="utf-8")
     (out_dir / "thumbs").mkdir(parents=True, exist_ok=True)
@@ -50,7 +51,9 @@ def build(export_dir, out_dir, per_video=20, blind=30, seed=0):
     videos, sampled = [], []
     for path in sorted(export_dir.glob("*/04_bundle/segments.json")):
         bundle, video = path.parent, path.parent.parent.name
-        keyframes = [segment for segment in json.loads(path.read_text(encoding="utf-8"))
+        if only and video not in only:
+            continue
+        keyframes =[segment for segment in json.loads(path.read_text(encoding="utf-8"))
                      if segment.get("content_kind") != "ad" and (segment.get("visual") or {}).get("image_path")]
         chosen = {segment["segment_id"] for segment in pick_spread(keyframes, per_video, video_rng(seed, video))}
         items = []
@@ -78,13 +81,18 @@ def build(export_dir, out_dir, per_video=20, blind=30, seed=0):
         raise SystemExit(f"Không thấy */04_bundle/segments.json trong {export_dir}")
     # a video folder without a bundle failed at stage 02-04 in that run (its log says "error")
     missing = sorted(path.name for path in export_dir.iterdir()
-                     if path.is_dir() and not (path / "04_bundle" / "segments.json").is_file())
+                     if path.is_dir() and not (path / "04_bundle" / "segments.json").is_file()
+                     and (not only or path.name in only))
+    unknown = sorted(set(only or ()) - {v["video"] for v in videos} - set(missing))
+    if unknown:
+        raise SystemExit(f"Không có trong export: {', '.join(unknown)}")
     for video in missing:
         print(f"CẢNH BÁO: bỏ qua {video}: export không có 04_bundle/segments.json (video lỗi ở bước 02-04?)")
 
     for item in random.Random(seed).sample(sampled, min(blind, len(sampled))):
         item["blind"], item["prefill"] = True, ""
-    meta = {"export": export_dir.name, "per_video": per_video, "blind": blind, "seed": seed,
+    meta = {"export": export_dir.name, "videos": [v["video"] for v in videos],
+            "per_video": per_video, "blind": blind, "seed": seed,
             "keyframes": sum(len(v["items"]) for v in videos), "transcribe": len(sampled),
             "missing_videos": missing}
     (out_dir / "ocr_review_items.json").write_text(
@@ -102,8 +110,9 @@ def main(argv=None):
     parser.add_argument("--per-video", type=int, default=20)
     parser.add_argument("--blind", type=int, default=30)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--videos", nargs="+", help="chỉ lấy các video này, ví dụ bộ dev L25_V001 L25_V002")
     args = parser.parse_args(argv)
-    build(args.export_dir, args.out_dir, args.per_video, args.blind, args.seed)
+    build(args.export_dir, args.out_dir, args.per_video, args.blind, args.seed, args.videos)
 
 
 if __name__ == "__main__":
