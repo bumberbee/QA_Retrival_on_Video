@@ -91,8 +91,38 @@ def align_records(intervals, visuals, transcript, duration):
     return segments
 
 
+def word_pairs(text):
+    words = re.findall(r"\w+", (text or "").lower())
+    return {f"{a} {b}" for a, b in zip(words, words[1:])}
+
+
+def review_ad_speech(segments, threshold, min_pairs=20):
+    """Stage 01 cuts ads from the picture alone; a lesson stretch it cut by mistake would lose
+    its speech from the transcript and the index. An ad segment whose word pairs mostly come
+    back in the rest of the lecture or on its slides is marked ad_suspect: its speech is kept.
+    L25 (9 videos, 20261002 run): 27 real ads overlap 0.022-0.246; 110 runs of lesson slides
+    (40-85 s) relabelled as ad overlap >= 0.207 (median 0.44). Threshold 0.25: 0/27 ads flagged,
+    103/110 runs kept; 0.20: 1/27 and 110/110."""
+    lesson = set()
+    for segment in segments:
+        if segment["content_kind"] != "ad":
+            visual = segment.get("visual") or {}
+            lesson |= word_pairs(segment["speech"]["text"])
+            lesson |= word_pairs(visual.get("ocr_text_clean", visual.get("ocr_text", "")))
+    for segment in segments:
+        if segment["content_kind"] != "ad":
+            continue
+        pairs = word_pairs(segment["speech"]["text"])
+        overlap = len(pairs & lesson) / len(pairs) if len(pairs) >= min_pairs else None
+        segment["ad_review"] = {"lesson_overlap": None if overlap is None else round(overlap, 4),
+                                "word_pairs": len(pairs), "threshold": threshold}
+        segment["ad_suspect"] = overlap is not None and overlap >= threshold
+    return segments
+
+
 def run_alignment(stage01_dir, stage02_dir, stage03_dir, output_root,
-                  video_id="L25_V001"):
+                  video_id="L25_V001", ad_suspect_overlap=None):
+    """ad_suspect_overlap: None (off) or a threshold for review_ad_speech()."""
     paths = [Path(stage01_dir), Path(stage02_dir), Path(stage03_dir)]
     parents = [load_stage(path, index + 1, video_id) for index, path in enumerate(paths)]
     require_parent(parents[1], parents[0])
@@ -134,6 +164,8 @@ def run_alignment(stage01_dir, stage02_dir, stage03_dir, output_root,
             })
         audio_root = directory
     segments = align_records(intervals, visuals, transcript, parents[0]["source"]["duration_sec"])
+    if ad_suspect_overlap is not None:
+        review_ad_speech(segments, ad_suspect_overlap)
     for interval in intervals:
         name = interval["image_path"]
         target = relative_asset(directory, name)
@@ -162,8 +194,9 @@ def run_alignment(stage01_dir, stage02_dir, stage03_dir, output_root,
     write_json(directory / "fallback_spans.json", transcript["fallback_spans"])
     write_json(directory / "asr_windows.json", transcript["windows"])
     # Compatible with the current app after mapping video_id to its uploaded ID.
-    # Speech inside ad segments stays in segments.json but is not shown as lecture transcript.
-    app_spans = [span for segment in segments if segment["content_kind"] != "ad"
+    # Speech inside ad segments stays in segments.json but is not shown as lecture transcript,
+    # unless review_ad_speech() found it sounds like the lesson (ad_suspect).
+    app_spans = [span for segment in segments if segment["content_kind"] != "ad" or segment.get("ad_suspect")
                  for span in segment["speech"]["spans"]]
     app_spans += transcript["fallback_spans"]
     app_transcript = {
@@ -179,7 +212,8 @@ def run_alignment(stage01_dir, stage02_dir, stage03_dir, output_root,
         {"word_ownership": "midpoint_in_half_open_interval",
          "cross_boundary_fallback": "shared_reference_without_fabricated_word_times",
          "ocr_cleaning": {"repeated_lines": sorted(repeated)},
-         "asr_correction": "slide_vocabulary_onset_s_x_ch_tr"},
+         "asr_correction": "slide_vocabulary_onset_s_x_ch_tr",
+         **({"ad_suspect_overlap": ad_suspect_overlap} if ad_suspect_overlap is not None else {})},
         parents=parents,
         extra={"segment_count": len(segments), "word_count": len(transcript["words"]),
                "ad_segment_count": sum(segment["content_kind"] == "ad" for segment in segments),
@@ -187,6 +221,8 @@ def run_alignment(stage01_dir, stage02_dir, stage03_dir, output_root,
                "noise_region_count": sum(region.get("noise", False) for visual in visuals for region in visual["regions"]),
                "ad_word_count": sum(len(segment["speech"]["word_ids"]) for segment in segments
                                     if segment["content_kind"] == "ad"),
+               **({"ad_suspect_count": sum(bool(segment.get("ad_suspect")) for segment in segments)}
+                  if ad_suspect_overlap is not None else {}),
                "bundle_status": "synchronized"},
     )
     return directory, manifest, segments

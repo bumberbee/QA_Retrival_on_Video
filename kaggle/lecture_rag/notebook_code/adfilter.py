@@ -150,11 +150,15 @@ NO_CONTENT_PROMPTS = [
 ]
 
 
-def load_ocr_gate(device="cuda", model_id="google/siglip-base-patch16-224", threshold=0.10):
-    """Returns (check(images) -> list of P(readable content), description)."""
+def load_ocr_gate(device="cuda", model_id="google/siglip-base-patch16-224", threshold=0.10, views="frame"):
+    """Returns (check(images) -> list of P(readable content), description). views: "frame"
+    scores the whole keyframe; "frame+crops" also looks at its slide region, quarters and centre
+    before skipping (visual.gate_keyframe), so it never skips more than "frame"."""
+    if views not in {"frame", "frame+crops"}:
+        raise ValueError("OCR_GATE_VIEWS phải là 'frame' hoặc 'frame+crops'.")
     embed_images, embed_texts, scale, bias = load_siglip(model_id, device)
     check = zero_shot(embed_images, embed_texts, scale, bias, CONTENT_PROMPTS, NO_CONTENT_PROMPTS)
-    return check, {"model": model_id, "threshold": threshold}
+    return check, {"model": model_id, "threshold": threshold, "views": views}
 
 
 def snap(time_sec, boundaries, tolerance=1.5):

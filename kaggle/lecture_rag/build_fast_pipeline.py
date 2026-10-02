@@ -57,6 +57,9 @@ AD_DEVICE = 'cuda:0'
 # và lời giảng nhưng không OCR. Dùng chung SigLIP base với bộ lọc quảng cáo.
 OCR_GATE = True
 OCR_GATE_THRESHOLD = 0.10  # đo trên 217 keyframe: bỏ 11 khung rỗng, không bỏ nhầm slide nào
+# 'frame' = bản gốc (chấm cả khung). 'frame+crops': khung dưới ngưỡng chỉ bị bỏ khi vùng slide,
+# 4 góc và phần giữa cũng dưới ngưỡng -> không bao giờ bỏ nhiều hơn 'frame'.
+OCR_GATE_VIEWS = 'frame'
 
 # 02 · OCR. 'hybrid' = Unlimited-OCR (chữ, công thức LaTeX, bảng, có tọa độ) trên GPU 0
 # + Qwen3-VL đọc từng vùng biểu đồ/hình trên GPU 1; 'easyocr' = bản cũ, nhanh hơn nhiều.
@@ -67,6 +70,9 @@ OCR_LANGUAGES = ('vi', 'en')
 OCR_SCALE = 1.5
 OCR_BATCH_SIZE = 32
 FRAME_HSV = {'L25_V001': ((135, 80, 120), (175, 255, 255))}
+# Vùng "ảnh" chiếm từ tỉ lệ này của slide được Unlimited-OCR đọc lại riêng (cứu chữ bị coi là hình).
+# 0.4 = bản gốc; chỉ đổi sau khi đo bằng gold set 2 (gold/eval_ocr.py) trên tập dev.
+HYBRID_RESCUE_AREA = 0.4
 
 # 03 · ASR (giữ model của dự án; turbo đã bị loại sau kiểm tra nội dung)
 ASR_MODEL = 'Systran/faster-whisper-medium'
@@ -74,6 +80,11 @@ ASR_REVISION = '08e178d48790749d25932bbc082711ddcfdfbc4f'
 # Whisper dùng chung GPU 1 với Qwen3-VL (~8.4 GB + ~2 GB), để GPU 0 cho Unlimited-OCR.
 ASR_DEVICE_INDEX = 1 if OCR_ENGINE == 'hybrid' else 0
 ASR_MODE = 'windowed'
+
+# 04 · đoạn quảng cáo có lời nói giống bài giảng (cặp từ trùng với phần còn lại của bài/slide)
+# vẫn giữ lời giảng và chỉ mục (ad_suspect). None = tắt (bản gốc). L25 dev: 0.25 -> 0/27 quảng
+# cáo bị giữ oan, giữ được 103/110 đoạn bài giảng bị cắt nhầm; 0.20 -> 1/27 và 110/110.
+AD_SUSPECT_OVERLAP = None
 
 # 05 · chỉ mục
 EMBEDDING_MODEL = 'intfloat/multilingual-e5-small'
@@ -123,7 +134,7 @@ if AD_FILTER:
         raise FileNotFoundError('AD_FILTER="student" cần ad_student.npz: Add Input output của thí nghiệm bộ lọc.')
     ad_scorer = load_ad_scorer(AD_FILTER, AD_DEVICE, student_path)
     print('Lọc quảng cáo:', ad_scorer[1])
-ocr_gate = load_ocr_gate(AD_DEVICE, threshold=OCR_GATE_THRESHOLD) if OCR_GATE else None
+ocr_gate = load_ocr_gate(AD_DEVICE, threshold=OCR_GATE_THRESHOLD, views=OCR_GATE_VIEWS) if OCR_GATE else None
 
 def detect(video_id):
     started = time.monotonic()
@@ -141,7 +152,7 @@ def ocr(video_id, stage01):
         stage01, OUTPUT_ROOT / video_id, video_id, languages=OCR_LANGUAGES,
         ocr_device='cuda', ocr_scale=OCR_SCALE, ocr_batch_size=OCR_BATCH_SIZE,
         frame_hsv=FRAME_HSV.get(video_id), ocr_engine=OCR_ENGINE,
-        hybrid_devices=HYBRID_DEVICES, ocr_gate=ocr_gate,
+        hybrid_devices=HYBRID_DEVICES, ocr_gate=ocr_gate, hybrid_rescue_area=HYBRID_RESCUE_AREA,
     )
     return directory, time.monotonic() - started
 
@@ -184,7 +195,8 @@ with ThreadPoolExecutor(1) as cpu, ThreadPoolExecutor(1) as asr_queue, ThreadPoo
             row['ready_at_sec'] = time.monotonic() - pipeline_started
             started = time.monotonic()
             stage04, manifest04, _ = run_alignment(
-                stage01, stage02, stage03, OUTPUT_ROOT / video_id, video_id)
+                stage01, stage02, stage03, OUTPUT_ROOT / video_id, video_id,
+                ad_suspect_overlap=AD_SUSPECT_OVERLAP)
             row['04_sec'] = time.monotonic() - started
             started = time.monotonic()
             run_indexing(stage04, OUTPUT_ROOT / video_id, video_id,

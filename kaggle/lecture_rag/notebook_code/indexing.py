@@ -54,8 +54,9 @@ def make_evidence_chunks(segments, fallback_spans, tokenizer, *,
     seen_coarse = set()
     coarse = unique_records(fallback_spans, "span_id")
     for segment in segments:
-        if segment.get("content_kind") == "ad":
-            # Ads are not lesson evidence; their speech is kept in stage 04 only.
+        if segment.get("content_kind") == "ad" and not segment.get("ad_suspect"):
+            # Ads are not lesson evidence; their speech is kept in stage 04 only. An ad_suspect
+            # segment (its speech sounds like the lesson, stage 04) is indexed by its speech.
             seen_coarse.update(segment["speech"]["fallback_span_ids"])
             continue
         visual = segment["visual"]

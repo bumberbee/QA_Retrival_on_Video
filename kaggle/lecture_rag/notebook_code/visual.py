@@ -156,6 +156,28 @@ def crop_to_roi(image, roi):
                        int(roi[2] * image.width), int(roi[3] * image.height)))
 
 
+GATE_BOXES =((0, 0, .5, .5), (.5, 0, 1, .5), (0, .5, .5, 1), (.5, .5, 1, 1), (.25, .25, .75, .75))
+
+
+def gate_crops(image, roi=None):
+    """Second looks for a keyframe the OCR gate would skip: its slide region (when stage 02
+    found one), the four quarters and the centre, so a small slide beside the lecturer counts."""
+    return ([crop_to_roi(image, roi)] if roi else []) + [crop_to_roi(image, box) for box in GATE_BOXES]
+
+
+def gate_keyframe(ocr_gate, image, roi=None):
+    """(skip OCR?, scores) for one keyframe. views "frame" scores the whole keyframe; with
+    "frame+crops" a keyframe below the threshold is skipped only if every gate_crops() view is
+    below it too, so it never skips a keyframe "frame" keeps (crops scored only for those)."""
+    if not ocr_gate:
+        return False, {}
+    check, info = ocr_gate
+    scores = {"frame": round(float(check([image])[0]), 4)}
+    if scores["frame"] < info["threshold"] and info.get("views", "frame") == "frame+crops":
+        scores["crops"] = [round(float(score), 4) for score in check(gate_crops(image, roi))]
+    return max([scores["frame"], *scores.get("crops", [])]) < info["threshold"], scores
+
+
 def roi_to_image_box(box, roi):
     """A box normalized to the ROI crop, back to the full keyframe."""
     if not roi:
@@ -331,7 +353,8 @@ def hybrid_read_slide(image, unlimited, read_crop, big_area=0.4, min_text_chars=
 
 def load_hybrid_ocr(ocr_device="cuda:0", vlm_device="cuda:1", work_dir="/tmp/unlimited_ocr"):
     """Unlimited-OCR reads the whole slide (text, LaTeX, tables, with boxes); every
-    image/chart region it finds is cropped and read by Qwen3-VL. Returns read(image)."""
+    image/chart region it finds is cropped and read by Qwen3-VL. Returns read(image, big_area):
+    an "image" block covering big_area of the slide is read again on its own (hybrid_read_slide)."""
     import io
     import sys
     import threading
@@ -399,9 +422,9 @@ def load_hybrid_ocr(ocr_device="cuda:0", vlm_device="cuda:1", work_dir="/tmp/unl
         except ValueError:
             return raw, {"kind": "figure", "description": raw.strip()}
 
-    def read(image):
+    def read(image, big_area=0.4):
         with lock:
-            return hybrid_read_slide(image, unlimited, read_crop)
+            return hybrid_read_slide(image, unlimited, read_crop, big_area=big_area)
 
     read.ocr_model, read.vlm = ocr_model, vlm   # for experiments (e.g. fp16 timing)
     return read
@@ -471,11 +494,12 @@ def run_visual_extraction(stage01_dir, output_root, video_id="L25_V001", *,
                           content_kind_overrides=None, vision_mode="on_demand",
                           vision_segment_ids=(), ocr_device="auto", ocr_scale=1.5,
                           ocr_batch_size=32, frame_hsv=None, ocr_engine="easyocr",
-                          hybrid_devices=("cuda:0", "cuda:1"), ocr_gate=None):
+                          hybrid_devices=("cuda:0", "cuda:1"), ocr_gate=None, hybrid_rescue_area=0.4):
     """ocr_engine: "easyocr" (lines of text with boxes) or "hybrid" (Unlimited-OCR for
     text, LaTeX and tables + Qwen3-VL reading every chart/figure region).
     ocr_gate: None, or load_ocr_gate() of adfilter.py: keyframes without readable content
-    (lecturer talking, intro logo, blank screen) keep their segment but skip OCR."""
+    (lecturer talking, intro logo, blank screen) keep their segment but skip OCR (gate_keyframe).
+    hybrid_rescue_area: share of the slide an "image" block must cover to be read again alone."""
     from PIL import Image
 
     if ocr_engine not in {"easyocr", "hybrid"}:
@@ -507,6 +531,8 @@ def run_visual_extraction(stage01_dir, output_root, video_id="L25_V001", *,
         "ocr_device": ocr_device, "ocr_scale": ocr_scale, "ocr_batch_size": ocr_batch_size,
         "frame_hsv": frame_hsv, "reading_order": "vertical_line_clustering_v1",
         "ocr_gate": ocr_gate[1] if ocr_gate else None,
+        # only when changed, so caches of runs with the default stay valid
+        **({"hybrid_rescue_area": hybrid_rescue_area} if ocr_engine == "hybrid" and hybrid_rescue_area != 0.4 else {}),
         "packages": package_versions(["easyocr", "torch", "transformers", "accelerate"]
                                      if ocr_engine == "easyocr" else ["torch", "transformers", "accelerate"]),
     }
@@ -547,8 +573,9 @@ def run_visual_extraction(stage01_dir, output_root, video_id="L25_V001", *,
                 target.parent.mkdir(parents=True, exist_ok=True)
                 image.crop((int(roi[0] * image.width), int(roi[1] * image.height),
                             int(roi[2] * image.width), int(roi[3] * image.height))).save(target, quality=95)
-            gate_score = round(float(ocr_gate[0]([image])[0]), 4) if ocr_gate else None
-            if gate_score is not None and gate_score < ocr_gate[1]["threshold"]:
+            gate_skip, gate_scores = gate_keyframe(ocr_gate, image, roi)
+            gate_score = gate_scores.get("frame")
+            if gate_skip:
                 extraction = {
                     "ocr_blocks": [], "hybrid_regions": [], "raw_hybrid_response": None,
                     "raw_vision_response": "", "resolved_revision": None,
@@ -564,7 +591,8 @@ def run_visual_extraction(stage01_dir, output_root, video_id="L25_V001", *,
                     if hybrid_read is None:
                         hybrid_read = shared_model(("hybrid_ocr", tuple(hybrid_devices)),
                                                    lambda: load_hybrid_ocr(*hybrid_devices))
-                    blocks, hybrid_regions, hybrid_raw = hybrid_read(crop_to_roi(image, roi))
+                    area = {} if hybrid_rescue_area == 0.4 else {"big_area": hybrid_rescue_area}
+                    blocks, hybrid_regions, hybrid_raw = hybrid_read(crop_to_roi(image, roi), **area)
                     for item in blocks + hybrid_regions:
                         item["bbox"] = roi_to_image_box(item["bbox"], roi)
                 else:
@@ -635,6 +663,7 @@ def run_visual_extraction(stage01_dir, output_root, video_id="L25_V001", *,
             "description_status": vision["parse_status"],
             "ocr_status": "skipped_no_content" if vision["parse_status"] == "skipped_no_content" else "read",
             "ocr_gate_score": gate_score,
+            **({"ocr_gate_crop_scores": gate_scores["crops"]} if "crops" in gate_scores else {}),
         })
         print(f"OCR {index + 1}/{len(intervals)}: {kind}; vision={vision['parse_status']}", flush=True)
     parameters["resolved_vision_revision"] = resolved_revision
