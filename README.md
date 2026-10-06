@@ -16,8 +16,8 @@ Thesis/
 ├─ frontend/             React + Vite (cổng 5173)
 ├─ kaggle/lecture_rag/   pipeline trích xuất 01 → 05, bộ gold, test (xem README trong đó)
 └─ docs/
-   ├─ pipeline-report.html    báo cáo pipeline: các bước, số đo, đề xuất
-   └─ ocr-bench-report.html   so sánh các model OCR
+   ├─ pipeline-report.html    báo cáo: dữ liệu, các bước trích xuất, số đo, triển khai
+   └─ walkthrough-v008.html   pipeline chạy từng giai đoạn trên 1 video toán
 ```
 
 Tải video từ máy tính hoặc nhập liên kết YouTube, Facebook, TikTok, xem video và hỏi AI về nội

@@ -1,0 +1,35 @@
+{
+ "note": "Content filter, phase 0, set C: questions with the time range (seconds) that holds the answer. answer: null = not in the lecture (the system should say so). current_time: the second being watched, for 'this slide' questions. V008 ranges are from full_pipeline_walkthrough (checked against the slides); MLS-15DA1 ranges were read from its stage-04 segments (OCR + speech) on 05/10/2026. 'in_cut_ad' marks answers that lie in time the old ad filter cut out of MLS-15DA1.",
+ "videos": {
+  "L25_V008": [
+   {"q": "Xác suất của một biến cố được tính như thế nào?", "answer": [89, 131]},
+   {"q": "Không gian mẫu khi lấy 2 quả cầu từ hộp 15 quả có bao nhiêu phần tử?", "answer": [130, 320]},
+   {"q": "Tổng hai số là số chẵn thì có những trường hợp nào?", "answer": [150, 320]},
+   {"q": "Chọn 10 tấm thẻ trong 30 thẻ sao cho có đúng 1 thẻ chia hết cho 10", "answer": [319, 465]},
+   {"q": "Từ 1 đến 40 có bao nhiêu số chia hết cho 3?", "answer": [547, 814]},
+   {"q": "Tính xác suất để tổng 3 số trên 3 thẻ chia hết cho 3", "answer": [547, 814]},
+   {"q": "Công thức tính nhanh số các số chia hết cho 3 trong một đoạn", "answer": [547, 814]},
+   {"q": "Xếp 9 học sinh thành hàng ngang sao cho không có 2 em lớp 12 đứng cạnh nhau", "answer": [813, 931]},
+   {"q": "Chia 9 học sinh thành 3 tổ, mỗi tổ có đúng một học sinh nữ", "answer": [989, 1210]},
+   {"q": "Thầy giáo dạy chuyên đề này là ai?", "answer": [0, 30]},
+   {"q": "Giải thích slide này.", "current_time": 400, "answer": [319, 465]},
+   {"q": "Cách cài đặt PyTorch?", "answer": null},
+   {"q": "Định lý Pythagore phát biểu thế nào?", "answer": null}
+  ],
+  "MLS-15DA1": [
+   {"q": "Why do we want to find a nice basis for a linear transformation?", "answer": [47, 262], "in_cut_ad": true},
+   {"q": "What does a diagonal matrix do geometrically?", "answer": [183, 394]},
+   {"q": "What is the definition of an eigenvector and an eigenvalue?", "answer": [394, 607], "in_cut_ad": true},
+   {"q": "Why is lambda an eigenvalue exactly when the kernel of T minus lambda I is non-trivial?", "answer": [567, 747], "in_cut_ad": true},
+   {"q": "Which conditions are equivalent to lambda being an eigenvalue?", "answer": [601, 941], "in_cut_ad": true},
+   {"q": "What is the characteristic polynomial of a matrix?", "answer": [817, 1069]},
+   {"q": "Why does the characteristic polynomial not depend on the choice of basis?", "answer": [941, 1225], "in_cut_ad": true},
+   {"q": "What are the eigenvectors of a rotation around the z-axis?", "answer": [1316, 1704], "in_cut_ad": true},
+   {"q": "What is the trace of a matrix and why is Tr(AB) = Tr(BA)?", "answer": [1853, 2033]},
+   {"q": "What is the leading coefficient of the characteristic polynomial?", "answer": [2033, 2536]},
+   {"q": "Explain this slide.", "current_time": 476, "answer": [472, 481]},
+   {"q": "How do I install PyTorch?", "answer": null},
+   {"q": "What is the capital of France?", "answer": null}
+  ]
+ }
+}

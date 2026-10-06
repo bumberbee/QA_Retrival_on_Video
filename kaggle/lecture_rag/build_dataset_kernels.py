@@ -6,6 +6,9 @@
   4 vn-test12             12 Vietnamese lecture videos from 5 channel types + SponsorBlock labels
   5 m3av-maths            M3AV Oxford Mathematics: slide OCR/LaTeX labels + the 51 videos
 
+When YouTube blocks a session, *-r2/-r3 continue from the previous output (added as Input);
+vn-fill downloads only the replacement of a removed video, merged into vn-lecture-test12 locally.
+
 Each notebook writes its dataset to /kaggle/working/<name>/ with a README.md; in the Kaggle UI,
 Output → New Dataset turns it into a dataset of the account. No API key is used in code.
 
@@ -462,12 +465,19 @@ KERNELS = {
     "lpm-videos": dict(code=[LPM], datasets=["thivntrung/dataset-video", f"{OWNER}/lpm-lecture-slide-segments"], kernels=[]),
     "slidespeech-devtest": dict(code=[SS_OUT.format(name="slidespeech-devtest", related=True), SS_META, SS_DEVTEST],
                                 datasets=[], kernels=[]),
-    "slidespeech-train100": dict(code=[SS_OUT.format(name="slidespeech-train100", related=False), SS_META, SS_TRAIN],
-                                 datasets=[], kernels=[]),
-    # chạy tiếp khi YouTube chặn giữa chừng: nhận output của lần trước làm Input
-    "slidespeech-train100-r2": dict(code=[SS_OUT.format(name="slidespeech-train100", related=False), SS_META, SS_TRAIN],
-                                    datasets=[], kernels=[f"{OWNER}/thesis-ds-slidespeech-train100"]),
+    # 100 video sau 4 lần chạy (YouTube chặn giữa chừng); lần cuối nhận output lần 3 làm Input, bỏ qua
+    # video bị chặn, chỉ dừng khi 3 video liền bị chặn. Các lần 1–3 đã xóa khỏi repo.
+    "slidespeech-train100-r4": dict(code=[SS_OUT.format(name="slidespeech-train100", related=False), SS_META,
+                                          SS_TRAIN.replace("N, LIMIT_GB = 100, 18.0", "N, LIMIT_GB = 100, 19.2").replace(
+                                              "    if result['status'] == 'blocked':\n        print('YouTube chặn tải; dừng.'); break",
+                                              "    if result['status'] == 'blocked' and BLOCKED_IN_A_ROW[0] >= 3:\n"
+                                              "        print('YouTube chặn 3 video liên tiếp; dừng.'); break")],
+                                    datasets=[], kernels=[f"{OWNER}/thesis-ds-slidespeech-train100-r3"]),
     "vn-test12": dict(code=[VN, SPONSOR], datasets=[f"{OWNER}/lpm-lecture-slide-segments"], kernels=[]),
+    # chỉ tải video thay cho K2qJUcj51zQ (bị gỡ); máy cá nhân gộp vào bộ vn-lecture-test12 rồi lên phiên bản mới
+    "vn-fill": dict(code=[VN.replace("vn-lecture-test12'", "vn-fill'").replace(
+                        "rows = []\nfor vid", "VIDEOS = [v for v in VIDEOS if v[0] == 'D_kuulxKuxc']\nrows = []\nfor vid")],
+                    datasets=[], kernels=[]),
     "m3av-maths": dict(code=[M3AV], datasets=[], kernels=[]),
 }
 

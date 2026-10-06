@@ -13,20 +13,23 @@ lecture_rag/
 │  ├─ detection.py       01 · tách slide
 │  ├─ visual.py          02 · OCR (hybrid: Unlimited-OCR + Qwen3-VL; hoặc EasyOCR)
 │  ├─ transcription.py   03 · Whisper medium + VAD
+│  ├─ textclean.py       04 · làm sạch OCR, sửa thuật ngữ ASR theo slide
 │  ├─ adfilter.py        lọc quảng cáo trong bước 01 (SigLIP, đoạn "ad")
 │  ├─ alignment.py       04 · gán từ vào slide
 │  └─ indexing.py        05 · E5 + SQLite FTS5 (và truy xuất cho notebook 06)
 ├─ notebooks/            notebook sinh ra từ notebook_code/, không sửa tay
 │  ├─ fast_pipeline_l25.ipynb        bản đang dùng: 01 → 05 cho nhiều video, 1 phiên T4 x2
 │  ├─ 01_…_l25_v001 … 06_…ipynb      cùng thuật toán, mỗi bước một notebook (L25_V001)
-│  ├─ explain_slide_detection.ipynb  bước 01 chạy từng bước, in mọi output (đã chạy sẵn)
+│  ├─ full_pipeline_walkthrough.ipynb chạy cả pipeline trên 1 video, in từng giai đoạn
 │  ├─ ad_filter_experiments.ipynb    thí nghiệm bộ lọc quảng cáo E1 (trò) và E4 (thầy)
 │  ├─ ad_detection_run.ipynb         bước 01 có lọc quảng cáo trên 10 video gold
-│  └─ lpm_video_download.ipynb       tải video bộ LPM về dataset Kaggle
+│  ├─ ocr_gate_check.ipynb           thử bộ gác "có phải slide không" trước OCR
+│  └─ ds_*.ipynb                     tạo 6 bộ dữ liệu trên Kaggle (build_dataset_kernels.py)
 ├─ build_*.py            sinh các notebook trong notebooks/
 ├─ gold/                 bộ gold 1: nhãn ranh giới slide và nhãn quảng cáo của 10 video L25
-├─ ocr_bench/            so sánh các model OCR (kết quả: docs/ocr-bench-report.html)
-├─ tests/                31 test, không cần GPU hay tải model
+├─ ocr_bench/            so sánh các model OCR (kết quả đã gộp vào docs/pipeline-report.html)
+├─ tests/                57 test, không cần GPU hay tải model
+├─ relay_youtube_datasets.py tải video YouTube ở máy cá nhân khi Kaggle bị chặn
 └─ runs/                 lần chạy Kaggle đang dùng (không đưa lên git)
 ```
 
