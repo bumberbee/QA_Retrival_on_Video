@@ -93,29 +93,64 @@ S.append(content(2, "Dữ liệu đã thu thập", table(
 
 # 3 video processing
 S.append(section(3))
-S.append(content(3, "Bước 1 · Phát hiện slide", '''<div class="split">
-  <div><ul class="small">
-    <li>Quét video <b>1 lần</b>: mẫu 1 khung/giây + khung 8 Hz để chỉnh ranh giới.</li>
-    <li>"Chữ ký" mỗi khung: ảnh xám thu nhỏ + ảnh cạnh (bắt cả thay đổi chữ).</li>
-    <li>Slide mới khi khung <b>khác</b> (≥ 0,055) và <b>đứng yên</b> ≥ 2 giây.</li>
-    <li>Bỏ qua vùng luôn chuyển động (khung giảng viên).</li>
-    <li>Chọn khung <b>nét nhất</b> làm keyframe.</li></ul>
-    <p class="note">V008 (20 phút): 67 trạng thái hình → 12 slide + 4 đoạn quảng cáo.</p></div>
-  ''' + fig(photo(V008 / "01_slides/contact_sheet.jpg", 1100), "Hình 2: Keyframe các đoạn của video L25_V008") + "</div>"))
+def change_chart(npz, intervals_path, until=340, cap=0.3):
+    """SVG of the real picture change per second (signal_dump) with the cuts stage 01 made."""
+    import json as _json
+    import numpy as np
+    data = np.load(npz)
+    times, change = data["times"], np.minimum(data["change"], cap)
+    keep = times <= until
+    W, H, left, top = 1000, 175, 40, 10
+    x = lambda t: left + (W - left - 10) * t / until
+    y = lambda v: top + (H - top - 34) * (1 - v / cap)
+    points = " ".join(f"{x(t):.1f},{y(v):.1f}" for t, v in zip(times[keep], change[keep]))
+    cuts = [i for i in _json.load(open(intervals_path, encoding="utf-8")) if 0 < i["start_sec"] <= until]
+    marks = "".join(
+        f'<line x1="{x(i["start_sec"]):.1f}" y1="{top}" x2="{x(i["start_sec"]):.1f}" y2="{H - 34}" stroke="#153898" stroke-width="2" stroke-dasharray="4 3"/>'
+        for i in cuts)
+    ads = "".join(f'<rect x="{x(i["start_sec"]):.1f}" y="{top}" width="{x(i["end_sec"]) - x(i["start_sec"]):.1f}" height="{H - 34 - top}" fill="#f6b21b" opacity=".18"/>'
+                  for i in cuts if i["content_kind"] == "ad")
+    ticks = "".join(f'<text x="{x(t):.1f}" y="{H - 14}" text-anchor="middle" font-size="12" fill="#5a6a8a">{t // 60}:{t % 60:02d}</text>'
+                    for t in range(0, until + 1, 60))
+    return (f'<svg viewBox="0 0 {W} {H}" role="img" aria-label="Độ khác nhau giữa hai giây liên tiếp">{ads}'
+            f'<line x1="{left}" y1="{y(0.055):.1f}" x2="{W - 10}" y2="{y(0.055):.1f}" stroke="#c4553f" stroke-width="1.5" stroke-dasharray="6 4"/>'
+            f'<text x="{W - 12}" y="{y(0.055) - 5:.1f}" text-anchor="end" font-size="12" fill="#c4553f">ngưỡng "khác" 0,055</text>'
+            f'<polyline points="{points}" fill="none" stroke="#5a6a8a" stroke-width="1.3"/>{marks}{ticks}'
+            f'<line x1="{left}" y1="{H - 34}" x2="{W - 10}" y2="{H - 34}" stroke="#d8deee"/></svg>')
+
+
+S.append(content(3, "Bước 1 · Phát hiện slide: ý tưởng", '''<div class="steps4">
+  <div><i class="n">1</i><h4>Lấy ảnh</h4><p>Mỗi giây chụp 1 ảnh từ video (20 phút → 1.200 ảnh).</p></div>
+  <div><i class="n">2</i><h4>So sánh</h4><p>Đo hai ảnh liền nhau <b>khác nhau bao nhiêu</b> (màu + nét chữ).</p></div>
+  <div><i class="n">3</i><h4>Cắt slide</h4><p>Khác nhiều <b>rồi đứng yên ≥ 2 giây</b> → bắt đầu slide mới.</p></div>
+  <div><i class="n">4</i><h4>Chọn ảnh</h4><p>Mỗi slide giữ <b>ảnh nét nhất</b> để đưa sang OCR.</p></div>
+</div>''' + '<div class="chart">' + change_chart(RUNS / "20261005-signal-dump/outputs/signals/L25_V008.npz",
+                                               V008 / "01_slides/intervals.json") + '''
+<p class="note">Hình 2: Độ khác nhau giữa hai giây liền nhau, V008 0:00–5:40 (dữ liệu thật). Nét đứt xanh = chỗ cắt slide mới · vùng vàng = quảng cáo.
+Gai nhỏ do giảng viên cử động không đứng yên đủ 2 giây nên không bị cắt.</p></div>'''))
+S.append(content(3, "Bước 1 · Phát hiện slide: kết quả", '''<div class="split">
+  <div><h3>Cách đọc hình bên</h3><ul class="small">
+    <li>Mỗi ô = <b>một đoạn</b> hệ thống tìm được, ảnh là keyframe của đoạn.</li>
+    <li>Dòng dưới ô: <b>số thứ tự | thời gian</b>, ví dụ <code>005 | 01:37–02:10</code>.</li>
+    <li>Ô có <b>slide chữ nền vàng</b> = nội dung bài giảng → đưa sang OCR.</li>
+    <li>Ô <b>người thật, cảnh trường, món ăn</b> = quảng cáo → chỉ đánh dấu.</li>
+    <li>Ô <b>giảng viên + slide nhỏ</b> = vẫn là bài giảng.</li></ul>
+    <div class="kpis one"><div><b>67 → 16</b><span>trạng thái hình → 12 slide bài giảng + 4 đoạn quảng cáo (V008, 20 phút)</span></div></div></div>
+  ''' + fig(photo(V008 / "01_slides/contact_sheet.jpg", 1100), "Hình 3: Keyframe của 16 đoạn trong video L25_V008") + "</div>"))
 S.append(content(3, "Bước 1b · Gộp slide hiện dần", '''<div class="split">
   <div><ul class="small">
     <li>Giảng viên bấm cho <b>từng dòng hiện ra</b> → một slide có nhiều trạng thái.</li>
     <li>Gộp khi nội dung cũ <b>còn đúng chỗ</b> (≥ 85%), hình đổi ít (≤ 25%) và chỉ <b>thêm</b> nội dung.</li>
     <li>Giữ trạng thái cuối (đầy đủ nhất) cho OCR.</li></ul>
     <div class="kpis one"><div><b>0,970</b><span>F1 tách slide · 6 video test L25 (P 0,990 · R 0,951)</span></div></div></div>
-  ''' + fig(photo(V008 / "01_slides/reveal_sheet.jpg", 1100, top_share=0.42), "Hình 3: Mỗi hàng là các trạng thái được gộp thành một slide") + "</div>"))
+  ''' + fig(photo(V008 / "01_slides/reveal_sheet.jpg", 1100, top_share=0.42), "Hình 4: Mỗi hàng là các trạng thái được gộp thành một slide") + "</div>"))
 S.append(content(3, "Bước 1c · Lọc quảng cáo", '''<div class="split">
   <div><ul class="small">
     <li>SigLIP chấm <b>từng giây</b> "giống quảng cáo không" (model học từ L25).</li>
     <li>Đổi từ <b>cắt bỏ</b> sang <b>chỉ đánh dấu</b>: đoạn nghi vẫn OCR, giữ lời giảng, chỉ không đưa vào tìm kiếm.</li>
     <li><b>Ngưỡng an toàn:</b> &gt; 6 đoạn hoặc &gt; 30% video → bỏ mọi dấu (kênh lạ).</li>
     <li>L25 loại <b>99,8%</b> quảng cáo; 12 video tiếng Anh không quảng cáo giữ <b>100%</b> bài giảng (bản cũ cắt mất 47–100%).</li></ul></div>
-  ''' + fig(report_png(HERE / "run-pipeline-L25_V008.html"), "Hình 4: Điểm quảng cáo theo giây trên V008; vùng cam = đoạn bị đánh dấu", "wide") + "</div>"))
+  ''' + fig(report_png(HERE / "run-pipeline-L25_V008.html"), "Hình 5: Điểm quảng cáo theo giây trên V008; vùng cam = đoạn bị đánh dấu", "wide") + "</div>"))
 seg = V008 / "04_bundle" / "keyframes"
 S.append(content(3, "Bước 2 · OCR đa thành phần", '''<div class="split">
   ''' + fig(photo(V008 / "04_bundle/keyframes/seg_00004.jpg", 900), "Hình 5: Keyframe slide “Định nghĩa xác suất” (V008, 1:38)") + '''
@@ -210,5 +245,11 @@ EXTRA = '''
 .pair p{{margin:2px 0 12px;font-size:16px}} .pair b{{color:var(--blue)}}
 .ok{{color:#2f7d4a;font-weight:700}} .wip{{color:#c58a00;font-weight:700}}
 .kpis.one{{grid-template-columns:1fr}}
+.steps4{{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}}
+.steps4 div{{background:var(--soft);border-radius:14px;padding:12px 14px;border-top:5px solid var(--blue)}}
+.steps4 .n{{font-style:normal;display:inline-grid;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--gold);color:var(--navy);font-weight:800}}
+.steps4 h4{{margin:6px 0 4px;font-size:18px;color:var(--navy)}} .steps4 p{{margin:0;font-size:15px;line-height:1.4}}
+.chart{{margin-top:14px}} .chart svg{{width:100%;height:auto;background:#fff;border:1px solid #d8deee;border-radius:10px}}
+.chart .note{{font-size:13.5px;margin-top:6px}}
 '''
 exec(compile("CSS = f'''" + tail.replace("\n'''\n", "\n" + EXTRA + "'''\n", 1), "tail", "exec"), {**ns, "S": S})
