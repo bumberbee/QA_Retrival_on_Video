@@ -122,11 +122,16 @@ def lexical_hits(folder: Path, question: str, count: int) -> list[str]:
             (expression, count))]
 
 
+def is_ad(segment: dict) -> bool:
+    """An ad segment (content_kind "ad"), or one the ad filter only flagged ("flag" mode)."""
+    return segment.get("content_kind") == "ad" or bool(segment.get("ad_flagged"))
+
+
 def segment_at(segments: list, time_sec: float):
     for index, segment in enumerate(segments):
         if segment["start_sec"] <= time_sec < segment["end_sec"]:
-            if segment.get("content_kind") == "ad":   # paused on an ad: the slide shown before it
-                earlier = [s for s in segments[:index] if s.get("content_kind") != "ad"]
+            if is_ad(segment):   # paused on an ad: the slide shown before it
+                earlier = [s for s in segments[:index] if not is_ad(s)]
                 return earlier[-1] if earlier else None
             return segment
     return None

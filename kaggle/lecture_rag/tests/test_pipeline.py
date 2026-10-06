@@ -169,11 +169,21 @@ class TextCleanTests(unittest.TestCase):
     def setUp(self):
         self.t = load_code("textclean")
 
+    def test_lines_already_on_the_previous_slide_are_dropped_except_the_title(self):
+        previous = "Chiếc thuyền ngoài xa\nMong các chú cách mạng thông cảm cho\nĐàn bà hàng chài ở thuyền"
+        text = "Chiếc thuyền ngoài xa\nĐàn bà hàng chài ở thuyền\nLão xách tôi ra đánh khi khổ quá\n25"
+        new, share = self.t.lines_new_since(previous, text)
+        self.assertEqual(new, "Chiếc thuyền ngoài xa\nLão xách tôi ra đánh khi khổ quá\n25")
+        self.assertAlmostEqual(share, 2 / 3, places=2)
+        self.assertEqual(self.t.lines_new_since("", text), (text, 0.0))
+
     def test_repeated_lines_and_noise_are_removed_but_question_labels_kept(self):
         slides = [f"Câu {n}.\nGiáo viên: Thầy LÊ MINH HUY\n25\nNội dung {n} [Unreadable]" for n in range(1, 6)]
         repeated = self.t.repeated_lines(slides)
         cleaned = self.t.clean_ocr_text(slides[0], repeated)
         self.assertEqual(cleaned.splitlines(), ["Câu 1.", "Nội dung 1"])
+        self.assertEqual(self.t.clean_ocr_text("m = 3/11\n<|det|>header"), "m = 3/11")
+        self.assertEqual(self.t.clean_ocr_text("<|det|>equation [10, 20, 30, 40]<|/det|>P(A) = 1/2"), "P(A) = 1/2")
         regions = self.t.clean_regions([
             {"kind": "diagram", "text": "Giáo viên, Logo Thanh Niên", "description": "Một giáo viên đang giảng"},
             {"kind": "graph", "text": '{"data": [54.8]}', "description": ""},
@@ -216,6 +226,34 @@ class HybridSlideReadTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertEqual(len(passes), 2)
         self.assertEqual(regions[0]["kind"], "graph")
+
+    def test_repeated_decoration_is_sent_to_the_vlm_once_per_video(self):
+        from PIL import Image, ImageDraw
+        visual = load_code("visual")
+        raw = "<|det|>image [700, 0, 999, 300]<|/det|>\n<|det|>text [0, 400, 600, 500]<|/det|>Định nghĩa xác suất"
+        calls = []
+
+        def read_crop(image, box):
+            calls.append(box)
+            return "raw", {"kind": "decorative"}
+
+        logo = Image.new("RGB", (1000, 600), "white")
+        ImageDraw.Draw(logo).ellipse((720, 20, 980, 280), fill="red")
+        chart = logo.copy()
+        ImageDraw.Draw(chart).rectangle((700, 0, 1000, 300), fill="blue")   # same place, new picture
+        memory = []
+        for image in (logo, logo, chart):
+            blocks, regions, out = visual.hybrid_read_slide(image, lambda img: raw, read_crop, decor_memory=memory)
+            self.assertEqual(blocks[0]["text"], "Định nghĩa xác suất")
+        self.assertEqual(len(calls), 2)   # the second logo was skipped, the changed region was not
+        self.assertEqual(json.loads(out)["crops"][0].get("skipped"), None)
+
+    def test_region_prompt_follows_lecture_language(self):
+        visual = load_code("visual")
+        self.assertIs(visual.hybrid_crop_prompt("vi"), visual.HYBRID_CROP_PROMPT)
+        english = visual.hybrid_crop_prompt("en")
+        self.assertIn("in English", english)
+        self.assertNotIn("Vietnamese", english)
 
 
 class NotebookAndContractTests(unittest.TestCase):
@@ -651,6 +689,108 @@ class MediaAndPipelineTests(unittest.TestCase):
         moment = load_code("retrieval").retrieve_question(engine, "Giải thích slide này.", current_time=5)
         by_id = {chunk["chunk_id"]: chunk for chunk in chunks}
         self.assertEqual({by_id[c]["segment_id"] for c in moment["anchor_chunk_ids"]}, {segments[0]["segment_id"]})
+
+    def test_flag_mode_keeps_ad_content_and_leaves_it_out_of_the_index(self):
+        detection = load_code("detection")
+        source = CODE / "adfilter.py"
+        exec(compile(source.read_text(encoding="utf-8"), str(source), "exec"), detection.__dict__)
+        scorer = (lambda images: [1.0 if image.getpixel((5, 5))[0] > 150 else 0.0 for image in images],
+                  {"mode": "fixture", "model": "fixture", "threshold": 0.5, "student_sha256": None})
+        output = self.root / "flag"
+        stage01, manifest01, intervals = detection.run_slide_detection(
+            self.video, output, sample_hz=2.0, min_interval_sec=1.0, ad_scorer=scorer,
+            ad_options={"smooth": 1, "min_ad": 2, "max_gap": 1, "mode": "flag",
+                        "max_share": 0.5})   # the 4 s ad is 40 % of this 10 s fixture video
+        flagged = [item for item in intervals if item.get("ad_flagged")]
+        self.assertEqual(len(flagged), 1)
+        self.assertNotIn("ad", {item["content_kind"] for item in intervals})
+        self.assertEqual((manifest01["ad_segment_count"], manifest01["ad_flagged_count"]), (0, 1))
+        self.assertGreater(flagged[0]["ad_score"], 0.5)
+        report = json.loads((stage01 / "ad_filter.json").read_text(encoding="utf-8"))
+        self.assertEqual((report["mode"], report["guard"]["triggered"]), ("flag", False))
+
+        visual, asr = load_code("visual"), load_code("transcription")
+        alignment, indexing = load_code("alignment"), load_code("indexing")
+
+        class Reader:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            lines = iter(["Mở đầu bài học.", "Khuyến mãi khóa học mới.", "Kết luận bài học."])
+
+            def readtext(self, pixels, **kwargs):   # different text per slide: not a repeated line
+                return [([[10, 10], [290, 10], [290, 40], [10, 40]], next(self.lines), 0.95)]
+
+        with mock.patch.dict(sys.modules, {"easyocr": types.SimpleNamespace(Reader=Reader)}):
+            stage02, _, records = visual.run_visual_extraction(stage01, output, ocr_device="cpu", ocr_scale=1.0)
+        # flagged, not cut: the segment is read like any other
+        self.assertEqual(next(r for r in records if r["segment_id"] == flagged[0]["segment_id"])["ocr_status"], "read")
+        words = [{"start_sec": 3.5 + index * 0.4, "end_sec": 3.8 + index * 0.4, "text": text, "probability": 0.9}
+                 for index, text in enumerate("Đăng ký tuyển sinh ngay hôm nay.".split())]
+        with mock.patch.object(asr, "load_asr_model", return_value=(object(), "fixture", "cpu", "int8")), \
+                mock.patch.object(asr, "transcribe_window",
+                                  return_value={"words": words, "fallback_spans": [], "language": "vi"}):
+            stage03, _, transcript = asr.run_transcription(None, self.video, output)
+        stage04, manifest04, segments = alignment.run_alignment(stage01, stage02, stage03, output)
+        segment = next(s for s in segments if s.get("ad_flagged"))
+        self.assertEqual(manifest04["ad_flagged_count"], 1)
+        self.assertTrue(segment["visual"]["ocr_text"])
+        self.assertEqual(len(segment["speech"]["word_ids"]), len(transcript["words"]))
+        with mock.patch.dict(sys.modules, {
+            "sentence_transformers": types.SimpleNamespace(SentenceTransformer=FixtureEmbeddingModel),
+        }):
+            stage05, _, chunks = indexing.run_indexing(stage04, output)
+            engine = load_code("retrieval").load_retrieval_engine(stage05)
+        self.assertNotIn(segment["segment_id"], {chunk["segment_id"] for chunk in chunks})
+        moment = load_code("retrieval").retrieve_question(engine, "Giải thích slide này.", current_time=5)
+        by_id = {chunk["chunk_id"]: chunk for chunk in chunks}
+        self.assertEqual({by_id[c]["segment_id"] for c in moment["anchor_chunk_ids"]}, {segments[0]["segment_id"]})
+
+    def test_speech_relevance_scores_off_topic_windows_low_inside_the_video(self):
+        import numpy as np
+        alignment = load_code("alignment")
+        lesson = "xác suất biến cố không gian mẫu"
+        words, t = [], 0.0
+        for minute in range(10):   # 10 windows of lesson speech, one of them an ad
+            text = "đăng ký khóa học ưu đãi hôm nay" if minute == 4 else lesson
+            for word in text.split():
+                words.append({"start_sec": t, "end_sec": t + 0.5, "text": word}); t += 1.5
+        def embed(texts):   # fixture: share of lesson words vs ad words, as a unit vector
+            out = [[sum(w in lesson.split() for w in s.split()) + 0.1, len(alignment.AD_TERMS.findall(s)) + 0.1]
+                   for s in texts]
+            return np.array(out) / np.linalg.norm(out, axis=1, keepdims=True)
+        windows = alignment.speech_relevance(alignment.speech_windows(words, size=10, step=10), embed)
+        worst = min(windows, key=lambda w: w["topic_z"])
+        self.assertIn("đăng ký", worst["text"])
+        self.assertLess(worst["topic_z"], -2.5)
+        self.assertGreaterEqual(worst["ad_terms"], 2)
+
+    def test_outlier_scorer_flags_the_odd_part_of_the_video_without_ad_labels(self):
+        import numpy as np
+        adfilter = load_code("adfilter")
+        # 120 s: one lecture look in 4 separate blocks, a 15 s ad in a new look with cuts every second
+        looks = [np.array([1.0, 0.0, 0.0]), np.array([0.0, 1.0, 0.0])]
+        vectors, changes = [], []
+        for second in range(120):
+            ad = 50 <= second < 65
+            vector = np.array([0.0, 0.0, 1.0]) if ad else looks[(second // 30) % 2] + 0.01 * np.random.default_rng(second).random(3)
+            vectors.append(vector)
+            changes.append(0.5 if ad else 0.01)
+        scores, details = adfilter.outlier_scores(np.array(vectors), changes, k=3, min_runs=2)
+        mask = adfilter.ad_mask(scores, 0.5, 5, 5, 2)
+        flagged = [s for s, value in enumerate(mask) if value]
+        self.assertTrue(flagged)
+        self.assertGreaterEqual(min(flagged), 48)
+        self.assertLessEqual(max(flagged), 67)
+        self.assertGreaterEqual(details["lecture_clusters"], 1)
+
+    def test_ad_guard_distrusts_too_many_or_too_long_ads(self):
+        adfilter = load_code("adfilter")
+        # L25 gold: 3-4 runs of 60-85 s, up to 24.5 % of a video -> trusted
+        self.assertIsNone(adfilter.ad_guard([[64, 123], [761, 845], [1538, 1602]], 845))
+        # MLS-15DA1 (Oxford, no ads): 13 runs, 29 % of the video -> every flag dropped
+        self.assertIn("13 ad runs", adfilter.ad_guard([[i * 190, i * 190 + 57] for i in range(13)], 2536))
+        self.assertIn("40%", adfilter.ad_guard([[0, 400]], 1000))
 
     def test_ocr_gate_skips_frames_without_content_but_keeps_segments(self):
         visual = load_code("visual")

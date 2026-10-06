@@ -677,6 +677,7 @@ def run_slide_detection(video_path, output_root, video_id="L25_V001", *,
     load_slide_classifier(). merge_ocr: compare Tesseract words between states.
     ad_scorer: None, or load_ad_scorer() of adfilter.py: ad segments are cut out of
     the slide intervals as their own segments (content_kind "ad"; single_pass only).
+    ad_options: extra apply_ad_filter() arguments, e.g. {"mode": "flag"} to only flag them.
     scan: "single_pass" decodes once with no seeks; "seek" is the original method."""
     from PIL import Image
 
@@ -865,6 +866,7 @@ def run_slide_detection(video_path, output_root, video_id="L25_V001", *,
         "visual_state_count": len(states), "hidden_split_count": hidden_split_count,
         "masked_split_count": masked_split_count, "motion_mask_fraction": motion_mask_fraction,
         "ad_segment_count": sum(item["content_kind"] == "ad" for item in intervals),
+        "ad_flagged_count": sum(bool(item.get("ad_flagged")) for item in intervals),
         "merged_reveal_count":
             sum(len(group) > 1 for group in groups),
         "reveal_sheet": reveal_sheet,

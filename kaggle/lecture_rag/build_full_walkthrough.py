@@ -47,7 +47,8 @@ OUTPUT_ROOT = Path('/kaggle/working/walkthrough')
 SAMPLE_HZ, FINE_HZ, MERGE_REVEALS = 1.0, 8.0, True
 # lọc quảng cáo + bộ gác OCR (dùng chung SigLIP base)
 AD_FILTER, AD_DEVICE = 'student', 'cuda:0'
-OCR_GATE_THRESHOLD = 0.10
+AD_MODE = 'flag'   # 'flag': chỉ đánh dấu, không cắt; 'cut': bản cũ
+OCR_GATE_THRESHOLD, OCR_GATE_VIEWS = 0.15, 'frame+crops'   # Phase 2: gate_bench
 # 02 · OCR kết hợp
 OCR_ENGINE, HYBRID_DEVICES = 'hybrid', ('cuda:0', 'cuda:1')
 OCR_LANGUAGES, OCR_SCALE, OCR_BATCH_SIZE = ('vi', 'en'), 1.5, 32
@@ -149,7 +150,7 @@ table([{f'{clock(t)}': img(image, 180) for image, t in frames}])
 MODELS = """heading('Nạp model dùng chung (SigLIP base cho lọc quảng cáo và bộ gác OCR)')
 student = next(iter(sorted(Path('/kaggle/input').rglob('ad_student.npz'))))
 ad_scorer = timed('nạp SigLIP + model trò', load_ad_scorer, AD_FILTER, AD_DEVICE, student)
-ocr_gate = load_ocr_gate(AD_DEVICE, threshold=OCR_GATE_THRESHOLD)
+ocr_gate = load_ocr_gate(AD_DEVICE, threshold=OCR_GATE_THRESHOLD, views=OCR_GATE_VIEWS)
 params({**ad_scorer[1], 'ocr_gate': ocr_gate[1]})
 """
 
@@ -158,10 +159,11 @@ note('Quét video một lượt (mẫu 1 Hz + khung 8 Hz), tìm ranh giới ổn
      'chọn ảnh nét nhất, gộp slide hiện dần. Lọc quảng cáo chạy ở cuối bước này.')
 stage01, manifest01, intervals = timed('01 tách slide + lọc quảng cáo', run_slide_detection,
     VIDEO, OUTPUT_ROOT, VIDEO_ID, sample_hz=SAMPLE_HZ, fine_hz=FINE_HZ,
-    merge_reveals=MERGE_REVEALS, scan='single_pass', ad_scorer=ad_scorer)
+    merge_reveals=MERGE_REVEALS, scan='single_pass', ad_scorer=ad_scorer,
+    ad_options={'mode': AD_MODE})
 table([{'chỉ số': k, 'giá trị': manifest01.get(k)} for k in
        ('sample_count', 'visual_state_count', 'merged_reveal_count', 'hidden_split_count',
-        'masked_split_count', 'motion_mask_fraction', 'interval_count', 'ad_segment_count')])
+        'masked_split_count', 'motion_mask_fraction', 'interval_count', 'ad_segment_count', 'ad_flagged_count')])
 heading('Tham số bước 01', 3)
 params(manifest01['parameters'], ['change_threshold', 'stability_threshold', 'stable_samples', 'min_interval_sec',
                                   'sample_hz', 'fine_hz', 'merge_reveals', 'split_hidden_changes', 'mask_motion'])
@@ -180,6 +182,11 @@ ADS = """heading('2 · Lọc quảng cáo')
 report = json.loads((stage01 / 'ad_filter.json').read_text(encoding='utf-8'))
 note(f'Ngưỡng {report["threshold"]}, làm mượt {report["smooth"]} mẫu, đoạn ≥ {report["min_ad_sec"]} mẫu, '
      f'lấp lỗ ≤ {report["max_gap_sec"]}. Tổng quảng cáo: <b>{report["ad_seconds"]} s</b> trong {len(report["ad_intervals"])} đoạn.')
+guard = report.get('guard')
+if guard:
+    note(f'Chế độ <b>{report["mode"]}</b>: đoạn nghi quảng cáo vẫn được OCR và giữ lời, chỉ không lập chỉ mục. '
+         + (f'<b>Bộ an toàn đã bỏ mọi dấu</b> ({html.escape(guard["reason"])}): coi cả video là bài giảng.'
+            if guard['triggered'] else f'Bộ an toàn không kích hoạt (≤ {guard["max_runs"]} đoạn, ≤ {guard["max_share"]:.0%} video).'))
 fig, ax = plt.subplots(figsize=(13, 2.6))
 ax.plot(report['sample_times'], report['sample_scores'], lw=0.8, color='#5b7fa6', label='điểm quảng cáo (mẫu 1 Hz)')
 ax.axhline(report['threshold'], color='#c85c4a', ls='--', lw=1, label='ngưỡng')
@@ -242,11 +249,21 @@ for r in records:
 """
 
 STAGE04 = """heading('5 · Bước 04 · Đồng bộ')
-stage04, manifest04, segments = timed('04 đồng bộ', run_alignment, stage01, stage02, stage03, OUTPUT_ROOT, VIDEO_ID)
-table([{'chỉ số': k, 'giá trị': manifest04.get(k)} for k in ('segment_count', 'word_count', 'ad_segment_count', 'ad_word_count')])
-table([{'#': s['sequence'], 'loại': s['content_kind'], 'thời gian': f"{clock(s['start_sec'])}–{clock(s['end_sec'])}",
+from sentence_transformers import SentenceTransformer
+_e5 = SentenceTransformer(EMBEDDING_MODEL, revision=EMBEDDING_REVISION, device='cuda:1')
+speech_embed = lambda texts: _e5.encode(['query: ' + t for t in texts], normalize_embeddings=True, convert_to_numpy=True)
+stage04, manifest04, segments = timed('04 đồng bộ', run_alignment, stage01, stage02, stage03, OUTPUT_ROOT, VIDEO_ID,
+                                      speech_embed=speech_embed)
+table([{'chỉ số': k, 'giá trị': manifest04.get(k)} for k in ('segment_count', 'word_count', 'ad_segment_count', 'ad_flagged_count', 'ad_word_count')])
+table([{'#': s['sequence'], 'loại': s['content_kind'] + (' · nghi QC (không lập chỉ mục)' if s.get('ad_flagged') else ''),
+        'thời gian': f"{clock(s['start_sec'])}–{clock(s['end_sec'])}",
         'số từ': len(s['speech']['word_ids']), 'lời giảng': short(s['speech']['text'], 260),
         'chữ OCR (sạch)': short(s['visual'].get('ocr_text_clean', s['visual'].get('ocr_text', '')), 160)} for s in segments])
+heading('Lời giảng có thuộc chủ đề bài không (E5, chỉ ghi lại)', 3)
+note('z = độ lệch so với chủ đề chung của bài, chuẩn hóa trong video; z < -2,5 là lạc chủ đề. Chưa dùng để quyết định.')
+windows = json.loads((stage04 / 'speech_relevance.json').read_text(encoding='utf-8')) if (stage04 / 'speech_relevance.json').exists() else []
+table([{'từ': clock(w['start_sec']), 'z': w['topic_z'], 'từ quảng cáo': w['ad_terms'], 'lời': short(w['text'], 160)}
+       for w in sorted(windows, key=lambda w: w['topic_z'])[:12]])
 heading('Làm sạch OCR và sửa thuật ngữ ASR (textclean.py)', 3)
 table([{'chỉ số': 'dòng lặp bị bỏ (logo, tên GV…)', 'giá trị': ', '.join(manifest04['parameters']['ocr_cleaning']['repeated_lines']) or '—'},
        {'chỉ số': 'vùng hình nhiễu bị bỏ', 'giá trị': manifest04.get('noise_region_count')},
@@ -286,10 +303,15 @@ for question, when in QUESTIONS:
         heading(f'❓ {question}', 3); note(f'Lỗi: {html.escape(str(error))}'); continue
     heading(f'❓ {question}' + (f'  (đang xem {clock(current)})' if current else '') +
             f'  · {1000 * (time.monotonic() - started):.0f} ms', 3)
+    heading('Xếp hạng chung (trước khi chọn neo)', 4)
     table([{'hạng': n + 1, 'nguồn': by_chunk[h['chunk_id']]['source_type'],
             'thời gian': clock(by_chunk[h['chunk_id']]['start_sec']), 'RRF': round(h['rrf_score'], 4),
             'cosine': round(h['semantic_score'], 3), 'từ khóa (hạng)': h['lexical_rank'],
             'nội dung': short(by_chunk[h['chunk_id']]['text'], 200)} for n, h in enumerate(result['hits'][:5])])
+    heading('Ngữ cảnh gửi cho LLM' + (' (ưu tiên slide đang xem)' if result['parameters']['prefer_current'] else ''), 4)
+    table([{'mã': b['evidence_id'], 'lý do': b['selection_reason'], 'nguồn': b['source_type'],
+            'slide': b['segment_id'].split(':')[1], 'thời gian': f"{clock(b['start_sec'])}–{clock(b['end_sec'])}",
+            'nội dung': short(b['text'], 200)} for b in result['evidence']])
     if result['anchor_chunk_ids']:
         anchor = by_chunk[result['anchor_chunk_ids'][0]]
         table([{'bằng chứng chính': img(stage05 / 'lecture' / anchor['image_path'], 320) if (stage05 / 'lecture' / anchor['image_path']).exists() else '',
@@ -392,7 +414,7 @@ table([{'GPU': i, 'bộ nhớ cao nhất (GB)': round(torch.cuda.max_memory_allo
 lesson_slides = [r for r in records if r['content_kind'] != 'ad']
 note(f'{SOURCE["duration_sec"] / 60:.1f} phút video → {manifest01["visual_state_count"]} trạng thái hình → '
      f'{len(lesson_slides)} slide bài giảng ({manifest02["ocr_read_count"]} slide được OCR, {manifest02["ocr_skipped_no_content"]} bỏ qua vì không có nội dung) '
-     f'+ {manifest01["ad_segment_count"]} đoạn quảng cáo · {len(transcript["words"])} từ · {len(chunks)} đoạn chỉ mục.')
+     f'+ {manifest01["ad_segment_count"]} đoạn quảng cáo, {manifest01.get("ad_flagged_count", 0)} đoạn nghi quảng cáo · {len(transcript["words"])} từ · {len(chunks)} đoạn chỉ mục.')
 page = ('<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Pipeline · ' + VIDEO_ID + '</title>'
         '<style>body{font-family:Segoe UI,Arial,sans-serif;margin:24px;background:#fffaf3;color:#333}</style></head><body>'
         + ''.join(REPORT) + '</body></html>')

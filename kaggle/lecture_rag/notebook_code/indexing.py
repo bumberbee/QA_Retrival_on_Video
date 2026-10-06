@@ -47,16 +47,20 @@ def group_speech_spans(spans, tokenizer, maximum_tokens=180, maximum_seconds=50.
 def make_evidence_chunks(segments, fallback_spans, tokenizer, *,
                          chunk_tokens=350, overlap_tokens=40, model_limit=512,
                          video_id="L25_V001", speech_chunk_tokens=180,
-                         speech_maximum_seconds=50.0, include_generated_descriptions=False):
+                         speech_maximum_seconds=50.0, include_generated_descriptions=False,
+                         dedupe_previous=False):
+    """dedupe_previous: index only the OCR lines not already on the previous slide (stage 04
+    ocr_text_new), so a repeated slide does not crowd the search with copies."""
     if not 0 <= overlap_tokens < chunk_tokens <= model_limit - 32:
         raise ValueError("Giới hạn chunk không tương thích model tokenizer.")
     chunks = []
     seen_coarse = set()
     coarse = unique_records(fallback_spans, "span_id")
     for segment in segments:
-        if segment.get("content_kind") == "ad" and not segment.get("ad_suspect"):
+        if segment.get("ad_flagged") or (segment.get("content_kind") == "ad" and not segment.get("ad_suspect")):
             # Ads are not lesson evidence; their speech is kept in stage 04 only. An ad_suspect
             # segment (its speech sounds like the lesson, stage 04) is indexed by its speech.
+            # ad_flagged (ad filter in "flag" mode): OCR and speech are kept in stage 04 only.
             seen_coarse.update(segment["speech"]["fallback_span_ids"])
             continue
         visual = segment["visual"]
@@ -83,7 +87,8 @@ def make_evidence_chunks(segments, fallback_spans, tokenizer, *,
                 "uncertainty": span.get("uncertainty"),
             })
         for source_type, text in [
-            ("ocr", visual.get("ocr_text_clean", visual.get("ocr_text", ""))),
+            ("ocr", visual["ocr_text_new"] if dedupe_previous and "ocr_text_new" in visual
+             else visual.get("ocr_text_clean", visual.get("ocr_text", ""))),
             ("visual", visual.get("visual_description", "")),
         ]:
             # Older stage-02 bundles may store malformed JSON or degenerate
@@ -174,7 +179,7 @@ def run_indexing(stage04_dir, output_root, video_id="L25_V001", *,
                  embedding_model="intfloat/multilingual-e5-small", revision="main",
                  chunk_tokens=350, overlap_tokens=40, batch_size=32, device=None,
                  speech_chunk_tokens=180, speech_maximum_seconds=50.0,
-                 include_generated_descriptions=False):
+                 include_generated_descriptions=False, dedupe_previous=False):
     import numpy as np
     from sentence_transformers import SentenceTransformer
 
@@ -190,7 +195,7 @@ def run_indexing(stage04_dir, output_root, video_id="L25_V001", *,
         segments, fallback_spans, model.tokenizer, chunk_tokens=chunk_tokens,
         overlap_tokens=overlap_tokens, model_limit=model_limit, video_id=video_id,
         speech_chunk_tokens=speech_chunk_tokens, speech_maximum_seconds=speech_maximum_seconds,
-        include_generated_descriptions=include_generated_descriptions,
+        include_generated_descriptions=include_generated_descriptions, dedupe_previous=dedupe_previous,
     )
     # Counts are checked above: no silent encoder truncation.
     vectors = model.encode(

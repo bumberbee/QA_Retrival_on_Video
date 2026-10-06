@@ -10,6 +10,8 @@ keep the word timing and the original text (text_asr).
 """
 
 UNREADABLE = re.compile(r"\[(?:unreadable|non-text)\]", re.I)
+# Unlimited-OCR box markup that leaks into the text, e.g. a cut-off "<|det|>header" at the end
+LEAKED_TAG = re.compile(r"<\|det\|>\s*[A-Za-z_]*\s*(?:\[[\d,\s]*\]?)?|<\|/?\w{1,20}\|>")
 NOISE_REGION_WORDS = ("giáo viên", "giảng viên", "người", "logo", "trang trí", "teacher", "presenter",
                       "decorative", "khuôn mặt", "chân dung")
 # Onsets Whisper confuses in Vietnamese (s/x, ch/tr); a final c/t or n/ng may differ in the same
@@ -72,7 +74,7 @@ def collapse_phrase_loop(line):
 def clean_ocr_text(text, repeated=frozenset()):
     kept = []
     for line in collapse_loops((text or "").splitlines()):
-        line = collapse_phrase_loop(UNREADABLE.sub("", line)).strip()
+        line = collapse_phrase_loop(UNREADABLE.sub("", LEAKED_TAG.sub("", line))).strip()
         key = line_key(line)
         if not line or key in repeated:
             continue
@@ -82,6 +84,19 @@ def clean_ocr_text(text, repeated=frozenset()):
             line = line.replace(bad, good)
         kept.append(line)
     return "\n".join(kept)
+
+
+def lines_new_since(previous_text, text, min_key=12):
+    """Lines of text not already on the previous slide (same line_key), and the share of long
+    lines that were. A slide shown again after an ad, a reveal split in two or a document
+    page moved down a little repeats ~32 % of its lines on L25; the first line (title) stays."""
+    seen = {line_key(line) for line in (previous_text or "").splitlines()}
+    lines = (text or "").splitlines()
+    long_keys = [line_key(line) for line in lines if len(line_key(line)) >= min_key]
+    share = sum(key in seen for key in long_keys) / len(long_keys) if long_keys else 0.0
+    kept = [line for index, line in enumerate(lines)
+            if index == 0 or len(line_key(line)) < min_key or line_key(line) not in seen]
+    return "\n".join(kept), round(share, 3)
 
 
 def noise_region(region):

@@ -230,6 +230,16 @@ Decide what it is and return ONLY one JSON object:
 - a photo of a person, a logo or decoration with no lesson content: {"kind": "decorative"}
 Write every description and note in Vietnamese. Write formulas in LaTeX, keep Vietnamese
 diacritics, never invent values you cannot read."""
+HYBRID_CROP_PROMPT_EN = HYBRID_CROP_PROMPT.replace(
+    "a Vietnamese high-school lecture slide", "a lecture slide").replace(
+    " (e.g. a variation / sign table, bảng biến thiên)", "").replace(
+    "Write every description and note in Vietnamese. Write formulas in LaTeX, keep Vietnamese\ndiacritics,",
+    "Write every description and note in English. Write formulas in LaTeX, keep the slide's own\nlanguage for text read verbatim,")
+
+
+def hybrid_crop_prompt(language="vi"):
+    """Qwen3-VL prompt for figure regions; descriptions are written in the lecture's language."""
+    return HYBRID_CROP_PROMPT if language == "vi" else HYBRID_CROP_PROMPT_EN
 
 
 class ThreadStdoutCapture:
@@ -284,11 +294,43 @@ def is_visual(block):
         word in block["type"] for word in HYBRID_VISUAL_TYPES)
 
 
-def hybrid_read_slide(image, unlimited, read_crop, big_area=0.4, min_text_chars=80):
+DECOR_KINDS = {"decorative", "photo", "photo of a person"}
+
+
+def region_thumb(image, box, size=32):
+    """Small grey crop of a normalized box, to compare the same region across slides."""
+    import numpy as np
+
+    left, top = int(box[0] * image.width), int(box[1] * image.height)
+    right, bottom = max(left + 1, int(box[2] * image.width)), max(top + 1, int(box[3] * image.height))
+    return np.asarray(image.crop((left, top, right, bottom)).convert("L").resize((size, size)), dtype="float32") / 255
+
+
+def box_iou(a, b):
+    width, height = min(a[2], b[2]) - max(a[0], b[0]), min(a[3], b[3]) - max(a[1], b[1])
+    inter = max(0.0, width) * max(0.0, height)
+    union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter
+    return inter / union if union else 0.0
+
+
+def repeated_decor(memory, image, box, min_iou=0.6, max_diff=0.06):
+    """True when this region looks like one the VLM already called decoration in this video
+    (channel logo, the lecturer's photo): same place and almost the same pixels. L25 (9 videos):
+    61 of 314 VLM calls skipped this way, 2 regions with content wrongly skipped."""
+    import numpy as np
+
+    thumb = region_thumb(image, box)
+    return any(box_iou(box, seen_box) >= min_iou and float(np.abs(thumb - seen).mean()) < max_diff
+               for seen_box, seen in memory)
+
+
+def hybrid_read_slide(image, unlimited, read_crop, big_area=0.4, min_text_chars=80, decor_memory=None):
     """One slide: Unlimited-OCR reads it; an 'image' block covering >= big_area of the slide is
     read again on its own (a text page is often taken for a picture when the whole frame, with
     the lecturer and the channel layout, is given); other figure regions go to the VLM.
-    unlimited(image) -> raw text with <|det|> boxes; read_crop(image, box) -> (raw, dict)."""
+    unlimited(image) -> raw text with <|det|> boxes; read_crop(image, box) -> (raw, dict).
+    decor_memory: None, or a list kept for one video: regions matching one the VLM already
+    called decoration are not sent to it again (repeated_decor())."""
     raw = unlimited(image)
     rescued, second = [], []
     for block in dedupe_blocks(parse_unlimited_blocks(raw)):
@@ -314,9 +356,14 @@ def hybrid_read_slide(image, unlimited, read_crop, big_area=0.4, min_text_chars=
     for block in blocks:
         kind = block["type"]
         if is_visual(block):
+            if decor_memory is not None and repeated_decor(decor_memory, image, block["bbox"]):
+                crops.append({"bbox": block["bbox"], "raw": "", "skipped": "repeated_decor"})
+                continue
             crop_raw, result = read_crop(image, block["bbox"])
             crops.append({"bbox": block["bbox"], "raw": crop_raw})
             found = result.get("kind", "figure")
+            if decor_memory is not None and found in DECOR_KINDS:
+                decor_memory.append((block["bbox"], region_thumb(image, block["bbox"])))
             if found == "chart":
                 data = {key: value for key, value in result.items() if key != "kind"}
                 regions.append({"kind": "graph", "bbox": block["bbox"],
@@ -358,6 +405,7 @@ def load_hybrid_ocr(ocr_device="cuda:0", vlm_device="cuda:1", work_dir="/tmp/unl
     import io
     import sys
     import threading
+    import time
     import torch
     from transformers import (AutoModel, AutoProcessor, AutoTokenizer,
                               Qwen3VLForConditionalGeneration)
@@ -404,12 +452,12 @@ def load_hybrid_ocr(ocr_device="cuda:0", vlm_device="cuda:1", work_dir="/tmp/unl
             return text
         return text[text.find("<|det|>"):text.find("===============save results")]
 
-    def read_crop(image, box):
+    def read_crop(image, box, prompt=HYBRID_CROP_PROMPT):
         width, height, pad = image.width, image.height, 0.01
         crop = image.crop((max(0, (box[0] - pad) * width), max(0, (box[1] - pad) * height),
                            min(width, (box[2] + pad) * width), min(height, (box[3] + pad) * height)))
         messages = [{"role": "user", "content": [{"type": "image", "image": crop},
-                                                 {"type": "text", "text": HYBRID_CROP_PROMPT}]}]
+                                                 {"type": "text", "text": prompt}]}]
         inputs = processor.apply_chat_template(messages, tokenize=True, add_generation_prompt=True,
                                                return_dict=True, return_tensors="pt").to(vlm.device)
         with torch.inference_mode():
@@ -422,9 +470,26 @@ def load_hybrid_ocr(ocr_device="cuda:0", vlm_device="cuda:1", work_dir="/tmp/unl
         except ValueError:
             return raw, {"kind": "figure", "description": raw.strip()}
 
-    def read(image, big_area=0.4):
+    timings = {"unlimited_sec": 0.0, "unlimited_calls": 0, "vlm_sec": 0.0, "vlm_calls": 0}
+
+    def timed(key, fn):
+        def call(*args):
+            started = time.monotonic()
+            try:
+                return fn(*args)
+            finally:
+                timings[key + "_sec"] += time.monotonic() - started
+                timings[key + "_calls"] += 1
+        return call
+
+    def read(image, big_area=0.4, language="vi", decor_memory=None):
+        prompt = hybrid_crop_prompt(language)
         with lock:
-            return hybrid_read_slide(image, unlimited, read_crop, big_area=big_area)
+            return hybrid_read_slide(image, timed("unlimited", unlimited),
+                                     timed("vlm", lambda crop, box: read_crop(crop, box, prompt)),
+                                     big_area=big_area, decor_memory=decor_memory)
+
+    read.timings = timings   # seconds spent in each model, for speed experiments
 
     read.ocr_model, read.vlm = ocr_model, vlm   # for experiments (e.g. fp16 timing)
     return read
@@ -494,12 +559,16 @@ def run_visual_extraction(stage01_dir, output_root, video_id="L25_V001", *,
                           content_kind_overrides=None, vision_mode="on_demand",
                           vision_segment_ids=(), ocr_device="auto", ocr_scale=1.5,
                           ocr_batch_size=32, frame_hsv=None, ocr_engine="easyocr",
-                          hybrid_devices=("cuda:0", "cuda:1"), ocr_gate=None, hybrid_rescue_area=0.4):
+                          hybrid_devices=("cuda:0", "cuda:1"), ocr_gate=None, hybrid_rescue_area=0.4,
+                          describe_language="vi", hybrid_skip_repeated_decor=False):
     """ocr_engine: "easyocr" (lines of text with boxes) or "hybrid" (Unlimited-OCR for
     text, LaTeX and tables + Qwen3-VL reading every chart/figure region).
     ocr_gate: None, or load_ocr_gate() of adfilter.py: keyframes without readable content
     (lecturer talking, intro logo, blank screen) keep their segment but skip OCR (gate_keyframe).
-    hybrid_rescue_area: share of the slide an "image" block must cover to be read again alone."""
+    hybrid_rescue_area: share of the slide an "image" block must cover to be read again alone.
+    describe_language: "vi" or another code (English prompt) for the Qwen3-VL region descriptions.
+    hybrid_skip_repeated_decor: do not send the VLM a region it already called decoration in
+    this video (repeated_decor())."""
     from PIL import Image
 
     if ocr_engine not in {"easyocr", "hybrid"}:
@@ -523,7 +592,7 @@ def run_visual_extraction(stage01_dir, output_root, video_id="L25_V001", *,
     parameters = {
         "ocr_engine": ocr_engine, "languages": list(languages),
         **({"hybrid_ocr_model": HYBRID_OCR_MODEL, "hybrid_vlm_model": HYBRID_VLM_MODEL,
-            "hybrid_prompt_sha256": fingerprint(HYBRID_CROP_PROMPT)} if ocr_engine == "hybrid" else {}),
+            "hybrid_prompt_sha256": fingerprint(hybrid_crop_prompt(describe_language))} if ocr_engine == "hybrid" else {}),
         "vision_model": vision_model, "vision_revision": vision_revision,
         "vision_prompt_sha256": fingerprint(VISUAL_PROMPT),
         "content_kind_overrides": content_kind_overrides or {},
@@ -533,6 +602,7 @@ def run_visual_extraction(stage01_dir, output_root, video_id="L25_V001", *,
         "ocr_gate": ocr_gate[1] if ocr_gate else None,
         # only when changed, so caches of runs with the default stay valid
         **({"hybrid_rescue_area": hybrid_rescue_area} if ocr_engine == "hybrid" and hybrid_rescue_area != 0.4 else {}),
+        **({"hybrid_skip_repeated_decor": True} if ocr_engine == "hybrid" and hybrid_skip_repeated_decor else {}),
         "packages": package_versions(["easyocr", "torch", "transformers", "accelerate"]
                                      if ocr_engine == "easyocr" else ["torch", "transformers", "accelerate"]),
     }
@@ -547,6 +617,7 @@ def run_visual_extraction(stage01_dir, output_root, video_id="L25_V001", *,
     resolved_revision = None
     seen_revisions = set()
     records = []
+    decor_memory = []   # regions the VLM called decoration in this video
     for index, interval in enumerate(intervals):
         image_path = relative_asset(stage01_dir, interval["image_path"])
         asset_id = interval["image_sha256"]
@@ -592,6 +663,10 @@ def run_visual_extraction(stage01_dir, output_root, video_id="L25_V001", *,
                         hybrid_read = shared_model(("hybrid_ocr", tuple(hybrid_devices)),
                                                    lambda: load_hybrid_ocr(*hybrid_devices))
                     area = {} if hybrid_rescue_area == 0.4 else {"big_area": hybrid_rescue_area}
+                    if describe_language != "vi":
+                        area["language"] = describe_language
+                    if hybrid_skip_repeated_decor:
+                        area["decor_memory"] = decor_memory
                     blocks, hybrid_regions, hybrid_raw = hybrid_read(crop_to_roi(image, roi), **area)
                     for item in blocks + hybrid_regions:
                         item["bbox"] = roi_to_image_box(item["bbox"], roi)

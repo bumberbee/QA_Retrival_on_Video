@@ -4,6 +4,12 @@ cut them out of the slide intervals as their own segments (content_kind "ad").
 Stage 01 calls apply_ad_filter() with the 1 Hz samples it already decoded. Later stages
 skip "ad" segments: no OCR (02), their words stay with the ad (04, midpoint rule as for
 slides), nothing is indexed (05).
+
+mode "flag" (content filter phase 1): the ad detector no longer removes content. Ad time
+ranges still become their own segments, but as ordinary segments with ad_flagged=True: the
+OCR gate decides OCR (02), the speech is kept (04), and only the index leaves them out (05).
+A guard drops every flag when the detector looks unreliable for the channel: more ad runs or
+a larger share of the video than any L25 video has (L25 gold: 3-4 runs, 7.6-24.5 %).
 """
 
 AD_LESSON_PROMPTS = [
@@ -214,11 +220,106 @@ def split_ad_intervals(intervals, ads, min_interval_sec=2.0):
     return pieces
 
 
+def kmeans(vectors, k, iterations=25, seed=0):
+    """Plain k-means on unit vectors (cosine), k-means++ start. Returns (labels, centres)."""
+    import numpy as np
+
+    rng = np.random.default_rng(seed)
+    k = min(k, len(vectors))
+    centres = [vectors[rng.integers(len(vectors))]]
+    for _ in range(1, k):
+        distance = np.clip(1 - np.max(vectors @ np.array(centres).T, axis=1), 0, None)
+        centres.append(vectors[rng.choice(len(vectors), p=distance / distance.sum())] if distance.sum() > 0
+                       else vectors[rng.integers(len(vectors))])
+    centres = np.array(centres)
+    for _ in range(iterations):
+        labels = np.argmax(vectors @ centres.T, axis=1)
+        for index in range(k):
+            members = vectors[labels == index]
+            if len(members):
+                mean = members.mean(0)
+                centres[index] = mean / (np.linalg.norm(mean) + 1e-9)
+    return np.argmax(vectors @ centres.T, axis=1), centres
+
+
+def outlier_scores(vectors, changes, *, k=6, min_share=0.05, min_runs=3, run_sec=5,
+                   change_cut=0.15, weight_change=1.0, scale=1.5, offset=3.0):
+    """Content filter A: P(ad) per 1 Hz sample from the video alone, no learned ad model.
+
+    vectors: unit image embeddings (SigLIP), changes: picture change to the previous sample.
+    Lecture looks = k-means clusters that hold >= min_share of the time AND come back in >=
+    min_runs separate runs of >= run_sec (a lecture look recurs all over the video; an ad is a
+    block). Distance to the nearest lecture centre is standardised inside the video (median /
+    MAD), the share of picture cuts in a 5 s window adds weight_change, and a logistic turns
+    the sum into a score for ad_mask(). Returns (scores, details)."""
+    import numpy as np
+
+    vectors = np.asarray(vectors, dtype="float32")
+    vectors /= np.linalg.norm(vectors, axis=1, keepdims=True) + 1e-9
+    labels, centres = kmeans(vectors, k)
+    lecture = []
+    for index in range(len(centres)):
+        mask = labels == index
+        runs = [len(run) for run in np.split(mask, np.flatnonzero(np.diff(mask.astype(int))) + 1) if run[0]]
+        if mask.mean() >= min_share and sum(length >= run_sec for length in runs) >= min_runs:
+            lecture.append(index)
+    if not lecture:   # no recurring look: fall back to the largest cluster
+        lecture = [int(np.bincount(labels).argmax())]
+    distance = 1 - np.max(vectors @ centres[lecture].T, axis=1)
+    median = float(np.median(distance))
+    mad = float(np.median(np.abs(distance - median))) * 1.4826 or 1e-6
+    z = (distance - median) / mad
+    cuts = (np.asarray(changes, dtype="float32") > change_cut).astype("float32")
+    cut_rate = np.convolve(cuts, np.ones(5) / 5, mode="same")
+    logit = (z + weight_change * 10 * cut_rate - offset) * scale
+    scores = 1 / (1 + np.exp(-logit))
+    return scores.tolist(), {"lecture_clusters": len(lecture), "clusters": len(centres)}
+
+
+def load_outlier_scorer(device="cuda", model_id="google/siglip-base-patch16-224", threshold=0.5, **options):
+    """Ad scorer for apply_ad_filter() that compares each sample with the rest of the video
+    (outlier_scores()): score(images) returns embeddings, score.video_scores(embeddings,
+    records) the per-sample P(ad) once the whole video is seen."""
+    import numpy as np
+
+    embed_images, _, _, _ = load_siglip(model_id, device)
+
+    def score(images):
+        return list(embed_images(images))
+
+    def video_scores(vectors, records):
+        # stage-01 records keep the signature as uint8 (x 255)
+        changes = [0.0] + [float(signature_distance(a["signature"].astype("float32") / 255.0,
+                                                    b["signature"].astype("float32") / 255.0))
+                           if "signature" in a and "signature" in b else 0.0
+                           for a, b in zip(records, records[1:])]
+        values, _ = outlier_scores(np.array(vectors), changes, **options)
+        return values
+
+    score.video_scores = video_scores
+    return score, {"mode": "outlier", "model": model_id, "threshold": threshold, "options": options,
+                   "student_sha256": None}
+
+
+def ad_guard(ads, duration, max_runs=6, max_share=0.30):
+    """Reason to distrust the ad intervals of one video, or None."""
+    share = sum(b - a for a, b in ads) / max(duration, 1e-9)
+    if len(ads) > max_runs:
+        return f"{len(ads)} ad runs > {max_runs}"
+    if share > max_share:
+        return f"ads cover {share:.0%} of the video > {max_share:.0%}"
+    return None
+
+
 def apply_ad_filter(intervals, records, directory, video_id, duration, state_boundaries,
                     scorer, *, smooth=5, min_ad=5, max_gap=2, min_interval_sec=2.0,
-                    batch_size=64):
+                    batch_size=64, mode="cut", max_runs=6, max_share=0.30):
     """intervals: stage-01 intervals (before writing). records: the 1 Hz samples of the scan
-    (time_sec, image_path in directory). Returns (new intervals, ad report)."""
+    (time_sec, image_path in directory). mode: "cut" (ad segments, content_kind "ad") or
+    "flag" (ordinary segments with ad_flagged, see the module docstring).
+    Returns (new intervals, ad report)."""
+    if mode not in {"cut", "flag"}:
+        raise ValueError("AD_MODE phải là 'cut' hoặc 'flag'.")
     from PIL import Image
 
     score, info = scorer
@@ -229,9 +330,12 @@ def apply_ad_filter(intervals, records, directory, video_id, duration, state_bou
             with Image.open(Path(directory) / item["image_path"]) as opened:
                 images.append(opened.convert("RGB"))
         scores += score(images)
+    if hasattr(score, "video_scores"):   # outlier scorer: needs the whole video at once
+        scores = score.video_scores(scores, records)
     mask = ad_mask(scores, info["threshold"], smooth, min_ad, max_gap)
     ads = ad_time_intervals(times, mask, duration, sorted(set(state_boundaries)))
     pieces = split_ad_intervals(intervals, ads, min_interval_sec)
+    guard = ad_guard(ads, duration, max_runs, max_share) if mode == "flag" else None
 
     result = []
     for start, end, source in pieces:
@@ -245,8 +349,10 @@ def apply_ad_filter(intervals, records, directory, video_id, duration, state_bou
             result.append({
                 "start_sec": round(start, 6), "end_sec": round(end, 6),
                 "keyframe_time_sec": round(sample["time_sec"], 6), "image_path": name,
-                "content_kind": "ad", "sharpness_score": round(sample["sharpness"], 3),
+                "content_kind": "ad" if mode == "cut" else "unclassified",
+                "sharpness_score": round(sample["sharpness"], 3),
                 "boundary_method": "ad_filter", "reveal_states": [],
+                **({"ad_flagged": guard is None} if mode == "flag" else {}),
             })
             continue
         item = dict(intervals[source])
@@ -269,11 +375,18 @@ def apply_ad_filter(intervals, records, directory, video_id, duration, state_bou
                                      if state["end_sec"] > start and state["start_sec"] < end]
         if (start, end) != (intervals[source]["start_sec"], intervals[source]["end_sec"]):
             item["boundary_method"] = item["boundary_method"] + "+ad_trim"
+        if mode == "flag":
+            item["ad_flagged"] = False
         result.append(item)
     for number, item in enumerate(result):
+        if mode == "flag":
+            inside = [value for t, value in zip(times, scores) if item["start_sec"] <= t < item["end_sec"]]
+            item["ad_score"] = round(sum(inside) / len(inside), 4) if inside else None
         item["segment_id"], item["sequence"] = f"{video_id}:seg_{number:05d}", number
         item["image_sha256"] = file_sha256(Path(directory) / item["image_path"])
-    report = {**info, "smooth": smooth, "min_ad_sec": min_ad, "max_gap_sec": max_gap,
+    report = {**info, "mode": mode, "smooth": smooth, "min_ad_sec": min_ad, "max_gap_sec": max_gap,
+              **({"guard": {"max_runs": max_runs, "max_share": max_share, "triggered": guard is not None,
+                            "reason": guard}} if mode == "flag" else {}),
               "ad_intervals": [[round(a, 3), round(b, 3)] for a, b in ads],
               "ad_seconds": round(sum(b - a for a, b in ads), 1),
               "sample_times": [round(value, 3) for value in times],

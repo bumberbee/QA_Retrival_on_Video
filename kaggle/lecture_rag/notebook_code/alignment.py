@@ -71,6 +71,9 @@ def align_records(intervals, visuals, transcript, duration):
             "next_segment_id": intervals[index + 1]["segment_id"]
             if index + 1 < len(intervals) else None,
             "content_kind": visual["content_kind"],
+            # ad filter in "flag" mode: kept and read, left out of the index only (stage 05)
+            **({"ad_flagged": interval["ad_flagged"], "ad_score": interval.get("ad_score")}
+               if "ad_flagged" in interval else {}),
             "visual": {
                 **visual,
                 "image_path": interval["image_path"],
@@ -94,6 +97,53 @@ def align_records(intervals, visuals, transcript, duration):
 def word_pairs(text):
     words = re.findall(r"\w+", (text or "").lower())
     return {f"{a} {b}" for a, b in zip(words, words[1:])}
+
+
+# Words that promote rather than teach. A course ad shares the subject of the lesson, so the
+# topic score alone can call it relevant; these terms are counted separately (content filter B).
+AD_TERMS = re.compile(r"đăng ký|ưu đãi|học phí|hotline|khóa học|khoá học|giảm giá|khuyến mãi|tuyển sinh|"
+                      r"liên hệ|link|subscribe|sponsor|discount|enroll|sign up|promo", re.I)
+
+
+def speech_windows(words, size=45.0, step=15.0):
+    """[{start_sec, end_sec, text}] windows of the transcript words (time order)."""
+    if not words:
+        return []
+    end, windows, start = words[-1]["end_sec"], [], 0.0
+    while start < end:
+        inside = [w for w in words if start <= (w["start_sec"] + w["end_sec"]) / 2 < start + size]
+        if inside:
+            windows.append({"start_sec": start, "end_sec": min(start + size, end), "text": words_to_text(inside)})
+        start += step
+    return windows
+
+
+def speech_relevance(windows, embed, reference_texts=(), trim=0.25):
+    """Score each speech window "belongs to this lecture": cosine to the lecture's topic centre,
+    standardised inside the video (median / MAD), so no threshold is shared across channels.
+    embed(texts) -> unit vectors. The centre ignores the trim share of least typical windows
+    (ads, chit-chat) and also averages reference_texts (the slide text). Adds topic_score,
+    topic_z and ad_terms to every window (in place) and returns them."""
+    import numpy as np
+
+    if not windows:
+        return windows
+    vectors = np.asarray(embed([w["text"] for w in windows]), dtype="float32")
+    references = np.asarray(embed(list(reference_texts)), dtype="float32") if reference_texts else None
+    centre = vectors.mean(0)
+    for _ in range(2):   # re-centre without the least typical windows
+        scores = vectors @ (centre / (np.linalg.norm(centre) + 1e-9))
+        keep = scores >= np.quantile(scores, trim)
+        pool = vectors[keep] if references is None else np.vstack([vectors[keep], references])
+        centre = pool.mean(0)
+    scores = vectors @ (centre / (np.linalg.norm(centre) + 1e-9))
+    median = float(np.median(scores))
+    mad = float(np.median(np.abs(scores - median))) * 1.4826 or 1e-6
+    for window, score in zip(windows, scores):
+        window["topic_score"] = round(float(score), 4)
+        window["topic_z"] = round((float(score) - median) / mad, 3)
+        window["ad_terms"] = len(AD_TERMS.findall(window["text"]))
+    return windows
 
 
 def review_ad_speech(segments, threshold, min_pairs=20):
@@ -121,8 +171,11 @@ def review_ad_speech(segments, threshold, min_pairs=20):
 
 
 def run_alignment(stage01_dir, stage02_dir, stage03_dir, output_root,
-                  video_id="L25_V001", ad_suspect_overlap=None):
-    """ad_suspect_overlap: None (off) or a threshold for review_ad_speech()."""
+                  video_id="L25_V001", ad_suspect_overlap=None, speech_embed=None):
+    """ad_suspect_overlap: None (off) or a threshold for review_ad_speech().
+    speech_embed: None (off) or embed(texts) -> unit vectors (E5): every segment gets
+    speech_topic = the lowest topic_z of the speech windows it overlaps (speech_relevance();
+    recorded only, no decision yet) and speech_relevance.json keeps the windows."""
     paths = [Path(stage01_dir), Path(stage02_dir), Path(stage03_dir)]
     parents = [load_stage(path, index + 1, video_id) for index, path in enumerate(paths)]
     require_parent(parents[1], parents[0])
@@ -145,6 +198,12 @@ def run_alignment(stage01_dir, stage02_dir, stage03_dir, output_root,
         visual["title_clean"] = (lines[0][:160] if lines and visual.get("content_kind") in {"slide", "mixed", "board"}
                                  else "")
         visual["regions"] = clean_regions(visual.get("regions", []))
+    previous = ""
+    for visual in visuals:   # visual.json follows the interval order
+        if visual.get("content_kind") == "ad":
+            continue
+        visual["ocr_text_new"], visual["ocr_repeat_share"] = lines_new_since(previous, visual["ocr_text_clean"])
+        previous = visual["ocr_text_clean"] or previous
     vocabulary = ocr_vocabulary([visual["ocr_text_clean"] for visual in lesson])
     transcript["words"], asr_corrections = correct_words(
         sorted(transcript["words"], key=lambda word: (word["start_sec"], word["end_sec"])), vocabulary)
@@ -166,6 +225,14 @@ def run_alignment(stage01_dir, stage02_dir, stage03_dir, output_root,
     segments = align_records(intervals, visuals, transcript, parents[0]["source"]["duration_sec"])
     if ad_suspect_overlap is not None:
         review_ad_speech(segments, ad_suspect_overlap)
+    windows = []
+    if speech_embed is not None and transcript["words"]:
+        slides = [visual["ocr_text_clean"] for visual in lesson if len(visual["ocr_text_clean"]) >= 40][:40]
+        windows = speech_relevance(speech_windows(transcript["words"]), speech_embed, slides)
+        for segment in segments:
+            near = [w for w in windows if w["start_sec"] < segment["end_sec"] and w["end_sec"] > segment["start_sec"]]
+            segment["speech_topic"] = ({"z": min(w["topic_z"] for w in near),
+                                        "ad_terms": sum(w["ad_terms"] for w in near)} if near else None)
     for interval in intervals:
         name = interval["image_path"]
         target = relative_asset(directory, name)
@@ -189,6 +256,8 @@ def run_alignment(stage01_dir, stage02_dir, stage03_dir, output_root,
         shutil.copy2(relative_asset(audio_root, name), target)
 
     write_json(directory / "segments.json", segments)
+    if windows:
+        write_json(directory / "speech_relevance.json", windows)
     write_json(directory / "asr_corrections.json", asr_corrections)
     write_json(directory / "words.json", transcript["words"])
     write_json(directory / "fallback_spans.json", transcript["fallback_spans"])
@@ -217,6 +286,7 @@ def run_alignment(stage01_dir, stage02_dir, stage03_dir, output_root,
         parents=parents,
         extra={"segment_count": len(segments), "word_count": len(transcript["words"]),
                "ad_segment_count": sum(segment["content_kind"] == "ad" for segment in segments),
+               "ad_flagged_count": sum(bool(segment.get("ad_flagged")) for segment in segments),
                "asr_correction_count": len(asr_corrections),
                "noise_region_count": sum(region.get("noise", False) for visual in visuals for region in visual["regions"]),
                "ad_word_count": sum(len(segment["speech"]["word_ids"]) for segment in segments

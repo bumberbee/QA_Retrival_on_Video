@@ -71,7 +71,7 @@ def choose_anchors(chunks, ranked, segments, *, count=4, current_time=None,
     if prefer_current and current_time is not None:
         segment = owner_interval(segments, current_time)
         nearby = [chunk for chunk in chunks if chunk["segment_id"] == segment["segment_id"]]
-        if not nearby and segment.get("content_kind") == "ad":
+        if not nearby and (segment.get("content_kind") == "ad" or segment.get("ad_flagged")):
             # Paused on an ad (not indexed): the lesson slide shown just before it, else after it.
             indexed = {chunk["segment_id"] for chunk in chunks}
             lesson = [item for item in segments if item["segment_id"] in indexed]

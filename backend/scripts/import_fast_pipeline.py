@@ -4,7 +4,7 @@ Với mỗi video (thư mục L25_Vxxx trong fast_pipeline_export):
   - chép ảnh trạng thái (1280px) vào data/keyframes/<id>/fast/;
   - thêm bản "F_fast_pipeline" vào data/slide_variants/<id>.json, giữ các bản cũ;
   - nếu video chưa có transcript thì dùng 04_bundle/transcript_app.json;
-  - đoạn quảng cáo (content_kind "ad", bộ lọc quảng cáo ở bước 01) không thành slide: app ẩn chúng;
+  - đoạn quảng cáo (content_kind "ad", hoặc ad_flagged khi bộ lọc chỉ đánh dấu) không thành slide: app ẩn chúng;
   - chép chỉ mục bước 05 vào data/index/<id>/: hỏi đáp tìm bằng chứng theo slide thay vì gửi cả transcript.
 
 Cách dùng:
@@ -26,6 +26,10 @@ from app import storage  # noqa: E402
 from app.models import Transcript  # noqa: E402
 
 VARIANT = "F_fast_pipeline"
+
+
+def is_ad(interval: dict) -> bool:
+    return interval.get("content_kind") == "ad" or bool(interval.get("ad_flagged"))
 LABEL = "F · Pipeline nhanh (quét một lượt)"
 
 
@@ -52,9 +56,9 @@ def import_video(folder: Path, videos: Path | None) -> None:
     shutil.copytree(slides_dir / "keyframes" / "states", target)
 
     slides = []
-    ads = [interval for interval in intervals if interval.get("content_kind") == "ad"]
+    ads = [interval for interval in intervals if is_ad(interval)]
     for interval in intervals:
-        if interval.get("content_kind") == "ad":
+        if is_ad(interval):
             continue
         states = interval["reveal_states"]
         slides.append({
@@ -107,7 +111,8 @@ def main() -> None:
     parser.add_argument("--export", required=True, type=Path)
     parser.add_argument("--videos", type=Path, help="Thư mục chứa L25_Vxxx.mp4 cho video chưa có trong app")
     args = parser.parse_args()
-    for folder in sorted(args.export.glob("L25_V*")):
+    # one folder per video (L25_V008, MLS-15DA1, ...), as written by the pipeline notebooks
+    for folder in sorted(p for p in args.export.iterdir() if (p / "01_slides").is_dir()):
         import_video(folder, args.videos)
 
 
