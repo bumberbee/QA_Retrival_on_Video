@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Multimodal Lecture RAG</title>
+<style>
+  :root{--bg:#fbf3ea;--card:#fffaf3;--ink:#333;--sub:#857a6f;--line:#e6d3bf;--blue:#153898;--gold:#f6b21b}
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#17171c;--card:#202028;--ink:#e8e6e3;--sub:#a59c92;--line:#3a3a44}}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 -apple-system,Segoe UI,Roboto,Arial,sans-serif}
+  main{max-width:900px;margin:0 auto;padding:40px 16px 60px}
+  h1{margin:0 0 6px;font-size:30px}
+  .lead{color:var(--sub);margin:0 0 6px}
+  .team{color:var(--sub);font-size:14px;margin:0 0 28px}
+  h2{font-size:15px;text-transform:uppercase;letter-spacing:.05em;color:var(--sub);margin:28px 0 10px}
+  .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  @media(max-width:640px){.grid{grid-template-columns:1fr}}
+  a.card{display:block;text-decoration:none;color:inherit;background:var(--card);border:1px solid var(--line);border-left:5px solid var(--blue);border-radius:12px;padding:14px 16px}
+  a.card:hover{border-left-color:var(--gold)}
+  a.card b{display:block;font-size:17px;margin-bottom:3px}
+  a.card span{font-size:14px;color:var(--sub)}
+</style>
+</head>
+<body>
+<main>
+  <h1>Multimodal Lecture RAG</h1>
+  <p class="lead">Hệ thống hỏi đáp đa phương thức trên video bài giảng: Slide + Transcript + Context → LLM → Trả lời.</p>
+  <p class="team">Khóa luận tốt nghiệp · Khoa Công nghệ Thông tin, Trường Đại học Công nghiệp TP.HCM · Nguyễn Thành Trung, Thái Văn Trung · GVHD: TS. Đặng Thị Phúc</p>
+
+  <h2>Trình bày</h2>
+  <div class="grid">
+    <a class="card" href="thesis-slides.html"><b>Slide bảo vệ</b><span>37 slide · dùng ← → để chuyển, F để toàn màn hình</span></a>
+    <a class="card" href="pipeline-report.html"><b>Báo cáo pipeline</b><span>Kiến trúc, thời gian, chất lượng, hỏi đáp, dữ liệu, việc tiếp theo</span></a>
+  </div>
+
+  <h2>Chạy thử từng video</h2>
+  <div class="grid">
+    <a class="card" href="run-pipeline-L25_V008.html"><b>L25_V008 · tiếng Việt</b><span>Kết quả từng bước: tách slide, quảng cáo, ASR, OCR, đồng bộ, chỉ mục, hỏi thử</span></a>
+    <a class="card" href="run-pipeline-MLS-15DA1.html"><b>MLS-15DA1 · tiếng Anh, toán</b><span>Cùng pipeline trên bài giảng Oxford (Linear Algebra II)</span></a>
+    <a class="card" href="walkthrough-v008.html"><b>Walkthrough V008</b><span>Bản chạy chi tiết trước đó, có chấm điểm tìm kiếm</span></a>
+  </div>
+
+  <h2>Thí nghiệm</h2>
+  <div class="grid">
+    <a class="card" href="got-ocr-vs-hybrid.html"><b>OCR: hybrid và GOT-OCR 2.0</b><span>CER, giữ dấu tiếng Việt, tốc độ, xem cạnh nhau</span></a>
+    <a class="card" href="gate-bench.html"><b>Bộ gác OCR trên nhiều kênh</b><span>562 khung L25 · M3AV · LPM, quét ngưỡng</span></a>
+  </div>
+</main>
+</body>
+</html>
