@@ -86,6 +86,27 @@ async def put_transcript(video_id: str, transcript: Transcript):
     return transcript
 
 
+@router.get("/{video_id}/outline")
+async def get_outline(video_id: str):
+    """Lecture structure from the stage-05 index: one entry per slide with its time and title."""
+    from ..services import retrieval
+
+    if not retrieval.has_index(video_id):
+        return []
+    outline = []
+    for segment in retrieval.load_index(video_id).segments:
+        visual = segment.get("visual", {})
+        ocr = (visual.get("ocr_text_clean") or visual.get("ocr_text") or "").strip()
+        first_line = next((line.strip() for line in ocr.splitlines() if len(line.strip()) >= 4), "")
+        outline.append({
+            "segment_id": segment["segment_id"], "start": segment.get("start_sec", 0), "end": segment.get("end_sec", 0),
+            "title": (visual.get("title_clean") or visual.get("title") or first_line)[:140],
+            "kind": "ad" if retrieval.is_ad(segment) else segment.get("content_kind", "slide"),
+            "has_text": bool(ocr), "words": len(segment.get("speech", {}).get("word_ids", [])),
+        })
+    return outline
+
+
 @router.get("/{video_id}/slides", response_model=list[str])
 async def get_slides(video_id: str):
     return storage.list_keyframes(video_id)

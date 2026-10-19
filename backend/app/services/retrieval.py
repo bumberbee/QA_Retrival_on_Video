@@ -252,15 +252,40 @@ def search(video_id: str, question: str, current_time: float | None = None, enco
             figures = figures if "region" in sources else []
         image = visual.get("image_path") or (chunks[0].get("image_path") if chunks else None)
         best = max((float(similarities[by_id[c["chunk_id"]]]) for c in chunks), default=0.0)   # -1 = source left out
+        fused = max((scores.get(c["chunk_id"], 0.0) for c in chunks), default=0.0)
         slides.append({"segment_id": sid, "rank": rank,
                        "start_sec": segment.get("start_sec", chunks[0]["start_sec"] if chunks else 0),
                        "end_sec": segment.get("end_sec", chunks[-1]["end_sec"] if chunks else 0),
                        "title": visual.get("title_clean", visual.get("title")) or (chunks[0].get("title") if chunks else ""),
                        "ocr_text": ocr, "speech_text": speech, "figures": figures,
                        "image": str(index.folder / "lecture" / image) if image else None,
-                       "semantic_score": round(best, 4)})
+                       "semantic_score": round(best, 4), "score": round(fused, 6),
+                       "video_id": video_id})
     return {"slides": slides, "temporal": temporal,
             "best_semantic": round(float(similarities.max()), 4) if len(similarities) else 0.0}
+
+
+def video_title(video_id: str) -> str:
+    meta = storage.load_video_meta(video_id) or {}
+    return Path(meta.get("original_filename") or video_id).stem
+
+
+def search_many(video_ids: list, question: str, current_video: str | None = None,
+                current_time: float | None = None, max_slides: int = MAX_SLIDES + 1) -> dict:
+    """search() on several indexed videos. RRF scores come from per-video ranks (every video's
+    top slide scores about the same), so slides are merged by E5 cosine, which all indexes share.
+    A "this slide" match in the video being watched stays first."""
+    results = [search(vid, question, current_time if vid == current_video else None)
+               for vid in dict.fromkeys(video_ids) if has_index(vid)]
+    if not results:
+        return {"slides": [], "temporal": False, "best_semantic": 0.0}
+    pinned = [r["slides"][0] for r in results if r["temporal"] and r["slides"]]
+    rest = sorted((s for r in results for s in r["slides"] if s not in pinned), key=lambda s: (-s["semantic_score"], -s["score"]))
+    slides = (pinned + rest)[:max_slides]
+    for slide in slides:
+        slide["video_title"] = video_title(slide["video_id"])
+    return {"slides": slides, "temporal": bool(pinned),
+            "best_semantic": max(r["best_semantic"] for r in results), "videos": len(results)}
 
 
 def clock(seconds: float) -> str:
@@ -271,8 +296,10 @@ def clock(seconds: float) -> str:
 def build_context(found: dict, speech_chars: int = 2500, ocr_chars: int = 1800) -> str:
     """Evidence text for the answer model, slide by slide in time order."""
     blocks = []
-    for slide in sorted(found["slides"], key=lambda s: s["start_sec"]):
-        parts = [f"[Slide {slide['segment_id'].split(':')[-1]} · {clock(slide['start_sec'])}–{clock(slide['end_sec'])}]"]
+    several = len({slide.get("video_id") for slide in found["slides"]}) > 1
+    for slide in sorted(found["slides"], key=lambda s: (s.get("video_title", ""), s["start_sec"])):
+        where = f"Video {slide.get('video_title', '')} · " if several else ""
+        parts = [f"[{where}Slide {slide['segment_id'].split(':')[-1]} · {clock(slide['start_sec'])}–{clock(slide['end_sec'])}]"]
         if slide["title"]:
             parts.append(f"Tiêu đề: {slide['title']}")
         if slide["ocr_text"]:

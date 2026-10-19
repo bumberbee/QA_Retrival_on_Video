@@ -12,6 +12,24 @@ from ..services import llm, retrieval
 router = APIRouter(prefix="/api/qa", tags=["qa"])
 
 
+def find_evidence(req: AskRequest, query: str) -> tuple[dict, str]:
+    """Search the videos ticked in the list (video_ids), or the video being watched when none is."""
+    ids = list(dict.fromkeys(req.video_ids or [req.video_id]))
+    if ids == [req.video_id]:
+        found = retrieval.search(req.video_id, query, req.current_time)
+        return found, retrieval.build_context(found)
+    found = retrieval.search_many(ids, query, req.video_id, req.current_time)
+    note = (f"(Bằng chứng lấy từ {found.get('videos', len(ids))} video; khi trích mốc thời gian, "
+            "ghi kèm tên video.)\n\n")
+    return found, note + retrieval.build_context(found)
+
+
+def source_dict(slide: dict) -> dict:
+    return {"segment_id": slide["segment_id"], "start": slide["start_sec"], "end": slide["end_sec"],
+            "title": slide["title"] or "", "video_id": slide.get("video_id"),
+            "video_title": slide.get("video_title", "")}
+
+
 @router.post("", response_model=AskResponse)
 async def ask_question(req: AskRequest):
     # Videos imported from the extraction pipeline have a stage-05 index: answer from the
@@ -27,12 +45,10 @@ async def ask_question(req: AskRequest):
     try:
         if use_index:
             query = retrieval.search_question(req.question, req.previous_question)
-            found = retrieval.search(req.video_id, query, req.current_time)
-            context = retrieval.build_context(found)
+            found, context = find_evidence(req, query)
             answer = llm.answer_with_evidence(req.question, req.current_time, found, context,
                                               previous=req.previous_question if query != req.question else None)
-            sources = [AnswerSource(segment_id=s["segment_id"], start=s["start_sec"], end=s["end_sec"],
-                                    title=s["title"] or "") for s in found["slides"]]
+            sources = [AnswerSource(**source_dict(s)) for s in found["slides"]]
         else:
             answer = llm.answer_question(transcript, req.question, req.current_time)
     except llm.LLMUnavailable as e:
@@ -64,10 +80,8 @@ def ask_question_stream(req: AskRequest):
         raise HTTPException(404, "Video này chưa có chỉ mục, dùng /api/qa")
     query = retrieval.search_question(req.question, req.previous_question)
     previous = req.previous_question if query != req.question else None
-    found = retrieval.search(req.video_id, query, req.current_time)
-    context = retrieval.build_context(found)
-    sources = [{"segment_id": s["segment_id"], "start": s["start_sec"], "end": s["end_sec"],
-                "title": s["title"] or ""} for s in found["slides"]]
+    found, context = find_evidence(req, query)
+    sources = [source_dict(s) for s in found["slides"]]
 
     def lines():
         backend = llm.describe()

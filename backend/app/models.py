@@ -50,6 +50,7 @@ class AskRequest(BaseModel):
     question: str
     current_time: float | None = None  # thời điểm video đang phát, giây
     previous_question: str | None = None  # câu hỏi liền trước trong cuộc trò chuyện
+    video_ids: list[str] | None = None  # hỏi trên các video được chọn (có thể không gồm video đang xem)
 
 
 class AnswerSource(BaseModel):
@@ -57,6 +58,8 @@ class AnswerSource(BaseModel):
     start: float
     end: float
     title: str = ""
+    video_id: str | None = None
+    video_title: str = ""
 
 
 class AskResponse(BaseModel):
