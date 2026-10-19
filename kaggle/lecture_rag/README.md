@@ -107,3 +107,16 @@ python -m unittest discover -s kaggle/lecture_rag/tests
 Test cần FFmpeg/FFprobe, NumPy, Pillow, OpenCV, PyAV, nbformat (`requirements-test.txt`).
 Test kiểm tra wiring, mốc thời gian và tính toàn vẹn bằng video tổng hợp và model giả;
 chất lượng model phải đo trên Kaggle.
+
+## SlideSpeech dev/test (41 video)
+
+Không có dataset `slidespeech-devtest`: Kaggle báo "Deadline exceeded" khi tạo dataset 3,9 GB từ
+output notebook. Notebook nào cần các video này thì gắn thẳng output notebook làm Input:
+
+```json
+"kernel_sources": ["thnhtrungnguynmif/thesis-ds-slidespeech-devtest"]
+```
+
+Tìm video bằng `Path('/kaggle/input').rglob('<wavid>.mp4')` (output gồm 41 mp4, `videos.csv`,
+`summary.json` và 3 file `related_files` của SlideSpeech: `all_information`, `all_meta_info`,
+`preprocessed_ocr`).

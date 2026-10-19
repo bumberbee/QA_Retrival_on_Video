@@ -251,9 +251,119 @@ def gate_crops_figure(folder, seq=2, out_name="gate_crops.jpg"):
     print(out_name, record["ocr_gate_score"], crops)
 
 
+def reveal(folder, chain=(9, 10, 11, 18, 19), pair=(11, 12)):
+    """Stage-01 reveal merging on V008, from 01_slides/keyframes/states and reveal_audit.json.
+    reveal_chain.jpg: consecutive states, the decision between each pair and its three numbers.
+    reveal_mask.jpg: for one merged pair, the content masks the pipeline compares (detection.py,
+    content_mask / reveal_evidence): old strokes still in place (blue), strokes added (green)."""
+    import numpy as np
+    from PIL import Image, ImageDraw
+    ns = {}
+    code = HERE.parent / "kaggle/lecture_rag/notebook_code"
+    for name in ("common.py", "detection.py"):
+        exec((code / name).read_text(encoding="utf-8"), ns)
+    states = folder / "01_slides/keyframes/states"
+    audit = {r["current_state"]: r for r in json.loads((folder / "01_slides/reveal_audit.json").read_text(encoding="utf-8"))}
+    image = lambda n: Image.open(states / f"state_{n:05d}.jpg").convert("RGB")
+    green, red, ink = (47, 125, 74), (196, 85, 63), (14, 31, 92)
+    # chain
+    W, H, gap, pad = 300, 169, 70, 12
+    sheet = Image.new("RGB", (pad + len(chain) * W + (len(chain) - 1) * gap + pad, H + 150), "white")
+    draw = ImageDraw.Draw(sheet)
+    for k, n in enumerate(chain):
+        x = pad + k * (W + gap)
+        sheet.paste(image(n).resize((W, H)), (x, pad))
+        draw.text((x, pad + H + 6), f"trạng thái {n}", fill=ink, font=font(15))
+        if k == 0:
+            continue
+        r = audit[n]
+        merged = r["decision"].startswith("merge")
+        color = green if merged else red
+        if chain[k - 1] != n - 1:  # states skipped in the picture
+            draw.text((x - gap + 18, pad + H // 2 - 10), "· · ·", fill=ink, font=font(20))
+            continue
+        draw.text((x - gap + 6, pad + H // 2 - 22), "→", fill=color, font=font(34))
+        draw.text((x - gap + 4, pad + H // 2 + 18), "GỘP" if merged else "TÁCH", fill=color, font=font(16))
+        lines = [f"còn đúng chỗ {r['content_retained']:.0%}", f"hình đổi {r['image_change']:.1%}",
+                 f"nội dung ×{r['content_growth']:.2f}"]
+        for j, text in enumerate(lines):
+            draw.text((x, pad + H + 30 + j * 22), text, fill=color, font=font(15))
+    sheet.save(OUT / "reveal_chain.jpg", quality=86)
+    # masks of one merged pair
+    views = [ns["reveal_view"](image(n)) for n in range(len(list(states.iterdir())))]
+    template = ns["persistent_template"](views)
+    a, b = pair
+    old = ns["content_mask"](views[a]) & ~template
+    new = ns["content_mask"](views[b]) & ~template
+    evidence = ns["reveal_evidence"](views[a], views[b], template)
+    overlay = np.full(views[b].shape + (3,), 255, np.uint8)
+    overlay[new & ~old] = green
+    overlay[old] = (21, 56, 152)
+    panels = [(image(a), f"Trước (trạng thái {a})"), (image(b), f"Sau (trạng thái {b})"),
+              (Image.fromarray(overlay), "Nét chữ: xanh dương = cũ, xanh lá = mới thêm")]
+    W, H = 400, 225
+    sheet = Image.new("RGB", (pad + 3 * (W + pad), H + 120), "white")
+    draw = ImageDraw.Draw(sheet)
+    for k, (im, title) in enumerate(panels):
+        x = pad + k * (W + pad)
+        sheet.paste(im.resize((W, H)), (x, pad + 26))
+        draw.rectangle((x - 1, pad + 25, x + W, pad + 26 + H), outline=(200, 205, 220), width=1)
+        draw.text((x, pad), title, fill=ink, font=font(16))
+    text = (f"Còn đúng chỗ {evidence['content_retained']:.0%} (≥ 85%)  ·  hình đổi {evidence['image_change']:.1%} (≤ 25%)  ·  "
+            f"nội dung ×{evidence['content_growth']:.2f} (≥ 0,9)  →  GỘP")
+    draw.rounded_rectangle((pad, H + 50, sheet.width - pad, H + 94), 8, fill=(232, 244, 236))
+    draw.text((pad + 12, H + 61), text, fill=green, font=font(18))
+    sheet.save(OUT / "reveal_mask.jpg", quality=86)
+    print("reveal_chain.jpg reveal_mask.jpg", {k: round(v, 3) for k, v in evidence.items()}, audit[b])
+
+
+def datasets(runs):
+    """One sample picture per dataset for the data slides (YouTube covers for videos not run locally)."""
+    import csv
+    import io
+    import urllib.request
+    from PIL import Image, ImageDraw
+    cover = lambda vid: Image.open(io.BytesIO(urllib.request.urlopen(f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg").read())).convert("RGB").crop((0, 45, 480, 315))
+    frame = lambda path: Image.open(path).convert("RGB")
+
+    def grid(tiles, cols, name, w=480, h=270):
+        rows = (len(tiles) + cols - 1) // cols
+        sheet = Image.new("RGB", (cols * w + (cols - 1) * 8, rows * (h + 34) - 4), "white")
+        draw = ImageDraw.Draw(sheet)
+        for k, (image, label, color) in enumerate(tiles):
+            x, y = (k % cols) * (w + 8), (k // cols) * (h + 34)
+            sheet.paste(image.resize((w, h)), (x, y))
+            draw.rectangle((x, y + h, x + w, y + h + 30), fill=color)
+            draw.text((x + 8, y + h + 3), label, font=font(19), fill="white")
+        sheet.save(OUT / name, quality=85)
+
+    v008 = runs / "20261002-full-10-ads/outputs/fast_pipeline_export/L25_V008/04_bundle/keyframes"
+    grid([(frame(v008 / "seg_00004.jpg"), "Bài giảng · 1:38", "#153898"), (frame(v008 / "ad_00009.jpg"), "Quảng cáo xen giữa bài (có nhãn giây)", "#c0392b")], 2, "ds_l25.jpg")
+    vn = runs / "20261006-vn12-draft-0/output/lecture_rag"
+    grid([(cover("D_kuulxKuxc"), "VTV7 · Toán lớp 2", "#153898"), (cover("tHE1mC_n0-E"), "HTV · giải đề Vật lí", "#153898"),
+          (frame(vn / "_eDGTHhyQ7M/01_slides/keyframes/seg_00008.jpg"), "Slide bài tập Hóa", "#153898"),
+          (frame(vn / "hVU5Mw19V_c/01_slides/keyframes/seg_00006.jpg"), "Viết bảng phấn · Xác suất", "#153898")], 2, "ds_vn12.jpg")
+    spans = [(float(r["start_s"]), float(r["end_s"])) for r in csv.DictReader(open(HERE.parent / "kaggle/lecture_rag/gold/lpm/slides.csv", encoding="utf-8")) if r["video_id"] == "IIfeX44RI9k"]
+    sheet = Image.new("RGB", (968, 400), "white")
+    sheet.paste(cover("IIfeX44RI9k").resize((480, 270)), (0, 0))
+    draw = ImageDraw.Draw(sheet)
+    draw.text((500, 10), "Mốc slide do tác giả LPM gán (28 slide):", font=font(20), fill="#153898")
+    for k, (a, b) in enumerate(spans[:8]):
+        draw.text((500, 44 + k * 27), f"slide {k:>2}:  {clock(a)} – {clock(b)}", font=font(19), fill="#1d2330")
+    draw.text((500, 44 + 8 * 27), "…", font=font(19), fill="#1d2330")
+    end = spans[-1][1]
+    for k, (a, b) in enumerate(spans):
+        draw.rectangle((a / end * 960, 300, b / end * 960 - 2, 340), fill=("#153898", "#f6b21b")[k % 2])
+    draw.text((0, 350), "Trục thời gian cả video: mỗi khối màu là một slide → so với ranh giới máy cắt (±1 s / ±3 s)", font=font(18), fill="#5a6a8a")
+    sheet.save(OUT / "ds_lpm.jpg", quality=85)
+    m3 = runs / "20261003-ds-m3av-maths/outputs/m3av-maths/dataset_v1.0_noaudio/MLS-03E08/ocr/seg_imgs/MLS-03E08-0669000.jpg"
+    frame(m3).save(OUT / "ds_m3av.jpg", quality=85)
+    grid([(cover("-6sEcMzz0ic"), "design_0000 · 17 phút", "#153898"), (cover("7HOFhLm29XI"), "design_0001 · 18 phút", "#153898")], 2, "ds_slidespeech.jpg")
+
+
 if __name__ == "__main__":
     command, folder = sys.argv[1], Path(sys.argv[2])
     {"gate": lambda: gate(folder), "rank": lambda: rank(folder, sys.argv[3]),
      "retrieval": lambda: retrieval(folder, sys.argv[3]), "sync": lambda: sync(folder), "sweep": lambda: sweep(folder), "gate_examples": lambda: gate_examples(folder),
      "gate_crops": lambda: gate_crops_figure(folder),
-     "gate_crops_skip": lambda: gate_crops_figure(folder, 9, "gate_crops_skip.jpg")}[command]()
+     "gate_crops_skip": lambda: gate_crops_figure(folder, 9, "gate_crops_skip.jpg"), "reveal": lambda: reveal(folder), "datasets": lambda: datasets(folder)}[command]()
