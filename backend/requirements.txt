@@ -10,3 +10,7 @@ numpy>=1.26
 onnxruntime>=1.18
 tokenizers>=0.19
 huggingface_hub>=0.24
+# deploy: Supabase Postgres + pgvector, Cloudflare R2 (S3 API); only used when their env vars are set
+psycopg[binary]>=3.2
+psycopg-pool>=3.2
+boto3>=1.34
