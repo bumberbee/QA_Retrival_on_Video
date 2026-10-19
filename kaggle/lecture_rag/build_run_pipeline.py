@@ -24,7 +24,7 @@ INTRO = """# Chạy pipeline cho 1 video · in kết quả mẫu từng bước
 **Cách dùng**
 1. **Add Input** dataset chứa video (mp4/mkv/webm/mov). Đã gắn sẵn `l25a-lecture-videos-media`
    `vn-lecture-test12` và `m3av-maths` (toán tiếng Anh); video mới: tải lên thành dataset rồi Add Input.
-2. Giữ Input `l25-ad-filter-e1-e4-20261002` (model lọc quảng cáo `ad_student.npz`).
+2. Lọc nội dung chỉ dùng bộ gác OCR zero-shot (SigLIP), không cần model học riêng.
 3. Bật **GPU T4 x2** và **Internet**.
 4. Sửa `VIDEO_NAME`, `LANGUAGE` (và nếu muốn, `QUESTIONS`) ở ô **Cấu hình** → **Run all**.
 

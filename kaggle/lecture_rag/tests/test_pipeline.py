@@ -248,6 +248,86 @@ class HybridSlideReadTests(unittest.TestCase):
         self.assertEqual(len(calls), 2)   # the second logo was skipped, the changed region was not
         self.assertEqual(json.loads(out)["crops"][0].get("skipped"), None)
 
+    def test_small_regions_skip_the_vlm(self):
+        from PIL import Image
+        visual = load_code("visual")
+        raw = "<|det|>image [0, 0, 100, 100]<|/det|>\n<|det|>image [400, 400, 999, 999]<|/det|>"
+        calls = []
+
+        def read_crop(image, box):
+            calls.append(box)
+            return "raw", {"kind": "chart"}
+        _, _, out = visual.hybrid_read_slide(Image.new("RGB", (1000, 600)), lambda img: raw, read_crop,
+                                             min_region_area=0.02)
+        self.assertEqual(len(calls), 1)   # the 1 % icon was skipped, the 36 % figure was read
+        self.assertEqual(json.loads(out)["crops"][0]["skipped"], "small")
+
+    def test_pipelined_two_pass_read_matches_the_one_pass_read(self):
+        from PIL import Image
+        visual = load_code("visual")
+        slides = [Image.new("RGB", (1000 + i, 600), (40 * i, 0, 0)) for i in range(4)]
+        raw = ("<|det|>title [0, 0, 999, 100]<|/det|>Tiêu đề\n<|det|>image [0, 300, 400, 700]<|/det|>\n"
+               "<|det|>image [500, 300, 999, 700]<|/det|>")
+        unlimited_calls = []
+
+        def unlimited(img):
+            unlimited_calls.append(img.width)
+            return raw
+
+        def read_crop(image, box):
+            kind = "decorative" if box[0] == 0 else "figure"
+            return "raw", {"kind": kind, "description": f"hình {image.width} {box[0]:.1f}"}
+
+        memory = []
+        expected = [visual.hybrid_read_slide(s, unlimited, read_crop, decor_memory=memory) for s in slides]
+        calls_one_pass = len(unlimited_calls)
+        unlimited_calls.clear()
+        memory = []
+        got = visual.pipelined(
+            slides, lambda s: visual.hybrid_plan(unlimited, s, memory),
+            lambda plan: visual.hybrid_finish(plan, lambda img, boxes: [read_crop(img, b) for b in boxes], memory),
+            depth=1)
+        self.assertEqual(len(unlimited_calls), calls_one_pass)   # Unlimited-OCR answers are reused
+        # depth 1: slide 2 may be planned before slide 1 adds its decoration, so it is read once more
+        self.assertEqual([g[0] for g in got], [e[0] for e in expected])
+        self.assertEqual(got[0], expected[0])
+        self.assertEqual(len(memory), 4)
+
+    def test_qwen_slide_answer_splits_text_and_figure_lines(self):
+        visual = load_code("visual")
+        blocks, regions = visual.parse_qwen_slide(
+            "BIO MATERIALS\n\n• Soy ink\n[Figure] Three boxes made of paper.\n[Hình]   \n")
+        self.assertEqual([b["text"] for b in blocks], ["BIO MATERIALS", "• Soy ink"])
+        self.assertEqual([b["line_index"] for b in blocks], [0, 1])
+        self.assertEqual(regions, [{"kind": "figure", "bbox": [0, 0, 1, 1], "text": "",
+                                    "description": "Three boxes made of paper.",
+                                    "extraction_status": "model_generated_unverified"}])
+        self.assertEqual(visual.parse_qwen_slide("Chỉ chữ"), (visual.parse_qwen_slide("Chỉ chữ")[0], []))
+
+    def test_pipelined_raises_a_failure_of_the_planning_thread(self):
+        visual = load_code("visual")
+
+        def plan(item):
+            if item == 2:
+                raise RuntimeError("GPU 0 out of memory")
+            return item
+
+        with self.assertRaises(RuntimeError):
+            visual.pipelined([1, 2, 3], plan, lambda step: step)
+
+    def test_near_duplicate_keyframes_match_but_an_extra_line_does_not(self):
+        from PIL import Image, ImageDraw
+        visual = load_code("visual")
+        slide = Image.new("RGB", (1280, 720), "white")
+        ImageDraw.Draw(slide).rectangle((100, 100, 900, 140), fill="black")
+        again = slide.copy()
+        ImageDraw.Draw(again).point((5, 5), fill="black")              # compression noise
+        more = slide.copy()
+        ImageDraw.Draw(more).rectangle((100, 200, 900, 240), fill="black")   # one more line of text
+        seen = [("seg_1", visual.slide_thumb(slide))]
+        self.assertEqual(visual.near_duplicate(seen, visual.slide_thumb(again)), "seg_1")
+        self.assertIsNone(visual.near_duplicate(seen, visual.slide_thumb(more)))
+
     def test_region_prompt_follows_lecture_language(self):
         visual = load_code("visual")
         self.assertIs(visual.hybrid_crop_prompt("vi"), visual.HYBRID_CROP_PROMPT)
@@ -784,6 +864,19 @@ class MediaAndPipelineTests(unittest.TestCase):
         self.assertLessEqual(max(flagged), 67)
         self.assertGreaterEqual(details["lecture_clusters"], 1)
 
+    def test_slide_speech_flags_need_both_no_slide_and_off_topic_speech(self):
+        alignment = load_code("alignment")
+        # 60 s: 0-20 slide, 20-40 lecturer talking on topic (no slide), 40-55 ad (no slide, off topic)
+        times = list(range(60))
+        scores = [0.9 if t < 20 else 0.1 for t in times]
+        windows = [{"start_sec": 0, "end_sec": 40, "topic_z": 0.2},
+                   {"start_sec": 40, "end_sec": 55, "topic_z": -3.0},
+                   {"start_sec": 55, "end_sec": 60, "topic_z": 0.0}]
+        off = alignment.slide_speech_flags({"times": times, "scores": scores}, windows)
+        self.assertEqual(off, [[40, 55]])   # the lecturer talking is kept, only the ad is flagged
+        # short gaps are filled, short runs dropped
+        self.assertEqual(alignment.flag_runs([1, 1, 1, 0, 1, 1, 0, 0, 0, 1, 1], min_run=5, max_gap=2), [[0, 6]])
+
     def test_ad_guard_distrusts_too_many_or_too_long_ads(self):
         adfilter = load_code("adfilter")
         # L25 gold: 3-4 runs of 60-85 s, up to 24.5 % of a video -> trusted
@@ -891,6 +984,20 @@ class MediaAndPipelineTests(unittest.TestCase):
         self.assertEqual(hybrid_records[0]["ocr_text"], "Δm = Zm_p")
         self.assertEqual(hybrid_records[0]["regions"][0]["kind"], "graph")
         self.assertTrue((hybrid02 / hybrid_records[0]["regions"][0]["image_path"]).exists())
+        qwen_calls = []
+
+        def qwen_read(images, language):
+            qwen_calls.append(len(images))
+            return ["ĐỊNH LUẬT BẢO TOÀN\nΔm = Zm_p\n[Hình] Đồ thị năng lượng liên kết." for _ in images]
+        with mock.patch.object(visual, "load_qwen_ocr", return_value=qwen_read):
+            qwen02, qwen_manifest, qwen_records = visual.run_visual_extraction(
+                self.stage01, output / "qwen", ocr_engine="qwen")
+        read = [r for r in qwen_records if r["ocr_status"] == "read"]
+        # every distinct slide image read in one parallel batch (a repeated image comes from the cache)
+        self.assertEqual(qwen_calls, [len({r["asset_id"] for r in read})])
+        self.assertEqual(read[0]["ocr_text"], "ĐỊNH LUẬT BẢO TOÀN\nΔm = Zm_p")
+        self.assertEqual(read[0]["regions"][0]["description"], "Đồ thị năng lượng liên kết.")
+        self.assertEqual(qwen_manifest["parameters"]["ocr_engine"], "qwen")
         fixture_words = [
             {"start_sec": 3.2 + index * 0.3, "end_sec": 3.4 + index * 0.3,
              "text": text, "probability": 0.9}

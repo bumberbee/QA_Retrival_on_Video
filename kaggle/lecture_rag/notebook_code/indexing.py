@@ -48,8 +48,8 @@ def make_evidence_chunks(segments, fallback_spans, tokenizer, *,
                          chunk_tokens=350, overlap_tokens=40, model_limit=512,
                          video_id="L25_V001", speech_chunk_tokens=180,
                          speech_maximum_seconds=50.0, include_generated_descriptions=False,
-                         dedupe_previous=False):
-    """dedupe_previous: index only the OCR lines not already on the previous slide (stage 04
+                         dedupe_previous=False, passage_prefix="passage: "):
+    """passage_prefix: "passage: " for E5, "" for bge-m3. dedupe_previous: index only the OCR lines not already on the previous slide (stage 04
     ocr_text_new), so a repeated slide does not crowd the search with copies."""
     if not 0 <= overlap_tokens < chunk_tokens <= model_limit - 32:
         raise ValueError("Giới hạn chunk không tương thích model tokenizer.")
@@ -68,7 +68,7 @@ def make_evidence_chunks(segments, fallback_spans, tokenizer, *,
         title_tokens = tokenizer.encode(visual.get("title_clean", visual.get("title", "")),
                                         add_special_tokens=False)[:64]
         title = tokenizer.decode(title_tokens, skip_special_tokens=True).strip()
-        header = f"passage: {title}\n" if title else "passage: "
+        header = f"{passage_prefix}{title}\n" if title else passage_prefix
         budget = min(chunk_tokens, model_limit
                      - len(tokenizer.encode(header, add_special_tokens=True)) - 8)
         units = group_speech_spans(
@@ -181,6 +181,8 @@ def run_indexing(stage04_dir, output_root, video_id="L25_V001", *,
                  speech_chunk_tokens=180, speech_maximum_seconds=50.0,
                  include_generated_descriptions=False, dedupe_previous=False):
     import numpy as np
+    # E5 was trained with "query: " / "passage: " prefixes; bge-m3 uses none.
+    query_prefix, passage_prefix = ("query: ", "passage: ") if "e5" in embedding_model.lower() else ("", "")
     from sentence_transformers import SentenceTransformer
 
     parent = load_stage(stage04_dir, 4, video_id)
@@ -196,6 +198,7 @@ def run_indexing(stage04_dir, output_root, video_id="L25_V001", *,
         overlap_tokens=overlap_tokens, model_limit=model_limit, video_id=video_id,
         speech_chunk_tokens=speech_chunk_tokens, speech_maximum_seconds=speech_maximum_seconds,
         include_generated_descriptions=include_generated_descriptions, dedupe_previous=dedupe_previous,
+        passage_prefix=passage_prefix,
     )
     # Counts are checked above: no silent encoder truncation.
     vectors = model.encode(
@@ -222,7 +225,7 @@ def run_indexing(stage04_dir, output_root, video_id="L25_V001", *,
     parameters = {
         "embedding_model": embedding_model, "revision": revision,
         "resolved_revision": resolved_revision,
-        "query_prefix": "query: ", "passage_prefix": "passage: ",
+        "query_prefix": query_prefix, "passage_prefix": passage_prefix,
         "normalize_embeddings": True, "model_limit": model_limit,
         "visual_description_policy": "structured_json_only" if include_generated_descriptions
                                      else "human_verified_only",

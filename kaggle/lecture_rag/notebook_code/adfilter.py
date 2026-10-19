@@ -147,12 +147,19 @@ CONTENT_PROMPTS = [
     "a lecture slide with a diagram, chart, table or formula",
     "a page of a document or an exam with questions",
     "a whiteboard or blackboard with handwriting",
+    # added after the 2917-keyframe sweep (gate2): missed maths cards, code and charts
+    "a chart or graph with axes and labels",
+    "a scientific figure, diagram or illustration in a lesson",
+    "math exercises or equations on a board or card",
+    "computer code in a text editor or terminal",
 ]
 NO_CONTENT_PROMPTS = [
     "a person talking to the camera",
     "a teacher speaking in a studio",
     "a logo or a title animation",
     "a blank screen",
+    "a building or a landscape photo",
+    "a group of people on a stage or outdoors",
 ]
 
 

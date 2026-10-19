@@ -1,10 +1,10 @@
-"""Writes notebooks/full_pipeline_walkthrough.ipynb: the whole current pipeline (01 with the
-ad filter, OCR gate, 02 hybrid OCR, 03 ASR, 04 sync, 05 index, retrieval) on ONE video,
+"""Writes notebooks/full_pipeline_walkthrough.ipynb: the whole current pipeline (01, OCR gate,
+02 OCR with Qwen3-VL by default, 03 ASR, 04 sync, 05 index, retrieval) on ONE video,
 printing the output of every stage (tables, images, plots) so it can be inspected and tuned.
 Everything shown is also saved to /kaggle/working/walkthrough_report.html.
 
-Kaggle: GPU T4 x2, Internet on, inputs = dataset l25a-lecture-videos-media and the output of
-kernel l25-ad-filter-e1-e4-20261002 (ad_student.npz).
+Kaggle: GPU T4 x2, Internet on, input = dataset l25a-lecture-videos-media (any dataset holding
+<VIDEO_ID>.mp4 works).
 
     python kaggle/lecture_rag/build_full_walkthrough.py
 """
@@ -28,13 +28,17 @@ pipeline hiện tại (`notebook_code/`), theo thứ tự, và in ra sau mỗi g
 |---|---|---|
 | 0 | Thông tin video | độ phân giải, fps, âm thanh |
 | 1 | **01 · Tách slide** | số trạng thái → số slide, bảng slide kèm ảnh, slide hiện dần đã gộp |
-| 2 | **Lọc quảng cáo** | biểu đồ điểm quảng cáo theo giây, các đoạn bị cắt |
+| 2 | Lọc quảng cáo (tắt mặc định) | bộ gác OCR ở bước 4 đã bỏ quảng cáo và logo |
 | 3 | **03 · Giọng nói** | cửa sổ ASR, từ đầu tiên kèm thời gian |
-| 4 | **Bộ gác OCR + 02 · OCR kết hợp** | điểm bộ gác, chữ và vùng hình đọc được từng slide, đầu ra thô của model |
+| 4 | **Bộ gác OCR + 02 · OCR** | điểm bộ gác, chữ và mô tả hình Qwen3-VL đọc từng slide, đầu ra thô của model |
 | 5 | **04 · Đồng bộ** | lời giảng gán vào từng slide |
 | 6 | **05 · Chỉ mục** | các đoạn bằng chứng được lập chỉ mục |
 | 7 | **Hỏi thử** | kết quả tìm kiếm cho vài câu hỏi toán |
-| 8 | Tổng kết | thời gian từng bước, bộ nhớ GPU |
+| 7b | Chấm điểm tìm kiếm | đúng hạng 1 / trong 3 trên 10 câu có đáp án |
+| 8 | Tổng kết | thời gian từng bước, bộ nhớ GPU, thời gian trọn pipeline |
+
+Chạy trên Kaggle: **GPU T4 x2**, bật Internet, thêm dataset chứa video (mặc định `l25a-lecture-videos-media`),
+rồi *Run All*. Đổi video hoặc cách OCR ở ô **Cấu hình**.
 
 Trong pipeline nhanh, 03 chạy song song với 01 và 02; ở đây chạy lần lượt để dễ xem.
 Mọi thứ hiện ra cũng được lưu vào `walkthrough_report.html` (tải ở tab Output)."""
@@ -46,12 +50,17 @@ OUTPUT_ROOT = Path('/kaggle/working/walkthrough')
 # 01 · tách slide (giống pipeline nhanh)
 SAMPLE_HZ, FINE_HZ, MERGE_REVEALS = 1.0, 8.0, True
 # lọc quảng cáo + bộ gác OCR (dùng chung SigLIP base)
-AD_FILTER, AD_DEVICE = 'student', 'cuda:0'
+AD_FILTER, AD_DEVICE = None, 'cuda:0'   # None: không dùng bộ lọc quảng cáo học từ L25
 AD_MODE = 'flag'   # 'flag': chỉ đánh dấu, không cắt; 'cut': bản cũ
 OCR_GATE_THRESHOLD, OCR_GATE_VIEWS = 0.15, 'frame+crops'   # Phase 2: gate_bench
-# 02 · OCR kết hợp
-OCR_ENGINE, HYBRID_DEVICES = 'hybrid', ('cuda:0', 'cuda:1')
+# 02 · OCR: 'qwen' = Qwen3-VL-4B đọc cả slide, mỗi GPU một bản (mặc định);
+#      'hybrid' = Unlimited-OCR + Qwen3-VL đọc vùng hình (cách cũ, chậm hơn ×1,8–7)
+OCR_ENGINE, HYBRID_DEVICES = 'qwen', ('cuda:0', 'cuda:1')
 OCR_LANGUAGES, OCR_SCALE, OCR_BATCH_SIZE = ('vi', 'en'), 1.5, 32
+DESCRIBE_LANGUAGE = 'vi'          # ngôn ngữ của prompt OCR / mô tả hình ('en' cho bài tiếng Anh)
+REUSE_NEAR_DUPLICATES = True      # slide gần trùng slide đã đọc: dùng lại kết quả
+# chỉ dùng khi OCR_ENGINE = 'hybrid' (các mục tăng tốc đã chốt)
+HYBRID_OPTIONS = dict(hybrid_pipelined=True, hybrid_min_region_area=0.02, hybrid_skip_repeated_decor=True)
 # 03 · giọng nói
 ASR_MODEL = 'Systran/faster-whisper-medium'
 ASR_REVISION = '08e178d48790749d25932bbc082711ddcfdfbc4f'
@@ -139,7 +148,9 @@ def timed(name, fn, *args, **kwargs):
     return result
 """
 
-VIDEO = """heading('0 · Thông tin video')
+VIDEO = """missing = [name for name in ('heading', 'probe_video', 'run_slide_detection', 'VIDEO_ID') if name not in globals()]
+assert not missing, f'Chưa chạy các ô phía trên ({", ".join(missing)}): bấm Run All hoặc chạy lần lượt từ ô đầu tiên.'
+heading('0 · Thông tin video')
 VIDEO = next(iter(sorted(Path('/kaggle/input').rglob(VIDEO_ID + '.mp4'))))
 SOURCE = probe_video(VIDEO)
 params(SOURCE, ['duration_sec', 'width', 'height', 'has_audio', 'timeline_origin_sec', 'audio_start_sec', 'sha256'])
@@ -148,10 +159,12 @@ table([{f'{clock(t)}': img(image, 180) for image, t in frames}])
 """
 
 MODELS = """heading('Nạp model dùng chung (SigLIP base cho lọc quảng cáo và bộ gác OCR)')
-student = next(iter(sorted(Path('/kaggle/input').rglob('ad_student.npz'))))
-ad_scorer = timed('nạp SigLIP + model trò', load_ad_scorer, AD_FILTER, AD_DEVICE, student)
+ad_scorer = None
+if AD_FILTER:
+    student = next(iter(sorted(Path('/kaggle/input').rglob('ad_student.npz'))))
+    ad_scorer = timed('nạp SigLIP + model trò', load_ad_scorer, AD_FILTER, AD_DEVICE, student)
 ocr_gate = load_ocr_gate(AD_DEVICE, threshold=OCR_GATE_THRESHOLD, views=OCR_GATE_VIEWS)
-params({**ad_scorer[1], 'ocr_gate': ocr_gate[1]})
+params({**(ad_scorer[1] if ad_scorer else {'ad_filter': 'tắt'}), 'ocr_gate': ocr_gate[1]})
 """
 
 STAGE01 = """heading('1 · Bước 01 · Tách slide')
@@ -179,29 +192,32 @@ table([{'#': i['sequence'], 'trạng thái': Raw(' '.join(img(stage01 / s['image
 """
 
 ADS = """heading('2 · Lọc quảng cáo')
-report = json.loads((stage01 / 'ad_filter.json').read_text(encoding='utf-8'))
-note(f'Ngưỡng {report["threshold"]}, làm mượt {report["smooth"]} mẫu, đoạn ≥ {report["min_ad_sec"]} mẫu, '
-     f'lấp lỗ ≤ {report["max_gap_sec"]}. Tổng quảng cáo: <b>{report["ad_seconds"]} s</b> trong {len(report["ad_intervals"])} đoạn.')
-guard = report.get('guard')
-if guard:
-    note(f'Chế độ <b>{report["mode"]}</b>: đoạn nghi quảng cáo vẫn được OCR và giữ lời, chỉ không lập chỉ mục. '
-         + (f'<b>Bộ an toàn đã bỏ mọi dấu</b> ({html.escape(guard["reason"])}): coi cả video là bài giảng.'
-            if guard['triggered'] else f'Bộ an toàn không kích hoạt (≤ {guard["max_runs"]} đoạn, ≤ {guard["max_share"]:.0%} video).'))
-fig, ax = plt.subplots(figsize=(13, 2.6))
-ax.plot(report['sample_times'], report['sample_scores'], lw=0.8, color='#5b7fa6', label='điểm quảng cáo (mẫu 1 Hz)')
-ax.axhline(report['threshold'], color='#c85c4a', ls='--', lw=1, label='ngưỡng')
-for a, b in report['ad_intervals']:
-    ax.axvspan(a, b, color='#e8734a', alpha=0.25)
-ax.set_xlabel('giây'); ax.set_ylim(-0.02, 1.02); ax.legend(loc='upper right', fontsize=8); ax.set_title('Vùng cam = đoạn bị cắt là quảng cáo')
-figure(fig)
-rows = []
-for a, b in report['ad_intervals']:
-    shots = [frame_at_time(VIDEO, SOURCE, t)[0] for t in (a + 1, (a + b) / 2, max(a, b - 1.5))]
-    before = frame_at_time(VIDEO, SOURCE, max(0, a - 2))[0]
-    after = frame_at_time(VIDEO, SOURCE, min(SOURCE['duration_sec'] - 0.1, b + 1.5))[0]
-    rows.append({'từ': clock(a), 'đến': clock(b), 'dài (s)': round(b - a, 1), '2 s trước': img(before, 150),
-                 'đầu': img(shots[0], 150), 'giữa': img(shots[1], 150), 'cuối': img(shots[2], 150), '1,5 s sau': img(after, 150)})
-table(rows)
+if not (stage01 / 'ad_filter.json').exists():
+    note('Không dùng bộ lọc quảng cáo (AD_FILTER = None): bộ gác OCR là lớp lọc nội dung duy nhất.')
+else:
+    report = json.loads((stage01 / 'ad_filter.json').read_text(encoding='utf-8'))
+    note(f'Ngưỡng {report["threshold"]}, làm mượt {report["smooth"]} mẫu, đoạn ≥ {report["min_ad_sec"]} mẫu, '
+         f'lấp lỗ ≤ {report["max_gap_sec"]}. Tổng quảng cáo: <b>{report["ad_seconds"]} s</b> trong {len(report["ad_intervals"])} đoạn.')
+    guard = report.get('guard')
+    if guard:
+        note(f'Chế độ <b>{report["mode"]}</b>: đoạn nghi quảng cáo vẫn được OCR và giữ lời, chỉ không lập chỉ mục. '
+             + (f'<b>Bộ an toàn đã bỏ mọi dấu</b> ({html.escape(guard["reason"])}): coi cả video là bài giảng.'
+                if guard['triggered'] else f'Bộ an toàn không kích hoạt (≤ {guard["max_runs"]} đoạn, ≤ {guard["max_share"]:.0%} video).'))
+    fig, ax = plt.subplots(figsize=(13, 2.6))
+    ax.plot(report['sample_times'], report['sample_scores'], lw=0.8, color='#5b7fa6', label='điểm quảng cáo (mẫu 1 Hz)')
+    ax.axhline(report['threshold'], color='#c85c4a', ls='--', lw=1, label='ngưỡng')
+    for a, b in report['ad_intervals']:
+        ax.axvspan(a, b, color='#e8734a', alpha=0.25)
+    ax.set_xlabel('giây'); ax.set_ylim(-0.02, 1.02); ax.legend(loc='upper right', fontsize=8); ax.set_title('Vùng cam = đoạn bị cắt là quảng cáo')
+    figure(fig)
+    rows = []
+    for a, b in report['ad_intervals']:
+        shots = [frame_at_time(VIDEO, SOURCE, t)[0] for t in (a + 1, (a + b) / 2, max(a, b - 1.5))]
+        before = frame_at_time(VIDEO, SOURCE, max(0, a - 2))[0]
+        after = frame_at_time(VIDEO, SOURCE, min(SOURCE['duration_sec'] - 0.1, b + 1.5))[0]
+        rows.append({'từ': clock(a), 'đến': clock(b), 'dài (s)': round(b - a, 1), '2 s trước': img(before, 150),
+                     'đầu': img(shots[0], 150), 'giữa': img(shots[1], 150), 'cuối': img(shots[2], 150), '1,5 s sau': img(after, 150)})
+    table(rows)
 """
 
 STAGE03 = """heading('3 · Bước 03 · Nhận dạng giọng nói')
@@ -221,16 +237,29 @@ table([{'từ': w['text'], 'bắt đầu': round(w['start_sec'], 2), 'kết thú
 """
 
 STAGE02 = """heading('4 · Bộ gác OCR + Bước 02 · OCR kết hợp')
-note('Bộ gác (SigLIP zero-shot) chấm từng keyframe: điểm < ngưỡng thì không OCR (giảng viên nói, logo). '
-     'Unlimited-OCR đọc cả slide; vùng hình/biểu đồ được Qwen3-VL đọc riêng. Đoạn quảng cáo bỏ qua.')
+note('Bộ gác (SigLIP zero-shot, 14 câu mô tả) chấm từng keyframe: điểm < ngưỡng thì không OCR (giảng viên nói, logo, quảng cáo). '
+     + ('Qwen3-VL-4B đọc cả slide một lần (chữ, LaTeX, bảng, dòng [Hình] mô tả hình), mỗi GPU một bản.' if OCR_ENGINE == 'qwen'
+        else 'Unlimited-OCR đọc cả slide; vùng hình/biểu đồ được Qwen3-VL đọc riêng.'))
 stage02, manifest02, records = timed('02 bộ gác + OCR', run_visual_extraction, stage01, OUTPUT_ROOT, VIDEO_ID,
     languages=OCR_LANGUAGES, ocr_device='cuda', ocr_scale=OCR_SCALE, ocr_batch_size=OCR_BATCH_SIZE,
-    ocr_engine=OCR_ENGINE, hybrid_devices=HYBRID_DEVICES, ocr_gate=ocr_gate)
+    ocr_engine=OCR_ENGINE, hybrid_devices=HYBRID_DEVICES, ocr_gate=ocr_gate, describe_language=DESCRIBE_LANGUAGE,
+    reuse_near_duplicates=REUSE_NEAR_DUPLICATES, **(HYBRID_OPTIONS if OCR_ENGINE == 'hybrid' else {}))
+def raw_parts(record):
+    # Qwen: raw text answer; hybrid: JSON with the Unlimited-OCR answer and the second passes
+    raw = record.get('raw_ocr_response') or ''
+    try:
+        data = json.loads(raw)
+        return data.get('unlimited', ''), len(data.get('second_pass', []))
+    except (ValueError, TypeError, AttributeError):
+        return raw, ''
+read = [r for r in records if r['ocr_status'] == 'read']
+note(f'Thời gian OCR trung bình: <b>{TIMES["02 bộ gác + OCR"] / max(1, len(read)):.1f} s/slide được đọc</b> '
+     f'({len(read)} slide đọc, {sum(1 for r in records if r.get("ocr_reused_from"))} slide dùng lại kết quả slide gần trùng).')
 table([{'chỉ số': k, 'giá trị': manifest02.get(k)} for k in ('record_count', 'ocr_read_count', 'ocr_skipped_no_content')])
 by_segment = {i['segment_id']: i for i in intervals}
 table([{'#': by_segment[r['segment_id']]['sequence'], 'loại': r['content_kind'], 'OCR': r['ocr_status'],
         'điểm bộ gác': r.get('ocr_gate_score'), 'số ký tự': len(r['ocr_text']), 'số vùng': len(r['regions']),
-        'đọc lại khối hình lớn': len(json.loads(r['raw_ocr_response']).get('second_pass', [])) if r.get('raw_ocr_response') else '',
+        'dùng lại từ': (r.get('ocr_reused_from') or '').split(':')[-1],
         'tiêu đề': short(r['title'], 60), 'ảnh': img(stage01 / by_segment[r['segment_id']]['image_path'], 170)}
        for r in records])
 heading('Chi tiết từng slide đã OCR', 3)
@@ -240,12 +269,12 @@ for r in records:
     item = by_segment[r['segment_id']]
     regions = ''.join(f'<div style="margin:6px 0"><b>{html.escape(g["kind"])}</b><br>{img(stage02 / g["image_path"], 220)}'
                       f'{pre(g.get("text") or g.get("description") or "", 1500)}</div>' for g in r['regions'])
-    raw = json.loads(r['raw_ocr_response']).get('unlimited', '') if r.get('raw_ocr_response') else ''
+    raw = raw_parts(r)[0]
     show(f'<details style="margin:6px 0;border:1px solid #eee;padding:6px"><summary><b>#{item["sequence"]}</b> '
          f'{clock(item["start_sec"])}–{clock(item["end_sec"])} · {len(r["ocr_text"])} ký tự · {len(r["regions"])} vùng</summary>'
          f'<table><tr><td style="vertical-align:top">{img(stage01 / item["image_path"], 420)}</td>'
-         f'<td style="vertical-align:top"><b>Chữ OCR</b>{pre(r["ocr_text"])}<b>Vùng hình (Qwen3-VL)</b>{regions or "<i>không có</i>"}'
-         f'<details><summary>Đầu ra thô Unlimited-OCR</summary>{pre(raw, 3000)}</details></td></tr></table></details>')
+         f'<td style="vertical-align:top"><b>Chữ OCR</b>{pre(r["ocr_text"])}<b>Hình (mô tả của Qwen3-VL)</b>{regions or "<i>không có</i>"}'
+         f'<details><summary>Đầu ra thô của model</summary>{pre(raw, 3000)}</details></td></tr></table></details>')
 """
 
 STAGE04 = """heading('5 · Bước 04 · Đồng bộ')
@@ -290,7 +319,8 @@ table([{'chunk': c['chunk_id'].split(':', 1)[1], 'nguồn': c['source_type'], 't
 """
 
 RETRIEVE = """heading('7 · Hỏi thử')
-note('Đây là bước tìm bằng chứng (E5 + FTS5, gộp bằng RRF), chưa phải câu trả lời của Gemini.')
+note('Đây là bước tìm bằng chứng (E5 + FTS5/BM25, gộp bằng RRF), chưa phải câu trả lời của LLM. '
+     'Web app dùng thêm ưu tiên chữ slide ×1,05 và trả lời bằng Qwen2.5-7B (Ollama), không chạy ở đây.')
 engine = load_retrieval_engine(stage05, VIDEO_ID)
 lesson = [s for s in segments if s['content_kind'] != 'ad']
 by_chunk = {c['chunk_id']: c for c in chunks}
@@ -376,40 +406,13 @@ table(summary_rows)
 table(detail, limit=60)
 """
 
-SPEED = """heading('7c · Thử tăng tốc OCR: fp16 thay bf16 (T4 không có nhân bf16)')
-note('T4 tính bf16 bằng phần mềm, fp16 bằng tensor core. Thử đọc lại 3 slide bằng fp16, so thời gian và chữ đọc được. '
-     'Nếu lỗi kiểu dữ liệu thì giữ bf16.')
-import torch, difflib
-sample = [r for r in records if r['ocr_status'] == 'read'][:3]
-if sample:
-    reader = shared_model(('hybrid_ocr', tuple(HYBRID_DEVICES)), lambda: load_hybrid_ocr(*HYBRID_DEVICES))
-    rows, original_autocast = [], torch.autocast
-    for dtype_name, dtype in (('bf16', torch.bfloat16), ('fp16', torch.float16)):
-        try:
-            reader.ocr_model.to(dtype)
-            if dtype is torch.float16:   # infer() hard-codes autocast(bfloat16)
-                torch.autocast = lambda device_type, dtype=None, **kw: original_autocast(device_type, dtype=torch.float16, **kw)
-            for r in sample:
-                item = by_segment[r['segment_id']]
-                image = Image.open(stage01 / item['image_path']).convert('RGB')
-                torch.cuda.synchronize(); started = time.monotonic()
-                blocks, _, _ = reader(image)
-                torch.cuda.synchronize()
-                text = chr(10).join(b['text'] for b in blocks)
-                rows.append({'kiểu': dtype_name, 'slide': item['sequence'], 'giây': round(time.monotonic() - started, 1),
-                             'ký tự': len(text), 'giống lần chạy chính (%)': round(100 * difflib.SequenceMatcher(None, r['ocr_text'], text).ratio())})
-        except Exception as error:
-            rows.append({'kiểu': dtype_name, 'slide': '', 'giây': '', 'ký tự': '', 'giống lần chạy chính (%)': f'lỗi: {str(error)[:160]}'})
-        finally:
-            torch.autocast = original_autocast
-            if hasattr(reader, 'ocr_model'):
-                reader.ocr_model.to(torch.bfloat16)
-    table(rows)
-"""
-
 SUMMARY = """heading('8 · Tổng kết')
 import torch
-table([{'bước': k, 'giây': v} for k, v in TIMES.items()])
+pipeline_keys = ['01 tách slide + lọc quảng cáo', '03 giọng nói', '02 bộ gác + OCR', '04 đồng bộ', '05 chỉ mục']
+table([{'bước': k, 'giây': v} for k, v in TIMES.items()] +
+      [{'bước': Raw('<b>tổng 01→05 (chạy lần lượt)</b>'), 'giây': round(sum(TIMES.get(k, 0) for k in pipeline_keys), 1)}])
+note(f'Video {SOURCE["duration_sec"] / 60:.1f} phút: 01→05 mất {sum(TIMES.get(k, 0) for k in pipeline_keys) / 60:.1f} phút '
+     f'(chưa tính nạp model; pipeline nhanh chạy 03 song song nên còn nhanh hơn). OCR: {OCR_ENGINE}.')
 table([{'GPU': i, 'bộ nhớ cao nhất (GB)': round(torch.cuda.max_memory_allocated(i) / 2**30, 2)} for i in range(torch.cuda.device_count())])
 lesson_slides = [r for r in records if r['content_kind'] != 'ad']
 note(f'{SOURCE["duration_sec"] / 60:.1f} phút video → {manifest01["visual_state_count"]} trạng thái hình → '
@@ -430,13 +433,15 @@ print('Đã lưu walkthrough_report.html và walkthrough_export.zip')
 def build():
     cells = [cell("markdown", INTRO),
              cell("code", "%pip install -q " + DEPS + ' "matplotlib"')]
+    cells += [cell("markdown", "## Mã pipeline (bắt buộc chạy)\n\n9 ô dưới là mã của `notebook_code/` "
+                   "(đang thu gọn). Hãy bấm **Run All**, hoặc chạy lần lượt mọi ô từ trên xuống, kể cả các ô thu gọn.")]
     cells += [cell("code", (CODE / name).read_text(encoding="utf-8"), hidden=True) for name in MODULES]
     cells += [cell("markdown", "## Cấu hình\n\nSửa ở đây để thử tham số khác."), cell("code", CONFIG),
-              cell("code", HELPERS, hidden=True)]
+              cell("markdown", "## Hàm hiển thị bảng, ảnh, biểu đồ (bắt buộc chạy)"), cell("code", HELPERS)]
     for title, source in [("0 · Video", VIDEO), ("Nạp model", MODELS), ("1 · Bước 01", STAGE01),
                           ("2 · Lọc quảng cáo", ADS), ("3 · Bước 03", STAGE03), ("4 · Bộ gác OCR + bước 02", STAGE02),
                           ("5 · Bước 04", STAGE04), ("6 · Bước 05", STAGE05), ("7 · Hỏi thử", RETRIEVE),
-                          ("7b · Chấm điểm tìm kiếm", EVAL), ("7c · Thử tăng tốc OCR", SPEED),
+                          ("7b · Chấm điểm tìm kiếm", EVAL),
                           ("8 · Tổng kết", SUMMARY)]:
         cells += [cell("markdown", "## " + title), cell("code", source)]
     notebook = {"cells": cells,

@@ -146,6 +146,41 @@ def speech_relevance(windows, embed, reference_texts=(), trim=0.25):
     return windows
 
 
+def flag_runs(values, min_run=5, max_gap=2):
+    """[start, end) index runs of True after filling gaps of <= max_gap between two runs and
+    dropping runs shorter than min_run samples."""
+    runs, start = [], None
+    for index, value in enumerate(list(values) + [False]):
+        if value and start is None:
+            start = index
+        elif not value and start is not None:
+            runs.append([start, index]); start = None
+    merged = []
+    for run in runs:
+        if merged and run[0] - merged[-1][1] <= max_gap:
+            merged[-1][1] = run[1]
+        else:
+            merged.append(run)
+    return [run for run in merged if run[1] - run[0] >= min_run]
+
+
+def slide_speech_flags(content, windows, not_slide=0.5, topic_z=-1.5, min_run=5, max_gap=2):
+    """Content filter without a learned ad model: a 1 Hz sample is off-lecture when SigLIP says
+    the frame shows no lecture content (1 - content score > not_slide) AND the speech around it is
+    off the lecture topic (lowest topic_z of the covering speech windows < topic_z). A lecturer
+    talking (no slide, on-topic speech) or a slide with silence stays lecture. L25 6 videos +
+    MLS-15DA1: 92.5 % of ad seconds caught, 98.2 % / 98.9 % of lesson kept, no channel training.
+    content: stage-01 content_scores.json; windows: speech_relevance() output.
+    Returns [[start_sec, end_sec]] of off-lecture time."""
+    times = content["times"]
+    flags = []
+    for time, score in zip(times, content["scores"]):
+        near = [w["topic_z"] for w in windows if w["start_sec"] <= time < w["end_sec"]]
+        flags.append(1 - score > not_slide and bool(near) and min(near) < topic_z)
+    step = (times[-1] - times[0]) / max(1, len(times) - 1) if len(times) > 1 else 1.0
+    return [[times[a], times[b - 1] + step] for a, b in flag_runs(flags, min_run, max_gap)]
+
+
 def review_ad_speech(segments, threshold, min_pairs=20):
     """Stage 01 cuts ads from the picture alone; a lesson stretch it cut by mistake would lose
     its speech from the transcript and the index. An ad segment whose word pairs mostly come
@@ -171,11 +206,14 @@ def review_ad_speech(segments, threshold, min_pairs=20):
 
 
 def run_alignment(stage01_dir, stage02_dir, stage03_dir, output_root,
-                  video_id="L25_V001", ad_suspect_overlap=None, speech_embed=None):
+                  video_id="L25_V001", ad_suspect_overlap=None, speech_embed=None, slide_speech=None):
     """ad_suspect_overlap: None (off) or a threshold for review_ad_speech().
     speech_embed: None (off) or embed(texts) -> unit vectors (E5): every segment gets
     speech_topic = the lowest topic_z of the speech windows it overlaps (speech_relevance();
-    recorded only, no decision yet) and speech_relevance.json keeps the windows."""
+    recorded only, no decision yet) and speech_relevance.json keeps the windows.
+    slide_speech: None (off) or slide_speech_flags() options ({} for the defaults): needs
+    speech_embed and the stage-01 content_scores.json; a segment mostly inside off-lecture time
+    gets ad_flagged (kept and read, left out of the index by stage 05)."""
     paths = [Path(stage01_dir), Path(stage02_dir), Path(stage03_dir)]
     parents = [load_stage(path, index + 1, video_id) for index, path in enumerate(paths)]
     require_parent(parents[1], parents[0])
@@ -233,6 +271,20 @@ def run_alignment(stage01_dir, stage02_dir, stage03_dir, output_root,
             near = [w for w in windows if w["start_sec"] < segment["end_sec"] and w["end_sec"] > segment["start_sec"]]
             segment["speech_topic"] = ({"z": min(w["topic_z"] for w in near),
                                         "ad_terms": sum(w["ad_terms"] for w in near)} if near else None)
+    filter_report = None
+    if slide_speech is not None:
+        content_path = paths[0] / "content_scores.json"
+        if speech_embed is None or not content_path.exists():
+            raise ValueError("slide_speech cần speech_embed và content_scores.json của bước 01 (content_scorer).")
+        off = slide_speech_flags(read_json(content_path), windows, **slide_speech)
+        for segment in segments:
+            length = max(1e-6, segment["end_sec"] - segment["start_sec"])
+            inside = sum(max(0.0, min(b, segment["end_sec"]) - max(a, segment["start_sec"])) for a, b in off)
+            segment["ad_flagged"] = inside / length >= 0.5
+            segment["ad_score"] = round(inside / length, 3)
+        filter_report = {"mode": "slide_speech", "options": slide_speech, "off_lecture": [[round(a, 2), round(b, 2)] for a, b in off],
+                         "off_lecture_seconds": round(sum(b - a for a, b in off), 1),
+                         "flagged_segments": sum(s["ad_flagged"] for s in segments)}
     for interval in intervals:
         name = interval["image_path"]
         target = relative_asset(directory, name)
@@ -258,6 +310,8 @@ def run_alignment(stage01_dir, stage02_dir, stage03_dir, output_root,
     write_json(directory / "segments.json", segments)
     if windows:
         write_json(directory / "speech_relevance.json", windows)
+    if filter_report:
+        write_json(directory / "content_filter.json", filter_report)
     write_json(directory / "asr_corrections.json", asr_corrections)
     write_json(directory / "words.json", transcript["words"])
     write_json(directory / "fallback_spans.json", transcript["fallback_spans"])

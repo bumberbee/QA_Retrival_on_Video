@@ -50,7 +50,13 @@ FINE_HZ = 8.0  # Tần số giữ frame nhỏ để tinh chỉnh ranh giới, kh
 MERGE_REVEALS = True
 # Lọc quảng cáo: 'student' (SigLIP base + hồi quy logistic, file ad_student.npz từ thí nghiệm
 # bộ lọc), 'teacher' (SigLIP so400m zero-shot) hoặc None để tắt.
-AD_FILTER = 'student'   # 'student', 'teacher', 'outlier' hoặc None
+# Mặc định KHÔNG dùng bộ lọc quảng cáo học từ L25 (không tổng quát sang kênh khác); bộ gác OCR
+# zero-shot bên dưới là lớp lọc nội dung duy nhất. Thử nghiệm: 'student', 'teacher', 'outlier', 'slide_speech'.
+AD_FILTER = None
+# 'slide_speech': không dùng model học từ L25. Bước 01 chấm mỗi giây "có nội dung bài giảng" (SigLIP
+# zero-shot, cùng prompt bộ gác OCR); bước 04 đánh dấu giây vừa không giống slide vừa có lời lạc chủ
+# đề (E5). Cần SPEECH_RELEVANCE = True. Ngưỡng: SLIDE_SPEECH.
+SLIDE_SPEECH = {'not_slide': 0.5, 'topic_z': -1.5}
 # 'flag' = chỉ đánh dấu đoạn nghi quảng cáo (vẫn OCR + giữ lời, chỉ không lập chỉ mục), tự bỏ
 # dấu khi > 6 đoạn hoặc > 30% video (kênh lạ); 'cut' = bản cũ, cắt hẳn đoạn quảng cáo.
 AD_MODE = 'flag'
@@ -68,10 +74,12 @@ OCR_GATE_THRESHOLD = 0.15
 # 4 góc và phần giữa cũng dưới ngưỡng -> không bao giờ bỏ nhiều hơn 'frame'.
 OCR_GATE_VIEWS = 'frame+crops'
 
-# 02 · OCR. 'hybrid' = Unlimited-OCR (chữ, công thức LaTeX, bảng, có tọa độ) trên GPU 0
-# + Qwen3-VL đọc từng vùng biểu đồ/hình trên GPU 1; 'easyocr' = bản cũ, nhanh hơn nhiều.
+# 02 · OCR. 'qwen' = Qwen3-VL-4B đọc cả slide một lần (chữ, LaTeX, bảng, dòng [Hình] mô tả hình),
+# mỗi GPU một bản: so trên 2 video tiếng Việt + 2 tiếng Anh (13/10) nhanh hơn hybrid ×1,8–7, chữ sạch
+# hơn (không lặp dòng, đúng dấu hơn). 'hybrid' = Unlimited-OCR (GPU 0) + Qwen3-VL đọc từng vùng hình
+# (GPU 1); 'easyocr' = bản cũ. Các mục HYBRID_* chỉ dùng cho 'hybrid'.
 # Viền hồng chỉ đúng với L25_V001; video khác dùng cả khung hình.
-OCR_ENGINE = 'hybrid'
+OCR_ENGINE = 'qwen'
 HYBRID_DEVICES = ('cuda:0', 'cuda:1')
 OCR_LANGUAGES = ('vi', 'en')
 OCR_SCALE = 1.5
@@ -81,14 +89,22 @@ FRAME_HSV = {'L25_V001': ((135, 80, 120), (175, 255, 255))}
 # 0.4 = bản gốc; chỉ đổi sau khi đo bằng gold set 2 (gold/eval_ocr.py) trên tập dev.
 HYBRID_RESCUE_AREA = 0.4
 # Không gửi lại cho Qwen vùng đã bị gọi là trang trí trong video (logo, ảnh giảng viên):
-# L25 9 video bỏ 61/314 lần gọi Qwen, bỏ nhầm 2 vùng. Bật sau khi ocr_speed_bench đo được lợi.
-HYBRID_SKIP_REPEATED_DECOR = False
+# L25 9 video bỏ 61/314 lần gọi Qwen, bỏ nhầm 2 vùng.
+HYBRID_SKIP_REPEATED_DECOR = True
+# Vùng hình nhỏ hơn tỉ lệ này của slide (icon, gạch đầu dòng) không gửi cho Qwen.
+HYBRID_MIN_REGION_AREA = 0.02
+# Keyframe gần như trùng một keyframe đã OCR trong video (slide chiếu lại) dùng lại kết quả.
+REUSE_NEAR_DUPLICATES = True
+# Unlimited-OCR (GPU 0) đọc slide sau trong lúc Qwen3-VL (GPU 1) đọc các vùng hình của slide trước
+# theo lô. speed_bench3 (12/10, 3 video L25): cả 4 mục này ×1,31, giữ 100% từ OCR; demo V011 ×1,52,
+# cs_0001 (tiếng Anh) ×1,40.
+HYBRID_PIPELINED = True
 
 # 03 · ASR (giữ model của dự án; turbo đã bị loại sau kiểm tra nội dung)
 ASR_MODEL = 'Systran/faster-whisper-medium'
 ASR_REVISION = '08e178d48790749d25932bbc082711ddcfdfbc4f'
-# Whisper dùng chung GPU 1 với Qwen3-VL (~8.4 GB + ~2 GB), để GPU 0 cho Unlimited-OCR.
-ASR_DEVICE_INDEX = 1 if OCR_ENGINE == 'hybrid' else 0
+# Whisper dùng chung GPU 1 với Qwen3-VL (~8.4 GB + ~2 GB).
+ASR_DEVICE_INDEX = 0 if OCR_ENGINE == 'easyocr' else 1
 ASR_MODE = 'windowed'
 
 # 04 · đoạn quảng cáo có lời nói giống bài giảng (cặp từ trùng với phần còn lại của bài/slide)
@@ -104,7 +120,7 @@ SPEECH_RELEVANCE = True
 OCR_DEDUPE_PREVIOUS = False
 
 # 05 · chỉ mục
-EMBEDDING_MODEL = 'intfloat/multilingual-e5-small'
+EMBEDDING_MODEL = 'intfloat/multilingual-e5-small'   # bge-m3 lost on the 66-question set (hit@1 53 vs 55, hit@3 62 vs 65)
 EMBEDDING_REVISION = '614241f622f53c4eeff9890bdc4f31cfecc418b3'
 """
 
@@ -144,7 +160,7 @@ def find_video_file(video_id):
     return matches[0]
 
 ad_scorer = None
-if AD_FILTER:
+if AD_FILTER and AD_FILTER != 'slide_speech':
     student_path = AD_STUDENT_PATH or (next(iter(sorted(Path('/kaggle/input').rglob('ad_student.npz'))), None)
                                        if AD_FILTER == 'student' else None)
     if AD_FILTER == 'student' and student_path is None:
@@ -153,11 +169,14 @@ if AD_FILTER:
                  else load_ad_scorer(AD_FILTER, AD_DEVICE, student_path))
     print('Lọc quảng cáo:', ad_scorer[1])
 ocr_gate = load_ocr_gate(AD_DEVICE, threshold=OCR_GATE_THRESHOLD, views=OCR_GATE_VIEWS) if OCR_GATE else None
+content_scorer = load_ocr_gate(AD_DEVICE) if AD_FILTER == 'slide_speech' else None
+if AD_FILTER == 'slide_speech' and not SPEECH_RELEVANCE:
+    raise ValueError("AD_FILTER='slide_speech' cần SPEECH_RELEVANCE = True.")
 
 def speech_embed_model():
     from sentence_transformers import SentenceTransformer
     model = shared_model(('e5', EMBEDDING_MODEL), lambda: SentenceTransformer(
-        EMBEDDING_MODEL, revision=EMBEDDING_REVISION, device='cuda:1' if OCR_ENGINE == 'hybrid' else 'cuda'))
+        EMBEDDING_MODEL, revision=EMBEDDING_REVISION, device='cuda' if OCR_ENGINE == 'easyocr' else 'cuda:1'))
     return lambda texts: model.encode(['query: ' + t for t in texts], normalize_embeddings=True,
                                       batch_size=32, convert_to_numpy=True)
 speech_embed = speech_embed_model() if SPEECH_RELEVANCE else None
@@ -168,7 +187,7 @@ def detect(video_id):
     stage01, manifest, intervals = run_slide_detection(
         video, OUTPUT_ROOT / video_id, video_id, sample_hz=SAMPLE_HZ,
         fine_hz=FINE_HZ, merge_reveals=MERGE_REVEALS, scan='single_pass',
-        ad_scorer=ad_scorer, ad_options={'mode': AD_MODE},
+        ad_scorer=ad_scorer, ad_options={'mode': AD_MODE}, content_scorer=content_scorer,
     )
     return video, stage01, manifest, time.monotonic() - started
 
@@ -179,7 +198,8 @@ def ocr(video_id, stage01):
         ocr_device='cuda', ocr_scale=OCR_SCALE, ocr_batch_size=OCR_BATCH_SIZE,
         frame_hsv=FRAME_HSV.get(video_id), ocr_engine=OCR_ENGINE,
         hybrid_devices=HYBRID_DEVICES, ocr_gate=ocr_gate, hybrid_rescue_area=HYBRID_RESCUE_AREA,
-        hybrid_skip_repeated_decor=HYBRID_SKIP_REPEATED_DECOR,
+        hybrid_skip_repeated_decor=HYBRID_SKIP_REPEATED_DECOR, hybrid_min_region_area=HYBRID_MIN_REGION_AREA,
+        reuse_near_duplicates=REUSE_NEAR_DUPLICATES, hybrid_pipelined=HYBRID_PIPELINED,
     )
     return directory, time.monotonic() - started
 
@@ -223,7 +243,8 @@ with ThreadPoolExecutor(1) as cpu, ThreadPoolExecutor(1) as asr_queue, ThreadPoo
             started = time.monotonic()
             stage04, manifest04, _ = run_alignment(
                 stage01, stage02, stage03, OUTPUT_ROOT / video_id, video_id,
-                ad_suspect_overlap=AD_SUSPECT_OVERLAP, speech_embed=speech_embed)
+                ad_suspect_overlap=AD_SUSPECT_OVERLAP, speech_embed=speech_embed,
+                slide_speech=SLIDE_SPEECH if AD_FILTER == 'slide_speech' else None)
             row['04_sec'] = time.monotonic() - started
             started = time.monotonic()
             run_indexing(stage04, OUTPUT_ROOT / video_id, video_id,

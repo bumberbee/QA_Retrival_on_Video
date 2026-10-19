@@ -664,6 +664,22 @@ def create_reveal_sheet(directory, intervals, limit=12):
     return "reveal_sheet.jpg"
 
 
+def score_samples(records, directory, scorer, batch_size=64):
+    """{"times", "scores", info}: P(lecture content) of every 1 Hz sample of the scan."""
+    from PIL import Image
+
+    check, info = scorer
+    times, scores = [item["time_sec"] for item in records], []
+    for start in range(0, len(records), batch_size):
+        images = []
+        for item in records[start:start + batch_size]:
+            with Image.open(Path(directory) / item["image_path"]) as opened:
+                images.append(opened.convert("RGB"))
+        scores += [float(value) for value in check(images)]
+    return {**{k: v for k, v in info.items() if k != "threshold"},
+            "times": [round(t, 3) for t in times], "scores": [round(v, 4) for v in scores]}
+
+
 def run_slide_detection(video_path, output_root, video_id="L25_V001", *,
                         sample_hz=1.0, roi=(0, 0, 1, 1), ignored_regions=(),
                         change_threshold=0.055, stability_threshold=0.035,
@@ -672,12 +688,15 @@ def run_slide_detection(video_path, output_root, video_id="L25_V001", *,
                         reveal_thresholds=None, slide_classifier=None, merge_ocr=False,
                         scan="single_pass", fine_hz=8.0, skip_nonref=True,
                         split_hidden_changes=True, mask_motion=True,
-                        ad_scorer=None, ad_options=None):
+                        ad_scorer=None, ad_options=None, content_scorer=None):
     """slide_classifier: None, or (p_slide function, checkpoint sha256) from
     load_slide_classifier(). merge_ocr: compare Tesseract words between states.
     ad_scorer: None, or load_ad_scorer() of adfilter.py: ad segments are cut out of
     the slide intervals as their own segments (content_kind "ad"; single_pass only).
     ad_options: extra apply_ad_filter() arguments, e.g. {"mode": "flag"} to only flag them.
+    content_scorer: None, or (check(images) -> P(lecture content), info), e.g. load_ocr_gate():
+    every 1 Hz sample is scored and saved as content_scores.json for the slide+speech filter
+    of stage 04 (alignment.slide_speech_flags).
     scan: "single_pass" decodes once with no seeks; "seek" is the original method."""
     from PIL import Image
 
@@ -838,6 +857,8 @@ def run_slide_detection(video_path, output_root, video_id="L25_V001", *,
             intervals, records, directory, video_id, source["duration_sec"], boundaries,
             ad_scorer, min_interval_sec=min_interval_sec, **(ad_options or {}))
         write_json(directory / "ad_filter.json", ad_report)
+    if content_scorer is not None and records:
+        write_json(directory / "content_scores.json", score_samples(records, directory, content_scorer))
     shutil.rmtree(directory / "_scan", ignore_errors=True)
     verify_intervals(intervals, source["duration_sec"])
     write_json(directory / "intervals.json", intervals)
