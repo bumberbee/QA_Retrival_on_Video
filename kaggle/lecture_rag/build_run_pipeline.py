@@ -1,7 +1,7 @@
-"""Generate run_pipeline.ipynb: the current pipeline (01 + ad filter, OCR gate, 02 hybrid OCR,
-03 ASR, 04 sync, 05 index, retrieval) on ONE video chosen by name, printing the sample output of
-every stage. Same stage cells as full_pipeline_walkthrough (its V008-only answer-key check and the
-fp16 experiment are left out); the user only edits VIDEO_NAME and presses Run all on Kaggle.
+"""Generate run_pipeline.ipynb: the current pipeline (01, OCR gate, 02 OCR with Qwen3-VL, 03 ASR,
+04 sync, 05 index, retrieval) on ONE video chosen by name, printing the sample output of every
+stage. Same stage cells as full_pipeline_walkthrough (its V008-only answer-key check is left out);
+the user only edits VIDEO_NAME and presses Run all on Kaggle.
 
 The name is the file name without extension (L25_V008, D_kuulxKuxc) or a unique part of it,
 searched under /kaggle/input, so any attached video dataset works. Run: python build_run_pipeline.py
@@ -32,16 +32,16 @@ INTRO = """# Chạy pipeline cho 1 video · in kết quả mẫu từng bước
 |---|---|
 | 0 · Video | thông tin file, 6 khung hình mẫu |
 | 1 · Tách slide (01) | chỉ số, tham số, bảng mọi đoạn kèm ảnh, slide hiện dần đã gộp |
-| 2 · Lọc quảng cáo | biểu đồ điểm theo giây, ảnh đầu/giữa/cuối mỗi đoạn bị cắt |
+| 2 · Lọc quảng cáo | tắt mặc định: bộ gác OCR ở bước 4 bỏ quảng cáo và logo |
 | 3 · Giọng nói (03) | cửa sổ ASR, 60 từ đầu kèm thời gian và xác suất |
-| 4 · Bộ gác OCR + OCR (02) | bảng từng slide, chữ OCR, vùng hình Qwen3-VL, đầu ra thô |
+| 4 · Bộ gác OCR + OCR (02) | bảng từng slide, giây/slide, chữ và mô tả hình Qwen3-VL đọc, đầu ra thô |
 | 5 · Đồng bộ (04) | lời giảng gán vào slide, dòng lặp bị bỏ, từ ASR được sửa, 1 slide đầy đủ |
 | 6 · Chỉ mục (05) | số đoạn theo nguồn, 30 đoạn đầu |
 | 7 · Hỏi thử | 5 bằng chứng đầu cho mỗi câu hỏi |
-| 8 · Tổng kết | thời gian từng bước, bộ nhớ GPU |
+| 8 · Tổng kết | thời gian từng bước, tổng 01→05, bộ nhớ GPU |
 
 Mọi thứ cũng được lưu vào `walkthrough_report.html` và `walkthrough_export.zip` (tab Output).
-Thời gian: khoảng 10–35 phút cho 30 phút video (OCR chiếm ~85%), cộng 5–10 phút cài đặt."""
+Thời gian: ước tính 8–12 phút cho 30 phút video với OCR Qwen3-VL, cộng 5–10 phút cài đặt và tải model."""
 
 HEAD = """# ===== SỬA Ở ĐÂY =====
 VIDEO_NAME = 'MLS-15DA1'  # tên file video không có đuôi (hoặc một phần duy nhất của tên)
@@ -78,14 +78,14 @@ AUTO_QUESTIONS = """if not QUESTIONS:
 def config():
     lines = walk.CONFIG.split("# 7 · câu hỏi thử")[0].splitlines(keepends=True)
     body = "".join(line for line in lines if not line.startswith("VIDEO_ID ="))
+    body = body.replace("DESCRIBE_LANGUAGE = 'vi'", "DESCRIBE_LANGUAGE = LANGUAGE")
+    assert "DESCRIBE_LANGUAGE = LANGUAGE" in body
     return HEAD + body
 
 
 def build():
     stage03 = walk.STAGE03.replace("language='vi'", "language=LANGUAGE")
     assert stage03 != walk.STAGE03
-    stage02 = walk.STAGE02.replace("ocr_gate=ocr_gate)", "ocr_gate=ocr_gate, describe_language=LANGUAGE)")
-    assert stage02 != walk.STAGE02
     video = walk.VIDEO.replace("VIDEO = next(iter(sorted(Path('/kaggle/input').rglob(VIDEO_ID + '.mp4'))))\n", "")
     assert video != walk.VIDEO
     cells = [cell("markdown", INTRO), cell("code", "%pip install -q " + DEPS + ' "matplotlib"')]
@@ -94,7 +94,7 @@ def build():
               cell("code", walk.HELPERS, hidden=True), cell("code", FIND)]
     for title, source in [("0 · Video", video), ("Nạp model", walk.MODELS), ("1 · Bước 01 · Tách slide", walk.STAGE01),
                           ("2 · Lọc quảng cáo", walk.ADS), ("3 · Bước 03 · Giọng nói", stage03),
-                          ("4 · Bộ gác OCR + bước 02 · OCR", stage02), ("5 · Bước 04 · Đồng bộ", walk.STAGE04),
+                          ("4 · Bộ gác OCR + bước 02 · OCR", walk.STAGE02), ("5 · Bước 04 · Đồng bộ", walk.STAGE04),
                           ("6 · Bước 05 · Chỉ mục", walk.STAGE05), ("7 · Hỏi thử", AUTO_QUESTIONS + walk.RETRIEVE),
                           ("8 · Tổng kết", walk.SUMMARY)]:
         cells += [cell("markdown", "## " + title), cell("code", source)]
@@ -113,7 +113,7 @@ def build():
                "machine_shape": "NvidiaTeslaT4",
                "dataset_sources": [f"{OWNER}/l25a-lecture-videos-media", f"{OWNER}/vn-lecture-test12",
                                    f"{OWNER}/m3av-maths"],
-               "competition_sources": [], "kernel_sources": [f"{OWNER}/l25-ad-filter-e1-e4-20261002"]},
+               "competition_sources": [], "kernel_sources": []},
               open(run / "kernel-metadata.json", "w"), indent=2)
     print(run / f"{NAME}.ipynb")
 
