@@ -51,11 +51,12 @@ def indexed_ranges(folder, simulate, guard):
     intervals = json.loads((folder / "01_slides" / "intervals.json").read_text(encoding="utf-8"))
     report_path = folder / "01_slides" / "ad_filter.json"
     report = json.loads(report_path.read_text(encoding="utf-8")) if report_path.exists() else {}
-    suspect = set()
+    suspect, flagged04 = set(), set()
     segments_path = folder / "04_bundle" / "segments.json"
     if segments_path.exists():
-        suspect = {s["segment_id"] for s in json.loads(segments_path.read_text(encoding="utf-8"))
-                   if s.get("ad_suspect")}
+        segments = json.loads(segments_path.read_text(encoding="utf-8"))
+        suspect = {s["segment_id"] for s in segments if s.get("ad_suspect")}
+        flagged04 = {s["segment_id"] for s in segments if s.get("ad_flagged")}   # slide_speech (stage 04)
     duration = max(item["end_sec"] for item in intervals)
     ads = report.get("ad_intervals", [])
     info = {"mode": report.get("mode", "cut"), "ad_runs": len(ads),
@@ -74,7 +75,7 @@ def indexed_ranges(folder, simulate, guard):
     if report.get("guard"):
         info["guard"] = report["guard"]["reason"]
     return [(item["start_sec"], item["end_sec"]) for item in intervals
-            if not item.get("ad_flagged")
+            if not item.get("ad_flagged") and item["segment_id"] not in flagged04
             and (item["content_kind"] != "ad" or item["segment_id"] in suspect)], info
 
 

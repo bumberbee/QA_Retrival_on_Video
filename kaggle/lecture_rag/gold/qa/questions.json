@@ -1,35 +1,615 @@
 {
- "note": "Content filter, phase 0, set C: questions with the time range (seconds) that holds the answer. answer: null = not in the lecture (the system should say so). current_time: the second being watched, for 'this slide' questions. V008 ranges are from full_pipeline_walkthrough (checked against the slides); MLS-15DA1 ranges were read from its stage-04 segments (OCR + speech) on 05/10/2026. 'in_cut_ad' marks answers that lie in time the old ad filter cut out of MLS-15DA1.",
+ "note": "Content filter, phase 0, set C: questions with the time range (seconds) that holds the answer. answer: null = not in the lecture (the system should say so). current_time: the second being watched, for 'this slide' questions. V008 ranges are from full_pipeline_walkthrough (checked against the slides); MLS-15DA1 ranges were read from its stage-04 segments (OCR + speech) on 05/10/2026. 'in_cut_ad' marks answers that lie in time the old ad filter cut out of MLS-15DA1. L25_V011, L25_V037, L25_V017, hVU5Mw19V_c (13/10/2026): written by Claude from the stage-04 segments (OCR + speech), not yet human-checked; 'where' = the channel holding the answer (speech / ocr / both), 'a' = a short reference answer.",
  "videos": {
   "L25_V008": [
-   {"q": "Xác suất của một biến cố được tính như thế nào?", "answer": [89, 131]},
-   {"q": "Không gian mẫu khi lấy 2 quả cầu từ hộp 15 quả có bao nhiêu phần tử?", "answer": [130, 320]},
-   {"q": "Tổng hai số là số chẵn thì có những trường hợp nào?", "answer": [150, 320]},
-   {"q": "Chọn 10 tấm thẻ trong 30 thẻ sao cho có đúng 1 thẻ chia hết cho 10", "answer": [319, 465]},
-   {"q": "Từ 1 đến 40 có bao nhiêu số chia hết cho 3?", "answer": [547, 814]},
-   {"q": "Tính xác suất để tổng 3 số trên 3 thẻ chia hết cho 3", "answer": [547, 814]},
-   {"q": "Công thức tính nhanh số các số chia hết cho 3 trong một đoạn", "answer": [547, 814]},
-   {"q": "Xếp 9 học sinh thành hàng ngang sao cho không có 2 em lớp 12 đứng cạnh nhau", "answer": [813, 931]},
-   {"q": "Chia 9 học sinh thành 3 tổ, mỗi tổ có đúng một học sinh nữ", "answer": [989, 1210]},
-   {"q": "Thầy giáo dạy chuyên đề này là ai?", "answer": [0, 30]},
-   {"q": "Giải thích slide này.", "current_time": 400, "answer": [319, 465]},
-   {"q": "Cách cài đặt PyTorch?", "answer": null},
-   {"q": "Định lý Pythagore phát biểu thế nào?", "answer": null}
+   {
+    "q": "Xác suất của một biến cố được tính như thế nào?",
+    "answer": [
+     89,
+     131
+    ]
+   },
+   {
+    "q": "Không gian mẫu khi lấy 2 quả cầu từ hộp 15 quả có bao nhiêu phần tử?",
+    "answer": [
+     130,
+     320
+    ]
+   },
+   {
+    "q": "Tổng hai số là số chẵn thì có những trường hợp nào?",
+    "answer": [
+     150,
+     320
+    ]
+   },
+   {
+    "q": "Chọn 10 tấm thẻ trong 30 thẻ sao cho có đúng 1 thẻ chia hết cho 10",
+    "answer": [
+     319,
+     465
+    ]
+   },
+   {
+    "q": "Từ 1 đến 40 có bao nhiêu số chia hết cho 3?",
+    "answer": [
+     547,
+     814
+    ]
+   },
+   {
+    "q": "Tính xác suất để tổng 3 số trên 3 thẻ chia hết cho 3",
+    "answer": [
+     547,
+     814
+    ]
+   },
+   {
+    "q": "Công thức tính nhanh số các số chia hết cho 3 trong một đoạn",
+    "answer": [
+     547,
+     814
+    ]
+   },
+   {
+    "q": "Xếp 9 học sinh thành hàng ngang sao cho không có 2 em lớp 12 đứng cạnh nhau",
+    "answer": [
+     813,
+     931
+    ]
+   },
+   {
+    "q": "Chia 9 học sinh thành 3 tổ, mỗi tổ có đúng một học sinh nữ",
+    "answer": [
+     989,
+     1210
+    ]
+   },
+   {
+    "q": "Thầy giáo dạy chuyên đề này là ai?",
+    "answer": [
+     0,
+     30
+    ]
+   },
+   {
+    "q": "Giải thích slide này.",
+    "current_time": 400,
+    "answer": [
+     319,
+     465
+    ]
+   },
+   {
+    "q": "Cách cài đặt PyTorch?",
+    "answer": null
+   },
+   {
+    "q": "Định lý Pythagore phát biểu thế nào?",
+    "answer": null
+   }
   ],
   "MLS-15DA1": [
-   {"q": "Why do we want to find a nice basis for a linear transformation?", "answer": [47, 262], "in_cut_ad": true},
-   {"q": "What does a diagonal matrix do geometrically?", "answer": [183, 394]},
-   {"q": "What is the definition of an eigenvector and an eigenvalue?", "answer": [394, 607], "in_cut_ad": true},
-   {"q": "Why is lambda an eigenvalue exactly when the kernel of T minus lambda I is non-trivial?", "answer": [567, 747], "in_cut_ad": true},
-   {"q": "Which conditions are equivalent to lambda being an eigenvalue?", "answer": [601, 941], "in_cut_ad": true},
-   {"q": "What is the characteristic polynomial of a matrix?", "answer": [817, 1069]},
-   {"q": "Why does the characteristic polynomial not depend on the choice of basis?", "answer": [941, 1225], "in_cut_ad": true},
-   {"q": "What are the eigenvectors of a rotation around the z-axis?", "answer": [1316, 1704], "in_cut_ad": true},
-   {"q": "What is the trace of a matrix and why is Tr(AB) = Tr(BA)?", "answer": [1853, 2033]},
-   {"q": "What is the leading coefficient of the characteristic polynomial?", "answer": [2033, 2536]},
-   {"q": "Explain this slide.", "current_time": 476, "answer": [472, 481]},
-   {"q": "How do I install PyTorch?", "answer": null},
-   {"q": "What is the capital of France?", "answer": null}
+   {
+    "q": "Why do we want to find a nice basis for a linear transformation?",
+    "answer": [
+     47,
+     262
+    ],
+    "in_cut_ad": true
+   },
+   {
+    "q": "What does a diagonal matrix do geometrically?",
+    "answer": [
+     183,
+     394
+    ]
+   },
+   {
+    "q": "What is the definition of an eigenvector and an eigenvalue?",
+    "answer": [
+     394,
+     607
+    ],
+    "in_cut_ad": true
+   },
+   {
+    "q": "Why is lambda an eigenvalue exactly when the kernel of T minus lambda I is non-trivial?",
+    "answer": [
+     567,
+     747
+    ],
+    "in_cut_ad": true
+   },
+   {
+    "q": "Which conditions are equivalent to lambda being an eigenvalue?",
+    "answer": [
+     601,
+     941
+    ],
+    "in_cut_ad": true
+   },
+   {
+    "q": "What is the characteristic polynomial of a matrix?",
+    "answer": [
+     817,
+     1069
+    ]
+   },
+   {
+    "q": "Why does the characteristic polynomial not depend on the choice of basis?",
+    "answer": [
+     941,
+     1225
+    ],
+    "in_cut_ad": true
+   },
+   {
+    "q": "What are the eigenvectors of a rotation around the z-axis?",
+    "answer": [
+     1316,
+     1704
+    ],
+    "in_cut_ad": true
+   },
+   {
+    "q": "What is the trace of a matrix and why is Tr(AB) = Tr(BA)?",
+    "answer": [
+     1853,
+     2033
+    ]
+   },
+   {
+    "q": "What is the leading coefficient of the characteristic polynomial?",
+    "answer": [
+     2033,
+     2536
+    ]
+   },
+   {
+    "q": "Explain this slide.",
+    "current_time": 476,
+    "answer": [
+     472,
+     481
+    ]
+   },
+   {
+    "q": "How do I install PyTorch?",
+    "answer": null
+   },
+   {
+    "q": "What is the capital of France?",
+    "answer": null
+   }
+  ],
+  "L25_V011": [
+   {
+    "q": "Hội nghị Ianta, nơi đưa ra ý tưởng lập Liên Hợp Quốc, diễn ra vào thời gian nào?",
+    "answer": [
+     131,
+     158
+    ],
+    "where": "speech",
+    "a": "Hội nghị Ianta diễn ra vào tháng 2 năm 1945."
+   },
+   {
+    "q": "Hiện nay có những cơ quan chuyên môn nào của Liên Hợp Quốc đang hoạt động ở Việt Nam?",
+    "answer": [
+     158,
+     410
+    ],
+    "where": "speech",
+    "a": "Ví dụ như UNESCO, FAO (Tổ chức Lương thực và Nông nghiệp) và Quỹ Tiền tệ Quốc tế IMF."
+   },
+   {
+    "q": "ASEAN được thành lập vào ngày nào, ở đâu, gồm những nước sáng lập nào?",
+    "answer": [
+     410,
+     693
+    ],
+    "where": "speech",
+    "a": "Ngày 8/8/1967 tại Bangkok (Thái Lan) với 5 nước Indonesia, Malaysia, Singapore, Thái Lan và Philippines."
+   },
+   {
+    "q": "Hiệp ước Maastricht được ký khi nào và có hiệu lực từ lúc nào?",
+    "answer": [
+     693,
+     892
+    ],
+    "where": "speech",
+    "a": "Ký ngày 7/12/1991, có hiệu lực từ 1/1/1993, đổi tên thành Liên minh châu Âu với 15 thành viên."
+   },
+   {
+    "q": "Thầy giáo giảng bài chuyên đề các tổ chức quốc tế này tên là gì?",
+    "answer": [
+     88,
+     131
+    ],
+    "where": "ocr",
+    "a": "Thầy Nguyễn Việt Đăng."
+   },
+   {
+    "q": "Thầy giảng bài đang công tác ở trường nào và giữ vai trò gì?",
+    "answer": [
+     88,
+     131
+    ],
+    "where": "ocr",
+    "a": "Thầy là tổ trưởng tổ lịch sử Trường THPT Lê Quý Đôn."
+   },
+   {
+    "q": "Ngoài Brunei và Việt Nam, những nước Đông Nam Á nào gia nhập ASEAN sau này để ASEAN trở thành tổ chức toàn khu vực?",
+    "answer": [
+     410,
+     693
+    ],
+    "where": "ocr",
+    "a": "Lào, Mianma và Campuchia."
+   },
+   {
+    "q": "Bài về các tổ chức quốc tế là chuyên đề số mấy trong chương trình ôn thi THPT 2024?",
+    "answer": [
+     131,
+     158
+    ],
+    "where": "ocr",
+    "a": "Đây là chuyên đề 9 (CĐ9) môn Lịch sử."
+   },
+   {
+    "q": "Việt Nam từng làm ủy viên không thường trực Hội đồng Bảo an trong những nhiệm kỳ nào?",
+    "answer": [
+     158,
+     410
+    ],
+    "where": "both",
+    "a": "Nhiệm kỳ 2008-2009 và 2020-2021."
+   },
+   {
+    "q": "Năm 1976 các nước ASEAN đã ký văn kiện gì đánh dấu bước ngoặt phát triển?",
+    "answer": [
+     410,
+     693
+    ],
+    "where": "both",
+    "a": "Hiệp ước thân thiện và hợp tác (Hiệp ước Bali)."
+   },
+   {
+    "q": "Ngày nay Liên minh châu Âu được đánh giá có vai trò như thế nào?",
+    "answer": [
+     693,
+     892
+    ],
+    "where": "both",
+    "a": "EU là liên minh kinh tế - chính trị lớn nhất hành tinh."
+   },
+   {
+    "q": "Tổ chức Thương mại Thế giới WTO được thành lập năm nào và Việt Nam gia nhập khi nào?",
+    "answer": null,
+    "where": null,
+    "a": "Bài giảng không đề cập đến WTO."
+   }
+  ],
+  "L25_V037": [
+   {
+    "q": "Sau khi phong trào 1930-1931 bị đàn áp, trong giai đoạn 1932-1935 Đảng đã làm gì?",
+    "answer": [
+     160,
+     188
+    ],
+    "where": "speech",
+    "a": "Đảng đấu tranh để phục hồi tổ chức Đảng và các cơ sở quần chúng."
+   },
+   {
+    "q": "Vì sao phong trào 1930-1931 được xem là cuộc tập dượt đầu tiên cho Cách mạng tháng Tám?",
+    "answer": [
+     188,
+     364
+    ],
+    "where": "speech",
+    "a": "Vì lần đầu tiên phong trào diễn ra trên quy mô rộng khắp cả nước với nhiều hình thức, có cả khởi nghĩa vũ trang."
+   },
+   {
+    "q": "Hội nghị Trung ương tháng 7/1936 họp ở đâu và do ai chủ trì?",
+    "answer": [
+     364,
+     664
+    ],
+    "where": "speech",
+    "a": "Hội nghị họp tại Thượng Hải do đồng chí Lê Hồng Phong chủ trì."
+   },
+   {
+    "q": "Hưởng ứng lời kêu gọi của Quốc tế Cộng sản, mặt trận nhân dân đã được thành lập ở những nước nào?",
+    "answer": [
+     364,
+     664
+    ],
+    "where": "speech",
+    "a": "Ví dụ ở Pháp và Tây Ban Nha."
+   },
+   {
+    "q": "Thầy giáo dạy chuyên đề các cao trào cách mạng tên là gì?",
+    "answer": [
+     160,
+     188
+    ],
+    "where": "ocr",
+    "a": "Thầy Nguyễn Việt Đăng."
+   },
+   {
+    "q": "Thầy giảng bài là tổ trưởng tổ bộ môn nào ở trường nào?",
+    "answer": [
+     364,
+     664
+    ],
+    "where": "ocr",
+    "a": "Tổ trưởng tổ lịch sử Trường THPT Lê Quý Đôn."
+   },
+   {
+    "q": "Chuyên đề các cao trào cách mạng là chuyên đề số mấy trong chương trình ôn thi?",
+    "answer": [
+     115,
+     160
+    ],
+    "where": "ocr",
+    "a": "Chuyên đề 6 (CĐ6) môn Lịch sử ôn thi THPT 2024."
+   },
+   {
+    "q": "Trong cao trào kháng Nhật, phong trào phá kho thóc phát triển mạnh ở những vùng nào theo slide?",
+    "answer": [
+     664,
+     876
+    ],
+    "where": "ocr",
+    "a": "Ở miền Bắc và Bắc Trung Kỳ."
+   },
+   {
+    "q": "Tháng 9/1930 phong trào phát triển đến mức nào và các cấp ủy Đảng đã làm gì?",
+    "answer": [
+     188,
+     364
+    ],
+    "where": "both",
+    "a": "Phong trào lên đỉnh cao với hình thức vũ trang, chính quyền địa phương tan rã, các cấp ủy Đảng lập Xô viết."
+   },
+   {
+    "q": "Mặt trận Thống nhất Nhân dân phản đế Đông Dương sau này đổi tên thành gì?",
+    "answer": [
+     364,
+     664
+    ],
+    "where": "both",
+    "a": "Đổi thành Mặt trận Dân chủ Đông Dương."
+   },
+   {
+    "q": "Chỉ thị 'Nhật - Pháp bắn nhau và hành động của chúng ta' xác định kẻ thù chính là ai?",
+    "answer": [
+     664,
+     876
+    ],
+    "where": "both",
+    "a": "Kẻ thù chính của nhân dân Đông Dương lúc này là phát xít Nhật."
+   },
+   {
+    "q": "Mặt trận Việt Minh được thành lập vào năm nào?",
+    "answer": null,
+    "where": null,
+    "a": "Bài giảng không đề cập đến việc thành lập Mặt trận Việt Minh."
+   }
+  ],
+  "L25_V017": [
+   {
+    "q": "Vì sao chân đường vuông góc H từ tâm A xuống mặt phẳng lại là tâm của đường tròn thiết diện?",
+    "answer": [
+     95,
+     203
+    ],
+    "where": "speech",
+    "a": "Thầy giải thích khi kẻ AH vuông góc với (P) thì H chính là tâm đường tròn thiết diện và AH bằng khoảng cách từ A đến (P)."
+   },
+   {
+    "q": "Dạng bài tìm mặt phẳng chứa các tiếp điểm M ở ví dụ 3 từng xuất hiện trong đề nào?",
+    "answer": [
+     434,
+     622
+    ],
+    "where": "speech",
+    "a": "Dạng câu hỏi này giống một câu trong đề minh họa năm 2024."
+   },
+   {
+    "q": "Ví dụ 5 về hai mặt phẳng chứa d tiếp xúc mặt cầu được xếp ở mức độ khó nào?",
+    "answer": [
+     877,
+     886
+    ],
+    "where": "speech",
+    "a": "Thầy nói đây là ví dụ tương đối khó, ở mức vận dụng cao."
+   },
+   {
+    "q": "Tại sao IA vuông góc với đường thẳng d trong bài tính cos góc AIB?",
+    "answer": [
+     928,
+     1105
+    ],
+    "where": "speech",
+    "a": "Vì (P) tiếp xúc mặt cầu tại A nên IA vuông góc với (P), mà d nằm trong (P) nên IA vuông góc với d."
+   },
+   {
+    "q": "Thầy Lê Minh Huy dạy ở trường nào?",
+    "answer": [
+     3,
+     8
+    ],
+    "where": "ocr",
+    "a": "Thầy là giáo viên Toán trường THPT Nguyễn Hiền, Quận 11, TP.HCM."
+   },
+   {
+    "q": "Khi tính khoảng cách từ A(2;2;2) đến mặt phẳng 2x+2y+z+8=0, tử số được viết ra cụ thể thế nào?",
+    "answer": [
+     95,
+     203
+    ],
+    "where": "ocr",
+    "a": "Tử số là |4+4+2+8| chia cho căn của 2²+2²+1², ra bằng 6."
+   },
+   {
+    "q": "Sau khi khai triển điều kiện AM² = 16 ở ví dụ 3 thì được phương trình (2) cụ thể là gì?",
+    "answer": [
+     434,
+     622
+    ],
+    "where": "ocr",
+    "a": "Phương trình (2) là x²+y²+z²−4x−6y+2z−2=0."
+   },
+   {
+    "q": "Khi cho IK vuông góc với vectơ chỉ phương của d thì ta được phương trình bậc nhất nào theo a?",
+    "answer": [
+     928,
+     1105
+    ],
+    "where": "ocr",
+    "a": "Ta được 14a = 7, suy ra a = 1/2."
+   },
+   {
+    "q": "Diện tích mặt cầu ở câu 1 bằng bao nhiêu?",
+    "answer": [
+     95,
+     203
+    ],
+    "where": "both",
+    "a": "Bán kính R = 10 nên diện tích mặt cầu là 4πR² = 400π."
+   },
+   {
+    "q": "Bán kính đường tròn ngoại tiếp tam giác BCD trong ví dụ 4 bằng bao nhiêu?",
+    "answer": [
+     651,
+     817
+    ],
+    "where": "both",
+    "a": "r = BH = √30/3, chọn đáp án D."
+   },
+   {
+    "q": "Giá trị cos của góc AIB ở ví dụ 5 là bao nhiêu?",
+    "answer": [
+     1105,
+     1134
+    ],
+    "where": "both",
+    "a": "cos AIB = 2·(2/3)² − 1 = −1/9, chọn đáp án A."
+   },
+   {
+    "q": "Làm sao viết phương trình mặt phẳng tiếp diện của mặt cầu tại một điểm cho trước?",
+    "answer": null,
+    "where": null,
+    "a": "Bài giảng không đề cập nội dung này."
+   }
+  ],
+  "hVU5Mw19V_c": [
+   {
+    "q": "Khi tung xúc xắc, có những cách nào để chia thành nhóm đầy đủ các biến cố?",
+    "answer": [
+     0,
+     579
+    ],
+    "where": "speech",
+    "a": "Có thể chia theo từng mặt 1 đến 6, theo mặt chẵn/lẻ, hoặc theo mặt lớn hơn 4, nhỏ hơn 4 và bằng 4."
+   },
+   {
+    "q": "Tại sao công thức này lại được gọi là công thức xác suất đầy đủ?",
+    "answer": [
+     775,
+     1426
+    ],
+    "where": "speech",
+    "a": "Vì nó được tính trên một nhóm đầy đủ các biến cố B1, ..., Bn."
+   },
+   {
+    "q": "Nếu đã có bảng số liệu chi tiết thì tại sao vẫn cần học công thức Bayes?",
+    "answer": [
+     775,
+     1426
+    ],
+    "where": "speech",
+    "a": "Vì thực tế đề bài thường chỉ cho tỉ lệ chứ không cho số cụ thể, và với bài phức tạp thì áp công thức Bayes giúp tính nhanh."
+   },
+   {
+    "q": "Cuối bài thầy lưu ý gì về việc chọn nhóm đầy đủ các biến cố?",
+    "answer": [
+     1808,
+     1835
+    ],
+    "where": "speech",
+    "a": "Cùng một phép thử có nhiều cách chọn nhóm đầy đủ, biến cố A có thể liên quan nhiều nhóm và cần luyện tập nhiều để vận dụng linh hoạt."
+   },
+   {
+    "q": "Trên bảng, công thức P(A)=ΣP(A/Bi)P(Bi) được ghi chú viết tắt là gì?",
+    "answer": [
+     1495,
+     1513
+    ],
+    "where": "ocr",
+    "a": "Công thức được ghi chú là CTXSĐĐ (công thức xác suất đầy đủ), bên dưới là công thức Bayes."
+   },
+   {
+    "q": "Khẩu hiệu nào được viết trên bảng ở phần cuối bài ví dụ viện bỏng?",
+    "answer": [
+     1808,
+     1835
+    ],
+    "where": "ocr",
+    "a": "Trên bảng có dòng chữ 'Tự học - Tự lập - Tự do'."
+   },
+   {
+    "q": "Xác suất chọn ngẫu nhiên một học sinh nữ trong trường bằng bao nhiêu?",
+    "answer": [
+     579,
+     749
+    ],
+    "where": "both",
+    "a": "Theo công thức xác suất đầy đủ, xác suất chọn được bạn nữ là 35/74."
+   },
+   {
+    "q": "Trộn ba loại thóc giống rồi chọn một hạt thì xác suất hạt nảy mầm là bao nhiêu?",
+    "answer": [
+     1426,
+     1491
+    ],
+    "where": "both",
+    "a": "P(A) = 0,9·0,5/5 + 0,8·2/5 + 0,6·3/5 = 77/100 = 77%."
+   },
+   {
+    "q": "Trong viện bỏng, tỉ lệ bệnh nhân bỏng nhiệt là bao nhiêu và bao nhiêu phần trăm trong số đó bị biến chứng?",
+    "answer": [
+     1550,
+     1741
+    ],
+    "where": "both",
+    "a": "70% bệnh nhân bỏng nhiệt, trong đó 30% bị biến chứng."
+   },
+   {
+    "q": "Xác suất rút ngẫu nhiên một bệnh án bị biến chứng là bao nhiêu?",
+    "answer": [
+     1706,
+     1787
+    ],
+    "where": "both",
+    "a": "P(A) = 0,3·0,7 + 0,5·0,3 = 9/25 = 36%."
+   },
+   {
+    "q": "Biết bệnh án bị biến chứng, xác suất bệnh nhân đó thuộc nhóm bỏng nhiệt là bao nhiêu?",
+    "answer": [
+     1787,
+     1835
+    ],
+    "where": "both",
+    "a": "Theo Bayes, P(B1/A) = 0,7·0,3/0,36 = 7/12 ≈ 58,3%."
+   },
+   {
+    "q": "Hai biến cố độc lập thì công thức nhân xác suất được viết như thế nào?",
+    "answer": null,
+    "where": null,
+    "a": "Bài giảng không đề cập nội dung này."
+   }
   ]
  }
 }

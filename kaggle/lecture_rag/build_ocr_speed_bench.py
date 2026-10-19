@@ -26,8 +26,7 @@ OWNER = "thnhtrungnguynmif"
 
 INTRO = """# Tốc độ OCR kết hợp · thời gian ở đâu, và hai cách tăng tốc
 
-Cùng 40 keyframe L25 + 20 slide M3AV cho mọi bản: **base** (hiện tại), **decor** (không gửi lại cho
-Qwen vùng trang trí đã gặp trong video), **fp16** (Unlimited-OCR fp16 thay bf16). Bật một bản khi chữ
+Cùng 40 keyframe L25 + 20 slide M3AV cho mọi bản: **base** (ảnh 1024, hiện tại), **size768**, **size640** (ảnh nhỏ hơn cho Unlimited-OCR). Bật một bản khi chữ
 giống base ≥ 98% và CER M3AV không tệ hơn 0,01."""
 
 CONFIG = """import csv, difflib, gc, glob, json, statistics, time
@@ -68,7 +67,7 @@ def run(variant):
         image = Image.open(item['image']).convert('RGB')
         torch.cuda.synchronize(); started = time.monotonic()
         try:
-            blocks, regions, _ = read(image, decor_memory=memory if variant != 'base' else None)
+            blocks, regions, _ = read(image, decor_memory=memory if variant == 'decor' else None)
             item[variant] = prediction_text({'ocr_text': '\\n'.join(b['text'] for b in blocks), 'regions': regions})
         except Exception as error:
             item[variant] = ''; item.setdefault('errors', []).append(f'{variant}: {error}'[:200])
@@ -76,21 +75,11 @@ def run(variant):
     return {'variant': variant, 's_per_slide': round(statistics.mean(seconds), 2),
             **{k: round(v, 1) if isinstance(v, float) else v for k, v in read.timings.items()}}
 
-timing = [run('base'), run('decor')]
-print(timing)
-
-# fp16: cast the source of masked_scatter_ (the bf16/fp16 mismatch that made us pick bf16)
-original_scatter, original_autocast = torch.Tensor.masked_scatter_, torch.autocast
-try:
-    torch.Tensor.masked_scatter_ = lambda self, mask, source: original_scatter(self, mask, source.to(self.dtype))
-    torch.autocast = lambda device_type, dtype=None, **kw: original_autocast(device_type, dtype=torch.float16, **kw)
-    read.ocr_model.to(torch.float16)
-    timing.append(run('fp16'))
-except Exception as error:
-    timing.append({'variant': 'fp16', 'error': str(error)[:300]})
-finally:
-    torch.Tensor.masked_scatter_, torch.autocast = original_scatter, original_autocast
-    read.ocr_model.to(torch.bfloat16)
+timing = [run('base')]
+for size in (768, 640):   # smaller Unlimited-OCR input: fewer vision tokens, faster
+    read.options['base_size'] = size
+    timing.append(run(f'size{size}'))
+read.options['base_size'] = 1024
 print(timing)
 """
 
