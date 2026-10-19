@@ -95,3 +95,36 @@ export function videoTitle(filename) {
   return filename.replace(/\.(mp4|webm|mov|mkv)$/i, "").replace(/[_]+/g, " ");
 }
 
+
+// POST /qa/stream: calls onSources with the evidence slides, then onText with each piece of the answer. Returns false when the video
+// has no index (the caller then uses POST /qa), true once the answer is complete.
+export async function streamAnswer(body, signal, onText, onSources) {
+  const response = await fetch(`${API_BASE}/qa/stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body,
+    signal,
+  });
+  if (response.status === 404) return false;
+  if (!response.ok || !response.body) {
+    const detail = (await response.json().catch(() => null))?.detail;
+    throw new Error(typeof detail === "string" ? detail : `${response.status} ${response.statusText}`);
+  }
+  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += value;
+    const lines = buffer.split("\n");
+    buffer = lines.pop();
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const event = JSON.parse(line);
+      if (event.type === "delta") onText(event.text);
+      else if (event.type === "sources") onSources?.(event.sources);
+      else if (event.type === "error") throw new Error(event.detail);
+    }
+  }
+  return true;
+}

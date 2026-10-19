@@ -19,7 +19,7 @@ from ..models import Transcript
 from . import gemini
 
 DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434"
-DEFAULT_OLLAMA_MODEL = "qwen2:7b"
+DEFAULT_OLLAMA_MODEL = "qwen2.5:7b"
 
 SYSTEM_INSTRUCTION = (
     "Bạn là trợ lý trả lời câu hỏi về nội dung một video bài giảng, dựa trên "
@@ -118,12 +118,48 @@ EVIDENCE_INSTRUCTION = (
     "\"Bài giảng không đề cập đến nội dung này\" và gợi ý phần gần nhất mà bài có giảng.\n"
     "- Với công thức và con số, ưu tiên đọc trên ảnh slide; khi OCR và ảnh khác nhau, theo ảnh.\n"
     "- Trích dẫn mốc thời gian [mm:ss] của slide hoặc lời giảng dùng để trả lời.\n"
-    "- Trả lời ngắn gọn, rõ ràng, bằng tiếng Việt."
+    "- Chỉ nói \"không đề cập\" khi bằng chứng thật sự không có câu trả lời; đã có thì trả lời "
+    "thẳng, không vừa nói không đề cập vừa trả lời.\n"
+    "- Trả lời đúng điều được hỏi, 1–3 câu, rõ ràng, bằng tiếng Việt."
 )
 
 
-def answer_with_evidence(question: str, current_time: float | None, found: dict, context: str) -> str:
-    """Answer from retrieved slide evidence (text + up to 2 slide images for Gemini)."""
+def _ollama_stream(prompt: str):
+    """Yields the answer piece by piece (Ollama /api/chat with stream=true, one JSON per line)."""
+    base = os.getenv("OLLAMA_BASE_URL", DEFAULT_OLLAMA_URL).rstrip("/")
+    model = os.getenv("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL)
+    payload = {
+        "model": model,
+        "stream": True,
+        "messages": [{"role": "user", "content": prompt}],
+        "options": {"temperature": 0.2, "num_ctx": int(os.getenv("OLLAMA_NUM_CTX", "8192")),
+                    "num_predict": int(os.getenv("OLLAMA_MAX_TOKENS", "512"))},
+    }
+    request = urllib.request.Request(f"{base}/api/chat", data=json.dumps(payload).encode("utf-8"),
+                                     headers={"Content-Type": "application/json"})
+    try:
+        response = urllib.request.urlopen(request, timeout=float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "1800")))
+    except urllib.error.URLError as error:
+        raise LLMUnavailable(
+            f"Không kết nối được Ollama tại {base} (model {model}): {error.reason}. "
+            "Kiểm tra 'ollama serve' đang chạy, hoặc đặt LLM_PROVIDER=gemini trong .env."
+        ) from error
+    with response:
+        for line in response:
+            if not line.strip():
+                continue
+            data = json.loads(line.decode("utf-8"))
+            if data.get("error"):
+                raise LLMUnavailable(f"Ollama lỗi: {data['error']}")
+            piece = (data.get("message") or {}).get("content") or ""
+            if piece:
+                yield piece
+            if data.get("done"):
+                break
+
+
+def _evidence_prompt(question: str, current_time: float | None, found: dict, context: str,
+                     previous: str | None = None) -> str:
     time_hint = ""
     if current_time is not None:
         time_hint = f"\nNgười dùng đang xem tại {int(current_time // 60):02d}:{int(current_time % 60):02d}."
@@ -131,11 +167,13 @@ def answer_with_evidence(question: str, current_time: float | None, found: dict,
     if found.get("best_semantic", 1.0) < 0.85 and not found.get("temporal"):
         # measured on a 20-min lecture: questions it answers score >= 0.89, others 0.81-0.87
         weak = "\nLưu ý: bằng chứng tìm được khớp yếu với câu hỏi, rất có thể bài giảng không đề cập."
-    prompt = (f"{EVIDENCE_INSTRUCTION}{time_hint}{weak}\n\n--- BẰNG CHỨNG ---\n{context}\n--- HẾT ---\n\n"
-              f"Câu hỏi: {question}\n")
-    if provider() == "ollama":
-        return _ollama(prompt)
-    parts: list = [prompt]
+    follow = f"Câu hỏi trước đó của người dùng (câu hỏi dưới đây nối tiếp nó): {previous}\n" if previous else ""
+    return (f"{EVIDENCE_INSTRUCTION}{time_hint}{weak}\n\n--- BẰNG CHỨNG ---\n{context}\n--- HẾT ---\n\n"
+            f"{follow}Câu hỏi: {question}\n")
+
+
+def _slide_images(found: dict) -> list:
+    parts = []
     for slide in found["slides"][:2]:
         image = slide.get("image")
         if image and image.lower().endswith((".jpg", ".jpeg")):
@@ -144,7 +182,26 @@ def answer_with_evidence(question: str, current_time: float | None, found: dict,
                     parts.append({"mime_type": "image/jpeg", "data": handle.read()})
             except OSError:
                 pass
-    return gemini.complete_parts(parts)
+    return parts
+
+
+def answer_with_evidence(question: str, current_time: float | None, found: dict, context: str,
+                         previous: str | None = None) -> str:
+    """Answer from retrieved slide evidence (text + up to 2 slide images for Gemini)."""
+    prompt = _evidence_prompt(question, current_time, found, context, previous)
+    if provider() == "ollama":
+        return _ollama(prompt)
+    return gemini.complete_parts([prompt] + _slide_images(found))
+
+
+def stream_with_evidence(question: str, current_time: float | None, found: dict, context: str,
+                         previous: str | None = None):
+    """Same answer as answer_with_evidence, yielded piece by piece as the model writes it."""
+    prompt = _evidence_prompt(question, current_time, found, context, previous)
+    if provider() == "ollama":
+        yield from _ollama_stream(prompt)
+    else:
+        yield from gemini.stream_parts([prompt] + _slide_images(found))
 
 
 def answer_question(transcript: Transcript, question: str, current_time: float | None = None) -> str:

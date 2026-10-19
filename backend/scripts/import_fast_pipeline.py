@@ -56,6 +56,13 @@ def import_video(folder: Path, videos: Path | None) -> None:
     shutil.copytree(slides_dir / "keyframes" / "states", target)
 
     slides = []
+    # slide_speech filter: the flags are decided in stage 04 (segments.json), not in stage 01
+    segments_file = folder / "04_bundle" / "segments.json"
+    if segments_file.exists():
+        flagged = {s["segment_id"] for s in json.loads(segments_file.read_text(encoding="utf-8")) if s.get("ad_flagged")}
+        for interval in intervals:
+            if interval["segment_id"] in flagged:
+                interval["ad_flagged"] = True
     ads = [interval for interval in intervals if is_ad(interval)]
     for interval in intervals:
         if is_ad(interval):

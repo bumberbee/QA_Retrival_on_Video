@@ -16,15 +16,37 @@ import {
   request,
   saveSlideReview,
   slideUrl,
+  streamAnswer,
   videoTitle,
 } from "../lib/api";
 import { useMediaQuery } from "../lib/hooks";
 import { Dialog, EmptyState, Icon, Spinner } from "./UI";
 import VideoPlayer from "./VideoPlayer";
 
+const TIME = String.raw`\d{1,3}:[0-5]\d(?::[0-5]\d)?`;
+// "[02:10–02:38]", "[Slide seg_00005 · 02:10–02:38]", "[10:22 - 15:27]": one link to the start.
+const RANGE = new RegExp(
+  String.raw`^\[(?:[^\]\[]*?·\s*)?(${TIME})\s*(?:[–—-]\s*(${TIME}))?\]$`,
+);
+const INLINE = new RegExp(
+  String.raw`(\*\*[^*]+\*\*|\[(?:[^\]\[]*?·\s*)?${TIME}\s*(?:[–—-]\s*${TIME})?\]|${TIME})`,
+  "g",
+);
+
+function toSeconds(timestamp) {
+  return timestamp
+    .split(":")
+    .reduce((total, value) => total * 60 + Number(value), 0);
+}
+
+function clock(seconds) {
+  const total = Math.floor(seconds);
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+}
+
 function renderInline(text, onSeek, t, prefix) {
   return text
-    .split(/(\*\*[^*]+\*\*|\[?\d{1,3}:[0-5]\d(?::[0-5]\d)?\]?)/g)
+    .split(INLINE)
     .map((part, index) => {
       const key = `${prefix}-${index}`;
       if (part.startsWith("**") && part.endsWith("**"))
@@ -33,11 +55,11 @@ function renderInline(text, onSeek, t, prefix) {
             {renderInline(part.slice(2, -2), onSeek, t, key)}
           </strong>
         );
-      if (/^\[?\d{1,3}:[0-5]\d(?::[0-5]\d)?\]?$/.test(part)) {
-        const timestamp = part.replace(/[[\]]/g, "");
-        const seconds = timestamp
-          .split(":")
-          .reduce((total, value) => total * 60 + Number(value), 0);
+      const range = part.match(RANGE);
+      if (range || new RegExp(`^${TIME}$`).test(part)) {
+        const start = range ? range[1] : part;
+        const timestamp = range?.[2] ? `${start}–${range[2]}` : start;
+        const seconds = toSeconds(start);
         return (
           <button
             key={key}
@@ -112,6 +134,25 @@ const ChatMessage = memo(function ChatMessage({ message, onSeek, onRetry, t }) {
             <FormattedText text={message.text} onSeek={onSeek} t={t} />
           )}
         </div>
+        {!user && message.sources?.length > 0 && (
+          <div className="answer-sources">
+            <span>{t.sources}</span>
+            {[...message.sources]
+              .sort((a, b) => a.start - b.start)
+              .map((source) => (
+                <button
+                  key={source.segment_id}
+                  className="timestamp-link"
+                  onClick={() => onSeek(source.start)}
+                  title={source.title || undefined}
+                  aria-label={`${t.seekTo} ${clock(source.start)}`}
+                >
+                  <Icon name="play" size={11} />
+                  {clock(source.start)}
+                </button>
+              ))}
+          </div>
+        )}
         {message.error && (
           <button className="retry-question" onClick={() => onRetry(message)}>
             <Icon name="refresh" size={13} />
@@ -246,7 +287,7 @@ function ChatPanel({
             t={t}
           />
         ))}
-        {asking && (
+        {asking && messages[messages.length - 1]?.role !== "ai" && (
           <div className="typing-indicator" role="status">
             <span className="message-avatar">
               <Icon name="sparkles" size={16} />
@@ -585,6 +626,8 @@ export default function Workspace({
   const [lightbox, setLightbox] = useState(null);
   const [chatOpen, setChatOpen] = useState(initialChatOpen);
   const [messages, setMessages] = useState([]);
+  const chatHistory = useRef(messages);
+  chatHistory.current = messages;
   const [question, setQuestion] = useState(initialQuestion);
   const [asking, setAsking] = useState(false);
   const desktopChat = useMediaQuery("(min-width: 900px)");
@@ -709,23 +752,49 @@ export default function Workspace({
       );
       if (!retryId) setQuestion("");
       setAsking(true);
+      // The question before this one, so a follow-up ("còn cái kia?") is searched with it.
+      const previousQuestion = [...chatHistory.current]
+        .reverse()
+        .find((item) => item.role === "user" && item.text !== content)?.text;
+      const body = JSON.stringify({
+        video_id: video.video_id,
+        question: content,
+        current_time: time,
+        previous_question: previousQuestion ?? null,
+      });
+      const answerId = crypto.randomUUID();
       try {
-        const data = await request("/qa", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            video_id: video.video_id,
-            question: content,
-            current_time: time,
-          }),
-          signal: controller.signal,
-        });
-        if (typeof data.answer !== "string") throw new Error(t.answerError);
-        if (!controller.signal.aborted)
-          setMessages((items) => [
-            ...items,
-            { id: crypto.randomUUID(), role: "ai", text: data.answer },
-          ]);
+        // Indexed videos stream the answer as it is written; others answer in one piece.
+        let sources = [];
+        const streamed = await streamAnswer(
+          body,
+          controller.signal,
+          (text) =>
+            setMessages((items) =>
+              items.some((item) => item.id === answerId)
+                ? items.map((item) =>
+                    item.id === answerId ? { ...item, text: item.text + text } : item,
+                  )
+                : [...items, { id: answerId, role: "ai", text, sources }],
+            ),
+          (found) => {
+            sources = found;
+          },
+        );
+        if (!streamed) {
+          const data = await request("/qa", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body,
+            signal: controller.signal,
+          });
+          if (typeof data.answer !== "string") throw new Error(t.answerError);
+          if (!controller.signal.aborted)
+            setMessages((items) => [
+              ...items,
+              { id: answerId, role: "ai", text: data.answer, sources: data.sources },
+            ]);
+        }
       } catch (error) {
         if (!controller.signal.aborted)
           setMessages((items) => [

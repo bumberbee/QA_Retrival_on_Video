@@ -36,3 +36,12 @@ def complete_parts(parts: list) -> str:
     model = genai.GenerativeModel(_MODEL_NAME)
     response = model.generate_content(parts)
     return response.text or "Xin lỗi, tui không tạo được câu trả lời."
+
+
+def stream_parts(parts: list):
+    """complete_parts, yielded piece by piece."""
+    _ensure_configured()
+    model = genai.GenerativeModel(_MODEL_NAME)
+    for chunk in model.generate_content(parts, stream=True):
+        if chunk.text:
+            yield chunk.text

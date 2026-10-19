@@ -81,5 +81,25 @@ class RetrievalTests(unittest.TestCase):
         self.assertEqual(retrieval.lexical_hits(folder, "định nghĩa xác suất", 5)[0], "c0")
 
 
+class FollowUpTest(unittest.TestCase):
+    def test_short_questions_that_point_back_are_follow_ups(self):
+        for question in ("Còn ASEAN thì sao?", "Nó được thành lập năm nào?", "Cái đó nghĩa là gì?",
+                         "Thế còn EU?", "What about the eigenvalues?"):
+            self.assertTrue(retrieval.is_follow_up(question), question)
+
+    def test_standalone_questions_are_not(self):
+        # "độ", "con", "thế nào" look like "đó", "còn", "thế" once the diacritics are gone
+        for question in ("Nhiệt độ nóng chảy của nhôm là bao nhiêu?", "Liên hợp quốc thành lập năm nào?",
+                         "Con người tiến hóa thế nào trong bài?", "Làm thế nào tính xác suất?"):
+            self.assertFalse(retrieval.is_follow_up(question), question)
+
+    def test_a_follow_up_is_searched_with_the_question_before_it(self):
+        self.assertEqual(retrieval.search_question("Còn EU thì sao?", "ASEAN thành lập năm nào?"),
+                         "ASEAN thành lập năm nào? Còn EU thì sao?")
+        self.assertEqual(retrieval.search_question("EU thành lập năm nào?", "ASEAN thành lập năm nào?"),
+                         "EU thành lập năm nào?")
+        self.assertEqual(retrieval.search_question("Còn EU thì sao?", None), "Còn EU thì sao?")
+
+
 if __name__ == "__main__":
     unittest.main()

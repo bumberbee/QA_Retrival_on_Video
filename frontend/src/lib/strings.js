@@ -157,6 +157,7 @@ export const STRINGS = {
     noTranscriptResults: "No matching passages.",
     segments: "passages",
     seekTo: "Jump to",
+    sources: "Sources",
     playbackError:
       "This video couldn’t be played. Try reloading it or opening the original file.",
     openOriginal: "Open original video",
@@ -406,6 +407,7 @@ export const STRINGS = {
     noTranscriptResults: "Không tìm thấy đoạn phù hợp.",
     segments: "đoạn",
     seekTo: "Chuyển đến",
+    sources: "Nguồn",
     playbackError: "Chưa thể phát video. Hãy thử tải lại hoặc mở tệp gốc.",
     openOriginal: "Mở video gốc",
     reloadVideo: "Tải lại video",

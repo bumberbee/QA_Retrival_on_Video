@@ -1,7 +1,9 @@
+import json
 import time
 
 from google.api_core.exceptions import GoogleAPICallError, ResourceExhausted
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 
 from .. import storage
 from ..models import AnswerSource, AskRequest, AskResponse
@@ -24,9 +26,11 @@ async def ask_question(req: AskRequest):
     sources: list[AnswerSource] = []
     try:
         if use_index:
-            found = retrieval.search(req.video_id, req.question, req.current_time)
+            query = retrieval.search_question(req.question, req.previous_question)
+            found = retrieval.search(req.video_id, query, req.current_time)
             context = retrieval.build_context(found)
-            answer = llm.answer_with_evidence(req.question, req.current_time, found, context)
+            answer = llm.answer_with_evidence(req.question, req.current_time, found, context,
+                                              previous=req.previous_question if query != req.question else None)
             sources = [AnswerSource(segment_id=s["segment_id"], start=s["start_sec"], end=s["end_sec"],
                                     title=s["title"] or "") for s in found["slides"]]
         else:
@@ -50,3 +54,39 @@ async def ask_question(req: AskRequest):
         f"video={req.video_id} elapsed={elapsed:.1f}s"
     )
     return AskResponse(answer=answer, sources=sources, mode="evidence" if use_index else "transcript")
+
+
+@router.post("/stream")
+def ask_question_stream(req: AskRequest):
+    """The evidence answer as NDJSON lines: {"type": "sources"}, then {"type": "delta"} pieces,
+    then {"type": "done"} or {"type": "error"}. Videos without an index use POST /api/qa."""
+    if not retrieval.has_index(req.video_id):
+        raise HTTPException(404, "Video này chưa có chỉ mục, dùng /api/qa")
+    query = retrieval.search_question(req.question, req.previous_question)
+    previous = req.previous_question if query != req.question else None
+    found = retrieval.search(req.video_id, query, req.current_time)
+    context = retrieval.build_context(found)
+    sources = [{"segment_id": s["segment_id"], "start": s["start_sec"], "end": s["end_sec"],
+                "title": s["title"] or ""} for s in found["slides"]]
+
+    def lines():
+        backend = llm.describe()
+        started = time.perf_counter()
+        first = None
+        yield json.dumps({"type": "sources", "sources": sources}, ensure_ascii=False) + "\n"
+        try:
+            for piece in llm.stream_with_evidence(req.question, req.current_time, found, context, previous):
+                first = first or time.perf_counter() - started
+                yield json.dumps({"type": "delta", "text": piece}, ensure_ascii=False) + "\n"
+        except ResourceExhausted:
+            yield json.dumps({"type": "error", "detail": "Đã hết quota Gemini API miễn phí cho hôm nay."},
+                             ensure_ascii=False) + "\n"
+            return
+        except (llm.LLMUnavailable, GoogleAPICallError, RuntimeError) as e:
+            yield json.dumps({"type": "error", "detail": str(e)}, ensure_ascii=False) + "\n"
+            return
+        print(f"[qa-stream] {backend['provider']}:{backend['model']} video={req.video_id} "
+              f"first={first or 0:.1f}s total={time.perf_counter() - started:.1f}s")
+        yield json.dumps({"type": "done"}) + "\n"
+
+    return StreamingResponse(lines(), media_type="application/x-ndjson")

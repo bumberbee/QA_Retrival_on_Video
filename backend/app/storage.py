@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import uuid
 from datetime import datetime, timezone
@@ -6,7 +7,8 @@ from pathlib import Path
 
 from .models import Transcript, VideoInfo
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+# LECTURE_RAG_DATA_DIR moves the app data off the default backend/data (e.g. to a bigger drive).
+DATA_DIR = Path(os.getenv("LECTURE_RAG_DATA_DIR") or Path(__file__).resolve().parent.parent / "data")
 VIDEOS_DIR = DATA_DIR / "videos"
 TRANSCRIPTS_DIR = DATA_DIR / "transcripts"
 KEYFRAMES_DIR = DATA_DIR / "keyframes"
