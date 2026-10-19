@@ -1,12 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import Library from "./components/Library";
-import {
-  Dialog,
-  HelpDialog,
-  Icon,
-  Logo,
-  Spinner,
-} from "./components/UI";
+import VideoRail from "./components/VideoRail";
+import Splitter, { useStoredSize } from "./components/Splitter";
+import { Dialog, HelpDialog, Icon, Spinner } from "./components/UI";
 import ImportDialog from "./components/ImportDialog";
 import { request, videoTitle } from "./lib/api";
 import { useMediaQuery, usePreference } from "./lib/hooks";
@@ -14,88 +9,6 @@ import { STRINGS } from "./lib/strings";
 import { useVideoImport } from "./lib/useVideoImport";
 
 const Workspace = lazy(() => import("./components/Workspace"));
-const ReadyForAI = lazy(() => import("./components/ReadyForAI"));
-
-function Sidebar({
-  videos,
-  selectedVideo,
-  page,
-  onNavigate,
-  onSelect,
-  onHelp,
-  onClose,
-  t,
-}) {
-  return (
-    <div className="sidebar-content">
-      <div className="sidebar-brand">
-        <Logo onClick={() => onNavigate("all")} />
-        {onClose && (
-          <button
-            className="icon-button"
-            onClick={onClose}
-            aria-label={t.close}
-          >
-            <Icon name="close" />
-          </button>
-        )}
-      </div>
-      <nav className="main-navigation" aria-label={t.navigation}>
-        <button
-          className={
-            !selectedVideo && page === "library"
-              ? "nav-item active"
-              : "nav-item"
-          }
-          onClick={() => onNavigate("all")}
-          aria-current={
-            !selectedVideo && page === "library" ? "page" : undefined
-          }
-        >
-          <Icon name="library" size={19} />
-          <span>{t.library}</span>
-          <span className="nav-count">{videos?.length ?? "—"}</span>
-        </button>
-        <button
-          className={
-            !selectedVideo && page === "ai" ? "nav-item active" : "nav-item"
-          }
-          onClick={() => onNavigate("ready")}
-          aria-current={!selectedVideo && page === "ai" ? "page" : undefined}
-        >
-          <Icon name="sparkles" size={19} />
-          <span>{t.aiReady}</span>
-        </button>
-      </nav>
-      {Boolean(videos?.length) && <div className="sidebar-recents">
-        <p className="sidebar-label">{t.recent}</p>
-        {videos?.slice(0, 3).map((video, index) => (
-          <button
-            key={video.video_id}
-            className={`recent-video ${selectedVideo?.video_id === video.video_id ? "active" : ""}`}
-            onClick={() => onSelect(video)}
-            aria-current={
-              selectedVideo?.video_id === video.video_id ? "page" : undefined
-            }
-            title={video.filename}
-          >
-            <span className={`recent-video-icon card-tone-${index % 4}`}>
-              <Icon name="play" size={15} />
-            </span>
-            <span>{videoTitle(video.filename)}</span>
-            <Icon name="chevron" size={13} />
-          </button>
-        ))}
-      </div>}
-      <div className="sidebar-bottom">
-        <button className="nav-item" onClick={onHelp}>
-          <Icon name="help" size={19} />
-          <span>{t.howItWorks}</span>
-        </button>
-      </div>
-    </div>
-  );
-}
 
 export default function App() {
   const [lang, setLang] = usePreference("lang", "vi", ["vi", "en"]);
@@ -105,14 +18,15 @@ export default function App() {
   const [libraryError, setLibraryError] = useState(false);
   const [refreshIndex, setRefreshIndex] = useState(0);
   const [selectedVideo, setSelectedVideo] = useState(null);
-  const [page, setPage] = useState("library");
   const [workspaceStart, setWorkspaceStart] = useState({
     prompt: "",
     focusChat: false,
   });
-  const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState("all");
   const [mobileNav, setMobileNav] = useState(false);
+  const [checkedIds, setCheckedIds] = useState([]);   // videos to ask across; [] = the one being watched
+  const [messages, setMessages] = useState([]);
+  const [startTime, setStartTime] = useState(0);
+  const [railWidth, setRailWidth, resetRailWidth] = useStoredSize("rail", 290, 220, 520);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [importMode, setImportMode] = useState("link");
   const [helpOpen, setHelpOpen] = useState(false);
@@ -120,7 +34,6 @@ export default function App() {
   const [uploadError, setUploadError] = useState("");
   const [uploadFilename, setUploadFilename] = useState("");
   const uploadRequest = useRef(null);
-  const searchRef = useRef(null);
   const desktop = useMediaQuery("(min-width: 1100px)");
   const t = STRINGS[lang];
   const videoImport = useVideoImport({
@@ -137,12 +50,12 @@ export default function App() {
     document.documentElement.lang = lang;
     document
       .querySelector('meta[name="theme-color"]')
-      ?.setAttribute("content", theme === "dark" ? "#0c0b0a" : "#faf6ef");
+      ?.setAttribute("content", theme === "dark" ? "#0b1220" : "#f6f8fb");
   }, [theme, lang]);
 
   useEffect(() => {
-    document.title = `${selectedVideo ? `${videoTitle(selectedVideo.filename)} · ` : page === "ai" ? `${t.aiReady} · ` : ""}Video Q&A`;
-  }, [selectedVideo, page, t.aiReady]);
+    document.title = `${selectedVideo ? `${videoTitle(selectedVideo.filename)} · ` : ""}Video Q&A`;
+  }, [selectedVideo]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -163,23 +76,6 @@ export default function App() {
     return () => controller.abort();
   }, [refreshIndex]);
 
-  useEffect(() => {
-    function onKeyDown(event) {
-      if (
-        (event.ctrlKey || event.metaKey) &&
-        event.key.toLowerCase() === "k" &&
-        !document.querySelector("dialog[open]")
-      ) {
-        event.preventDefault();
-        setSelectedVideo(null);
-        setPage("library");
-        requestAnimationFrame(() => searchRef.current?.focus());
-      }
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
-
   useEffect(() => () => uploadRequest.current?.abort(), []);
 
   const sortedVideos = useMemo(
@@ -193,6 +89,10 @@ export default function App() {
         : null,
     [videoList],
   );
+  useEffect(() => {
+    if (!selectedVideo && sortedVideos?.length)
+      setSelectedVideo(sortedVideos.find((video) => video.has_transcript) || sortedVideos[0]);
+  }, [selectedVideo, sortedVideos]);
   const currentVideo = selectedVideo
     ? videoList?.find((item) => item.video_id === selectedVideo.video_id) ||
       selectedVideo
@@ -204,17 +104,9 @@ export default function App() {
     setRefreshIndex((index) => index + 1);
   }
 
-  function navigate(nextFilter = "all") {
-    setSelectedVideo(null);
-    setPage(nextFilter === "ready" ? "ai" : "library");
-    setFilter(nextFilter === "ready" ? "all" : nextFilter);
-    setSearch("");
-    setMobileNav(false);
-    window.scrollTo({ top: 0, behavior: "instant" });
-  }
-
   function selectVideo(video, options = {}) {
     setSelectedVideo(video);
+    setStartTime(options.time || 0);
     setWorkspaceStart({
       prompt: options.prompt || "",
       focusChat: Boolean(options.focusChat),
@@ -277,201 +169,104 @@ export default function App() {
     }
   }
 
-  const sidebarProps = {
+  const railProps = {
     videos: sortedVideos,
-    selectedVideo,
-    page,
-    onNavigate: navigate,
+    loading,
+    error: libraryError,
+    selectedId: currentVideo?.video_id,
     onSelect: selectVideo,
+    checkedIds,
+    onToggle: (id) =>
+      setCheckedIds((ids) => {
+        const current = currentVideo?.video_id;
+        const scope = ids.length ? ids : [current];
+        const next = scope.includes(id) ? scope.filter((item) => item !== id) : [...scope, id];
+        if (!next.length) return ids;   // keep at least one video to ask
+        return next.length === 1 && next[0] === current ? [] : next;
+      }),
+    onClearChecked: () => setCheckedIds([]),
+    onUpload: () => openUpload(),
+    onRefresh: refreshLibrary,
+    addingVideo,
+    lang,
+    onLang: () => setLang(lang === "vi" ? "en" : "vi"),
+    theme,
+    onTheme: () => setTheme(theme === "dark" ? "light" : "dark"),
     onHelp: openHelp,
     t,
   };
-  const searchLabel = page === "ai" ? t.searchReady : t.search;
 
   return (
-    <div className="app-shell">
+    <div
+      className="app-shell one-page"
+      style={desktop ? { gridTemplateColumns: `${railWidth}px 5px minmax(0, 1fr)` } : undefined}
+    >
       <a className="skip-link" href="#main-content">
         {t.skip}
       </a>
-      {desktop && (
-        <aside className="sidebar">
-          <Sidebar {...sidebarProps} />
+      {desktop ? (
+        <aside className="rail-column">
+          <VideoRail {...railProps} />
         </aside>
+      ) : null}
+      {desktop ? (
+        <Splitter size={railWidth} onResize={setRailWidth} onReset={resetRailWidth} label={t.resizePanel} />
+      ) : (
+        <>
+          <header className="topbar mobile-topbar">
+            <button
+              className="icon-button"
+              aria-label={t.menu}
+              aria-expanded={mobileNav}
+              aria-haspopup="dialog"
+              onClick={() => setMobileNav(true)}
+            >
+              <Icon name="menu" />
+            </button>
+            <b className="mobile-title">{currentVideo ? videoTitle(currentVideo.filename) : "Multimodal Lecture RAG"}</b>
+          </header>
+          <Dialog
+            open={mobileNav}
+            onClose={() => setMobileNav(false)}
+            title={t.navigation}
+            showClose={false}
+            className="navigation-dialog"
+          >
+            <VideoRail {...railProps} onClose={() => setMobileNav(false)} />
+          </Dialog>
+        </>
       )}
-      <Dialog
-        open={!desktop && mobileNav}
-        onClose={() => setMobileNav(false)}
-        title={t.navigation}
-        showClose={false}
-        className="navigation-dialog"
-      >
-        <Sidebar {...sidebarProps} onClose={() => setMobileNav(false)} />
-      </Dialog>
-      <div className="app-content">
-        <header className="topbar">
-          <div className="topbar-leading">
-            {!desktop && (
-              <button
-                className="icon-button"
-                aria-label={t.menu}
-                aria-expanded={mobileNav}
-                aria-haspopup="dialog"
-                onClick={() => setMobileNav(true)}
-              >
-                <Icon name="menu" />
-              </button>
-            )}
-            <div className="breadcrumb">
-              <Icon
-                name={
-                  selectedVideo
-                    ? "play"
-                    : page === "ai"
-                      ? "sparkles"
-                      : "library"
-                }
-                size={17}
-              />
-              <span>
-                {selectedVideo
-                  ? t.workspace
-                  : page === "ai"
-                    ? t.aiReady
-                    : t.library}
-              </span>
-            </div>
-          </div>
-          {!selectedVideo && (
-            <div className="global-search">
-              <Icon name="search" size={18} />
-              <input
-                ref={searchRef}
-                type="search"
-                aria-label={searchLabel}
-                placeholder={searchLabel}
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-              />
-              {search ? (
-                <button
-                  className="search-clear"
-                  onClick={() => {
-                    setSearch("");
-                    searchRef.current?.focus();
-                  }}
-                  aria-label={t.clearSearch}
-                >
-                  <Icon name="close" size={14} />
-                </button>
-              ) : (
-                <kbd>Ctrl K</kbd>
-              )}
-            </div>
-          )}
-          <div className="topbar-actions">
-            <button
-              className="language-button"
-              onClick={() => setLang(lang === "vi" ? "en" : "vi")}
-              aria-label={
-                lang === "vi" ? "Switch to English" : "Chuyển sang Tiếng Việt"
-              }
-              title={
-                lang === "vi" ? "Switch to English" : "Chuyển sang Tiếng Việt"
-              }
-            >
-              <Icon name="globe" size={17} />
-              <span>{lang.toUpperCase()}</span>
-            </button>
-            <button
-              className="icon-button theme-button"
-              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-              aria-label={t.switchTheme}
-              title={t.switchTheme}
-            >
-              <Icon name={theme === "dark" ? "sun" : "moon"} size={19} />
-            </button>
-            <span className="topbar-divider" />
-            <button
-              className="button button-primary topbar-upload"
-              onClick={openUpload}
-              aria-label={addingVideo ? t.viewImport : t.upload}
-            >
-              {addingVideo ? <Spinner /> : <Icon name="plus" size={17} />}
-              <span>{addingVideo ? t.viewImport : t.upload}</span>
-            </button>
-          </div>
-        </header>
-        <main
-          id="main-content"
-          tabIndex={-1}
-          className={
-            selectedVideo ? "main-content main-workspace" : "main-content"
-          }
-        >
-          {currentVideo ? (
-            <Suspense
-              fallback={
-                <div className="workspace-loading">
-                  <Spinner label={t.loading} />
-                </div>
-              }
-            >
-              <Workspace
-                key={currentVideo.video_id}
-                video={currentVideo}
-                initialQuestion={workspaceStart.prompt}
-                initialChatOpen={workspaceStart.focusChat}
-                backLabel={page === "ai" ? t.aiReady : undefined}
-                onBack={() => {
-                  setSelectedVideo(null);
-                  window.scrollTo({ top: 0, behavior: "instant" });
-                }}
-                lang={lang}
-                t={t}
-              />
-            </Suspense>
-          ) : page === "ai" ? (
-            <Suspense
-              fallback={
-                <div className="workspace-loading">
-                  <Spinner label={t.loading} />
-                </div>
-              }
-            >
-              <ReadyForAI
-                videoList={sortedVideos}
-                loading={loading}
-                error={libraryError}
-                search={search}
-                onClearSearch={() => setSearch("")}
-                onSelect={selectVideo}
-                onNavigate={navigate}
-                onRefresh={refreshLibrary}
-                t={t}
-              />
-            </Suspense>
-          ) : (
-            <Library
-              videoList={sortedVideos}
-              loading={loading}
-              error={libraryError}
-              search={search}
-              filter={filter}
-              onFilter={setFilter}
-              onReset={() => {
-                setSearch("");
-                setFilter("all");
+      <main id="main-content" tabIndex={-1} className="one-page-main">
+        {currentVideo ? (
+          <Suspense
+            fallback={
+              <div className="workspace-loading">
+                <Spinner label={t.loading} />
+              </div>
+            }
+          >
+            <Workspace
+              key={currentVideo.video_id}
+              video={currentVideo}
+              initialQuestion={workspaceStart.prompt}
+              initialChatOpen={workspaceStart.focusChat}
+              initialTime={startTime}
+              askVideoIds={checkedIds}
+              chat={{ messages, setMessages }}
+              onOpenSource={(videoId, time) => {
+                const target = videoList?.find((item) => item.video_id === videoId);
+                if (target) selectVideo(target, { time });
               }}
-              onSelect={selectVideo}
-              onUpload={openUpload}
-              onHelp={openHelp}
-              onRefresh={refreshLibrary}
               lang={lang}
               t={t}
             />
-          )}
-        </main>
-      </div>
+          </Suspense>
+        ) : (
+          <div className="workspace-loading">
+            {loading ? <Spinner label={t.loading} /> : <p>{libraryError ? t.libraryError : t.noResults}</p>}
+          </div>
+        )}
+      </main>
       {!uploadOpen && videoImport.job && (
         <div className="import-status-toast" role="status">
           <button onClick={() => { setImportMode("link"); setUploadOpen(true); }}>

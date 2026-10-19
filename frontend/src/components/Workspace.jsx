@@ -19,6 +19,7 @@ import {
   streamAnswer,
   videoTitle,
 } from "../lib/api";
+import Splitter, { useStoredSize } from "./Splitter";
 import { useMediaQuery } from "../lib/hooks";
 import { Dialog, EmptyState, Icon, Spinner } from "./UI";
 import VideoPlayer from "./VideoPlayer";
@@ -114,7 +115,7 @@ function FormattedText({ text, onSeek, t }) {
   return <div className="formatted-answer">{blocks}</div>;
 }
 
-const ChatMessage = memo(function ChatMessage({ message, onSeek, onRetry, t }) {
+const ChatMessage = memo(function ChatMessage({ message, onSeek, onRetry, onSource, currentVideoId, t }) {
   const user = message.role === "user";
   return (
     <div
@@ -138,19 +139,23 @@ const ChatMessage = memo(function ChatMessage({ message, onSeek, onRetry, t }) {
           <div className="answer-sources">
             <span>{t.sources}</span>
             {[...message.sources]
-              .sort((a, b) => a.start - b.start)
-              .map((source) => (
-                <button
-                  key={source.segment_id}
-                  className="timestamp-link"
-                  onClick={() => onSeek(source.start)}
-                  title={source.title || undefined}
-                  aria-label={`${t.seekTo} ${clock(source.start)}`}
-                >
-                  <Icon name="play" size={11} />
-                  {clock(source.start)}
-                </button>
-              ))}
+              .sort((a, b) => (a.video_title || "").localeCompare(b.video_title || "") || a.start - b.start)
+              .map((source) => {
+                const elsewhere = source.video_id && source.video_id !== currentVideoId;
+                return (
+                  <button
+                    key={`${source.video_id}-${source.segment_id}`}
+                    className={`timestamp-link ${elsewhere ? "other-video" : ""}`}
+                    onClick={() => onSource(source)}
+                    title={[source.video_title, source.title].filter(Boolean).join(" · ") || undefined}
+                    aria-label={`${t.seekTo} ${elsewhere ? `${source.video_title} ` : ""}${clock(source.start)}`}
+                  >
+                    <Icon name="play" size={11} />
+                    {elsewhere && <span className="source-video">{source.video_title}</span>}
+                    {clock(source.start)}
+                  </button>
+                );
+              })}
           </div>
         )}
         {message.error && (
@@ -172,6 +177,9 @@ function ChatPanel({
   onAsk,
   onSeek,
   onRetry,
+  onSource,
+  currentVideoId,
+  scope,
   ready,
   onClose,
   t,
@@ -208,7 +216,7 @@ function ChatPanel({
         </span>
         <div>
           <h2>{t.assistant}</h2>
-          <p>{t.assistantSubtitle}</p>
+          <p>{scope > 1 ? `${t.askingAcross} ${scope} ${t.videosWord}` : t.assistantSubtitle}</p>
         </div>
         {onClose ? (
           <button
@@ -284,6 +292,8 @@ function ChatPanel({
             message={message}
             onSeek={onSeek}
             onRetry={onRetry}
+            onSource={onSource}
+            currentVideoId={currentVideoId}
             t={t}
           />
         ))}
@@ -603,10 +613,12 @@ function Transcript({ segments, currentTime, onSeek, t }) {
 
 export default function Workspace({
   video,
-  onBack,
   initialQuestion = "",
   initialChatOpen = false,
-  backLabel,
+  initialTime = 0,
+  askVideoIds = [],
+  chat,
+  onOpenSource,
   lang,
   t,
 }) {
@@ -623,14 +635,20 @@ export default function Workspace({
   const [transcript, setTranscript] = useState(null);
   const [transcriptError, setTranscriptError] = useState(false);
   const [transcriptRetry, setTranscriptRetry] = useState(0);
+  const [outline, setOutline] = useState(null);
   const [lightbox, setLightbox] = useState(null);
   const [chatOpen, setChatOpen] = useState(initialChatOpen);
-  const [messages, setMessages] = useState([]);
+  // App keeps the conversation, so it survives switching to a video a source points at.
+  const [ownMessages, setOwnMessages] = useState([]);
+  const messages = chat ? chat.messages : ownMessages;
+  const setMessages = chat ? chat.setMessages : setOwnMessages;
   const chatHistory = useRef(messages);
   chatHistory.current = messages;
   const [question, setQuestion] = useState(initialQuestion);
   const [asking, setAsking] = useState(false);
   const desktopChat = useMediaQuery("(min-width: 900px)");
+  const [chatWidth, setChatWidth, resetChatWidth] = useStoredSize("chat", 380, 280, 720);
+  const [playerHeight, setPlayerHeight, resetPlayerHeight] = useStoredSize("player", 400, 160, 900);
   const [variants, setVariants] = useState(null);
   const [variantName, setVariantName] = useState(null);
   const [reviews, setReviews] = useState({});
@@ -702,6 +720,15 @@ export default function Workspace({
   }, [video.video_id, video.has_slides, slidesRetry]);
 
   useEffect(() => {
+    if (tab !== "structure" || outline) return;
+    const controller = new AbortController();
+    request(`/videos/${encodeURIComponent(video.video_id)}/outline`, { signal: controller.signal })
+      .then((data) => !controller.signal.aborted && setOutline(Array.isArray(data) ? data : []))
+      .catch(() => !controller.signal.aborted && setOutline([]));
+    return () => controller.abort();
+  }, [tab, video.video_id, outline]);
+
+  useEffect(() => {
     if (tab !== "transcript" || !video.has_transcript || transcript) return;
     const controller = new AbortController();
     request(`/videos/${encodeURIComponent(video.video_id)}/transcript`, {
@@ -719,6 +746,17 @@ export default function Workspace({
   }, [tab, video.video_id, video.has_transcript, transcript, transcriptRetry]);
 
   useEffect(() => () => qaRequest.current?.abort(), []);
+
+  useEffect(() => {
+    const element = videoRef.current;
+    if (!element || !initialTime) return;
+    const go = () => {
+      element.currentTime = initialTime;
+    };
+    if (element.readyState >= 1) go();
+    else element.addEventListener("loadedmetadata", go, { once: true });
+    return () => element.removeEventListener("loadedmetadata", go);
+  }, [initialTime]);
 
   const seekTo = useCallback((seconds) => {
     const element = videoRef.current;
@@ -761,6 +799,7 @@ export default function Workspace({
         question: content,
         current_time: time,
         previous_question: previousQuestion ?? null,
+        video_ids: askVideoIds.length ? askVideoIds : null,
       });
       const answerId = crypto.randomUUID();
       try {
@@ -815,7 +854,7 @@ export default function Workspace({
         }
       }
     },
-    [video.video_id, video.has_transcript, t.answerError],
+    [video.video_id, video.has_transcript, t.answerError, askVideoIds, setMessages],
   );
 
   const retryQuestion = useCallback(
@@ -840,7 +879,7 @@ export default function Workspace({
     );
   }
 
-  const tabKeys = ["slides", "transcript"];
+  const tabKeys = ["slides", "transcript", "structure"];
 
   function handleTabKeys(event) {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
@@ -864,24 +903,23 @@ export default function Workspace({
     onAsk: sendQuestion,
     onSeek: seekTo,
     onRetry: retryQuestion,
+    onSource: (source) =>
+      source.video_id && source.video_id !== video.video_id
+        ? onOpenSource?.(source.video_id, source.start)
+        : seekTo(source.start),
+    currentVideoId: video.video_id,
+    scope: askVideoIds.length || 1,
     ready: video.has_transcript,
     t,
   };
 
   return (
     <div className="workspace-page page-enter">
-      <div className="workspace-heading">
-        <button className="back-link" onClick={onBack}>
-          <Icon name="back" size={17} />
-          {backLabel || t.back}
-        </button>
-        <span className="workspace-heading-note">
-          <Icon name="book" size={15} />
-          {t.workspace}
-        </span>
-      </div>
-      <div className="study-layout">
-        <div className="study-main">
+      <div
+        className="study-layout"
+        style={desktopChat ? { gridTemplateColumns: `minmax(0, 1fr) 5px ${chatWidth}px` } : undefined}
+      >
+        <div className="study-main" style={{ "--player-h": `${playerHeight}px` }}>
           <section className="player-section" aria-label={video.filename}>
             <VideoPlayer
               video={video}
@@ -927,17 +965,25 @@ export default function Workspace({
               </div>
             </div>
           </section>
+          <Splitter
+            direction="y"
+            size={playerHeight}
+            onResize={setPlayerHeight}
+            onReset={resetPlayerHeight}
+            label={t.resizePanel}
+          />
 
           <section className="video-resources">
             <div
               className="resource-tabs"
               role="tablist"
-              aria-label={`${t.slides} / ${t.transcript}`}
+              aria-label={`${t.slides} / ${t.transcript} / ${t.structure}`}
               onKeyDown={handleTabKeys}
             >
               {[
                 ["slides", t.slides, "slides"],
                 ["transcript", t.transcript, "transcript"],
+                ["structure", t.structure, "book"],
               ].map(([key, label, icon]) => (
                 <button
                   key={key}
@@ -1102,8 +1148,54 @@ export default function Workspace({
                 />
               )}
             </div>
+            <div
+              id="structure-panel"
+              role="tabpanel"
+              aria-labelledby="structure-tab"
+              hidden={tab !== "structure"}
+              tabIndex={0}
+            >
+              {outline === null ? (
+                <div className="resource-loading">
+                  <Spinner label={t.loading} />
+                </div>
+              ) : outline.length === 0 ? (
+                <EmptyState icon="book" title={t.structureEmpty} compact />
+              ) : (
+                <ol className="outline-list">
+                  {outline.map((item, index) => {
+                    const playing = currentTime >= item.start && currentTime < item.end;
+                    return (
+                      <li key={item.segment_id}>
+                        <button
+                          className={`outline-item ${playing ? "active" : ""} ${item.kind === "ad" ? "is-ad" : ""}`}
+                          onClick={() => seekTo(item.start)}
+                          aria-current={playing ? "true" : undefined}
+                        >
+                          <span className="outline-index">{index + 1}</span>
+                          <span className="outline-time">
+                            {formatDuration(item.start)}–{formatDuration(item.end)}
+                          </span>
+                          <span className="outline-title">
+                            {item.kind === "ad" ? t.outlineAd : item.title || `${t.slide} ${index + 1}`}
+                          </span>
+                          {item.words > 0 && (
+                            <span className="outline-words">
+                              {item.words} {t.outlineSpeech}
+                            </span>
+                          )}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
+            </div>
           </section>
         </div>
+        {desktopChat && (
+          <Splitter size={chatWidth} onResize={setChatWidth} onReset={resetChatWidth} invert label={t.resizePanel} />
+        )}
         {desktopChat && (
           <div className="desktop-chat">
             <ChatPanel {...chatProps} />
