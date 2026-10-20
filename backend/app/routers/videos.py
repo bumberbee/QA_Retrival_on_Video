@@ -64,7 +64,9 @@ async def get_video_import(import_id: str):
 @router.head("/{video_id}/file", include_in_schema=False)
 @router.get("/{video_id}/file")
 async def get_video_file(video_id: str, request: Request):
-    if storage.cloud():   # the browser plays the mp4 straight from R2 (signed URL, range requests work)
+    # the browser plays the mp4 straight from R2 (signed URL, range requests work); without R2 the
+    # files are served from LECTURE_RAG_DATA_DIR on the backend machine
+    if storage.cloud() and objects.enabled():
         key = (storage.load_video_meta(video_id) or {}).get("video_key")
         if not key:
             raise HTTPException(404, "Không tìm thấy video")
@@ -147,7 +149,7 @@ async def put_slide_review(video_id: str, variant: str, slide_key: str, review: 
 
 @router.get("/{video_id}/slides/{filename:path}")
 async def get_slide_file(video_id: str, filename: str):
-    if storage.cloud():
+    if storage.cloud() and objects.enabled():
         from ..services import supa
         key = supa.keyframe_keys(video_id).get(filename)
         if not key:

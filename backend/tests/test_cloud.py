@@ -7,6 +7,7 @@ and TEST_DB_URL (default postgresql://postgres:localtest@localhost:55432/postgre
 R2 is replaced by moto's in-memory S3.
 """
 
+import _isolate  # noqa: F401  (must come before any app import)
 import importlib.util
 import json
 import os
