@@ -1,10 +1,12 @@
 .env
-backend/data/videos/
+backend/data/
 backend/.venv/
 frontend/node_modules/
 frontend/dist/
+.kaggle-tools/
 .mcpenv-kaggle/
 __pycache__/
 *.pyc
+kaggle/lecture_rag/runs/
 
-
+kaggle/lecture_rag/gold/*/review/

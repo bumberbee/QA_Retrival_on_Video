@@ -4,3 +4,13 @@ python-multipart==0.0.9
 python-dotenv==1.0.1
 google-generativeai==0.8.3
 pydantic==2.9.2
+yt-dlp[default]>=2025.11.12,<2027
+# hỏi đáp theo chỉ mục bước 05: E5 chạy ONNX, không cần PyTorch
+numpy>=1.26
+onnxruntime>=1.18
+tokenizers>=0.19
+huggingface_hub>=0.24
+# deploy: Supabase Postgres + pgvector, Cloudflare R2 (S3 API); only used when their env vars are set
+psycopg[binary]>=3.2
+psycopg-pool>=3.2
+boto3>=1.34

@@ -1,195 +1,334 @@
-import { useEffect, useRef, useState } from "react";
-import "./App.css";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import VideoRail from "./components/VideoRail";
+import Splitter, { useStoredSize } from "./components/Splitter";
+import { Dialog, HelpDialog, Icon, Spinner } from "./components/UI";
+import ImportDialog from "./components/ImportDialog";
+import { request, videoTitle } from "./lib/api";
+import { useMediaQuery, usePreference } from "./lib/hooks";
+import { STRINGS } from "./lib/strings";
+import { useVideoImport } from "./lib/useVideoImport";
 
-const API_BASE = "http://localhost:8001/api";
+const Workspace = lazy(() => import("./components/Workspace"));
 
-function App() {
-  const [video, setVideo] = useState(null); // {video_id, filename, has_transcript}
+export default function App() {
+  const [lang, setLang] = usePreference("lang", "vi", ["vi", "en"]);
+  const [theme, setTheme] = usePreference("theme", "dark", ["light", "dark"]);
+  const [videoList, setVideoList] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [libraryError, setLibraryError] = useState(false);
+  const [refreshIndex, setRefreshIndex] = useState(0);
+  const [selectedVideo, setSelectedVideo] = useState(null);
+  const [workspaceStart, setWorkspaceStart] = useState({
+    prompt: "",
+    focusChat: false,
+  });
+  const [mobileNav, setMobileNav] = useState(false);
+  const [checkedIds, setCheckedIds] = useState([]);   // videos to ask across; [] = the one being watched
+  const [messages, setMessages] = useState([]);
+  const [conversationId, setConversationId] = useState(null);
+  const [startTime, setStartTime] = useState(0);
+  const [railWidth, setRailWidth, resetRailWidth] = useStoredSize("rail", 290, 220, 520);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [importMode, setImportMode] = useState("link");
+  const [helpOpen, setHelpOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [dragOver, setDragOver] = useState(false);
-  const [askOpen, setAskOpen] = useState(false);
-  const [question, setQuestion] = useState("");
-  const [messages, setMessages] = useState([]); // {role, text}
-  const [asking, setAsking] = useState(false);
-  const videoRef = useRef(null);
-  const messagesEndRef = useRef(null);
+  const [uploadError, setUploadError] = useState("");
+  const [uploadFilename, setUploadFilename] = useState("");
+  const uploadRequest = useRef(null);
+  const desktop = useMediaQuery("(min-width: 1100px)");
+  const t = STRINGS[lang];
+  const videoImport = useVideoImport({
+    onComplete: (video) => {
+      setVideoList((videos) => [video, ...(videos || []).filter((item) => item.video_id !== video.video_id)]);
+      refreshLibrary();
+    },
+    t,
+  });
+  const addingVideo = uploading || videoImport.pending || videoImport.submitting;
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, asking]);
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.lang = lang;
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute("content", theme === "dark" ? "#0b1220" : "#f6f8fb");
+  }, [theme, lang]);
+
+  useEffect(() => {
+    document.title = `${selectedVideo ? `${videoTitle(selectedVideo.filename)} · ` : ""}Video Q&A`;
+  }, [selectedVideo]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    request("/videos", { signal: controller.signal })
+      .then((videos) => {
+        if (!controller.signal.aborted) {
+          if (!Array.isArray(videos)) throw new Error("Invalid video list");
+          setVideoList(videos);
+          setLibraryError(false);
+        }
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setLibraryError(true);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
+  }, [refreshIndex]);
+
+  useEffect(() => () => uploadRequest.current?.abort(), []);
+
+  const sortedVideos = useMemo(
+    () =>
+      videoList
+        ? [...videoList].sort(
+            (a, b) =>
+              (Date.parse(b.uploaded_at) || 0) -
+              (Date.parse(a.uploaded_at) || 0),
+          )
+        : null,
+    [videoList],
+  );
+  useEffect(() => {
+    if (!selectedVideo && sortedVideos?.length)
+      setSelectedVideo(sortedVideos.find((video) => video.has_transcript) || sortedVideos[0]);
+  }, [selectedVideo, sortedVideos]);
+  const currentVideo = selectedVideo
+    ? videoList?.find((item) => item.video_id === selectedVideo.video_id) ||
+      selectedVideo
+    : null;
+
+  function refreshLibrary() {
+    setLoading(true);
+    setLibraryError(false);
+    setRefreshIndex((index) => index + 1);
+  }
+
+  function selectVideo(video, options = {}) {
+    setSelectedVideo(video);
+    setStartTime(options.time || 0);
+    setWorkspaceStart({
+      prompt: options.prompt || "",
+      focusChat: Boolean(options.focusChat),
+    });
+    setMobileNav(false);
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }
+
+  // Reopen a saved chat: its turns become messages again, with the videos it was asked across.
+  async function openConversation(id) {
+    try {
+      const conversation = await request(`/conversations/${id}`);
+      setMessages(
+        conversation.turns.flatMap((turn, index) => [
+          { id: `${id}-q${index}`, role: "user", text: turn.question },
+          { id: `${id}-a${index}`, role: "ai", text: turn.answer, sources: turn.sources, rewritten: turn.rewritten },
+        ]),
+      );
+      setConversationId(conversation.id);
+      const ids = conversation.video_ids || [];
+      setCheckedIds(ids.length > 1 ? ids : []);
+      const target = videoList?.find((item) => item.video_id === conversation.video_id);
+      if (target && target.video_id !== currentVideo?.video_id) selectVideo(target);
+    } catch {
+      // the list shows the error when it reloads
+    }
+  }
+
+  function openUpload(mode = "link") {
+    setUploadError("");
+    if (!addingVideo) {
+      setImportMode(mode === "file" ? "file" : "link");
+      if (mode === "file") videoImport.clearImport();
+    }
+    setUploadOpen(true);
+    setMobileNav(false);
+  }
+
+  function openHelp() {
+    setMobileNav(false);
+    setHelpOpen(true);
+  }
 
   async function uploadFile(file) {
-    if (!file || !file.type.startsWith("video/")) return;
+    if (!file || uploadRequest.current || videoImport.pending || videoImport.submitting) return;
+    if (!/\.(mp4|webm|mov|mkv)$/i.test(file.name)) {
+      setUploadError(t.invalidFile);
+      return;
+    }
+    const controller = new AbortController();
+    uploadRequest.current = controller;
     setUploading(true);
+    setUploadError("");
+    setUploadFilename(file.name);
     const form = new FormData();
     form.append("file", file);
     try {
-      const res = await fetch(`${API_BASE}/videos`, { method: "POST", body: form });
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
-      setVideo(data);
-      setMessages([]);
-      setAskOpen(false);
-    } catch (err) {
-      alert("Upload lỗi: " + err.message);
+      const video = await request("/videos", {
+        method: "POST",
+        body: form,
+        signal: controller.signal,
+      });
+      setVideoList((videos) => [
+        video,
+        ...(videos || []).filter((item) => item.video_id !== video.video_id),
+      ]);
+      selectVideo(video);
+      setUploadOpen(false);
+      refreshLibrary();
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        setUploadError(
+          error instanceof TypeError ? t.uploadFailed : error.message,
+        );
+        setUploadOpen(true);
+      }
     } finally {
+      uploadRequest.current = null;
       setUploading(false);
     }
   }
 
-  function handleUpload(e) {
-    uploadFile(e.target.files[0]);
-    e.target.value = "";
-  }
-
-  function handleDrop(e) {
-    e.preventDefault();
-    setDragOver(false);
-    uploadFile(e.dataTransfer.files[0]);
-  }
-
-  async function handleAsk() {
-    if (!question.trim() || !video) return;
-    const q = question.trim();
-    setMessages((m) => [...m, { role: "user", text: q }]);
-    setQuestion("");
-    setAsking(true);
-    try {
-      const currentTime = videoRef.current?.currentTime ?? null;
-      const res = await fetch(`${API_BASE}/qa`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ video_id: video.video_id, question: q, current_time: currentTime }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: res.statusText }));
-        throw new Error(err.detail || "Lỗi không xác định");
-      }
-      const data = await res.json();
-      setMessages((m) => [...m, { role: "ai", text: data.answer }]);
-    } catch (err) {
-      setMessages((m) => [...m, { role: "ai", text: "⚠️ " + err.message }]);
-    } finally {
-      setAsking(false);
-    }
-  }
-
-  function resetVideo() {
-    setVideo(null);
-    setMessages([]);
-    setAskOpen(false);
-  }
+  const railProps = {
+    videos: sortedVideos,
+    loading,
+    error: libraryError,
+    selectedId: currentVideo?.video_id,
+    onSelect: selectVideo,
+    checkedIds,
+    onToggle: (id) =>
+      setCheckedIds((ids) => {
+        const current = currentVideo?.video_id;
+        const scope = ids.length ? ids : [current];
+        const next = scope.includes(id) ? scope.filter((item) => item !== id) : [...scope, id];
+        if (!next.length) return ids;   // keep at least one video to ask
+        return next.length === 1 && next[0] === current ? [] : next;
+      }),
+    onClearChecked: () => setCheckedIds([]),
+    onUpload: () => openUpload(),
+    onRefresh: refreshLibrary,
+    addingVideo,
+    lang,
+    onLang: () => setLang(lang === "vi" ? "en" : "vi"),
+    theme,
+    onTheme: () => setTheme(theme === "dark" ? "light" : "dark"),
+    onHelp: openHelp,
+    t,
+  };
 
   return (
-    <div className="page">
-      <header className="topbar">
-        <div className="brand">
-          <span className="brand-icon">▶</span>
-          <span className="brand-name">Video Q&A</span>
-        </div>
-        {video && (
-          <button className="new-video-btn" onClick={resetVideo}>
-            ＋ Video khác
-          </button>
-        )}
-      </header>
-
-      <main className="content">
-        {!video && (
-          <div
-            className={`upload-box ${dragOver ? "drag-over" : ""}`}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragOver(true);
-            }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={handleDrop}
+    <div
+      className="app-shell one-page"
+      style={desktop ? { gridTemplateColumns: `${railWidth}px 5px minmax(0, 1fr)` } : undefined}
+    >
+      <a className="skip-link" href="#main-content">
+        {t.skip}
+      </a>
+      {desktop ? (
+        <aside className="rail-column">
+          <VideoRail {...railProps} />
+        </aside>
+      ) : null}
+      {desktop ? (
+        <Splitter size={railWidth} onResize={setRailWidth} onReset={resetRailWidth} label={t.resizePanel} />
+      ) : (
+        <>
+          <header className="topbar mobile-topbar">
+            <button
+              className="icon-button"
+              aria-label={t.menu}
+              aria-expanded={mobileNav}
+              aria-haspopup="dialog"
+              onClick={() => setMobileNav(true)}
+            >
+              <Icon name="menu" />
+            </button>
+            <b className="mobile-title">{currentVideo ? videoTitle(currentVideo.filename) : "Multimodal Lecture RAG"}</b>
+          </header>
+          <Dialog
+            open={mobileNav}
+            onClose={() => setMobileNav(false)}
+            title={t.navigation}
+            showClose={false}
+            className="navigation-dialog"
           >
-            <div className="upload-icon">⤒</div>
-            <p className="upload-title">Kéo thả video vào đây</p>
-            <p className="upload-sub">hoặc</p>
-            <label className="upload-label">
-              {uploading ? "Đang tải lên..." : "Chọn video từ máy tính"}
-              <input type="file" accept="video/*" onChange={handleUpload} disabled={uploading} hidden />
-            </label>
-          </div>
-        )}
-
-        {video && (
-          <div className="video-area">
-            <div className="player-wrap">
-              <video
-                ref={videoRef}
-                className="player"
-                src={`${API_BASE}/videos/${video.video_id}/file`}
-                controls
-              />
-            </div>
-
-            <div className="action-bar">
-              <span className="filename" title={video.filename}>
-                {video.filename}
-              </span>
-              <button
-                className={`ask-btn ${askOpen ? "active" : ""}`}
-                onClick={() => setAskOpen((v) => !v)}
-              >
-                <span className="sparkle">✦</span> Đặt câu hỏi
-              </button>
-              {!video.has_transcript && (
-                <span className="badge-warn">⚠ Chưa có transcript</span>
-              )}
-            </div>
-
-            {askOpen && (
-              <div className="ask-panel">
-                <div className="ask-panel-header">
-                  <span className="sparkle">✦</span> Hỏi về video này
-                </div>
-                <div className="messages">
-                  {messages.length === 0 && (
-                    <div className="hint">
-                      Hỏi bất cứ điều gì về nội dung video, ví dụ: "tóm tắt đoạn đầu",
-                      "phút thứ 2 nói gì?"...
-                    </div>
-                  )}
-                  {messages.map((m, i) => (
-                    <div key={i} className={`msg-row ${m.role}`}>
-                      <div className={`avatar ${m.role}`}>{m.role === "user" ? "🙂" : "✦"}</div>
-                      <div className={`msg ${m.role}`}>{m.text}</div>
-                    </div>
-                  ))}
-                  {asking && (
-                    <div className="msg-row ai">
-                      <div className="avatar ai">✦</div>
-                      <div className="msg ai typing">
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                      </div>
-                    </div>
-                  )}
-                  <div ref={messagesEndRef} />
-                </div>
-                <div className="ask-input-row">
-                  <input
-                    value={question}
-                    onChange={(e) => setQuestion(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleAsk()}
-                    placeholder="Đặt câu hỏi về video..."
-                    disabled={asking}
-                  />
-                  <button onClick={handleAsk} disabled={asking || !question.trim()}>
-                    ➤
-                  </button>
-                </div>
+            <VideoRail {...railProps} onClose={() => setMobileNav(false)} />
+          </Dialog>
+        </>
+      )}
+      <main id="main-content" tabIndex={-1} className="one-page-main">
+        {currentVideo ? (
+          <Suspense
+            fallback={
+              <div className="workspace-loading">
+                <Spinner label={t.loading} />
               </div>
-            )}
+            }
+          >
+            <Workspace
+              key={currentVideo.video_id}
+              video={currentVideo}
+              initialQuestion={workspaceStart.prompt}
+              initialChatOpen={workspaceStart.focusChat}
+              initialTime={startTime}
+              askVideoIds={checkedIds}
+              chat={{
+                messages,
+                setMessages,
+                conversationId,
+                onConversation: setConversationId,
+                history: {
+                  currentId: conversationId,
+                  onNew: () => {
+                    setMessages([]);
+                    setConversationId(null);
+                  },
+                  onOpen: openConversation,
+                },
+              }}
+              onOpenSource={(videoId, time) => {
+                const target = videoList?.find((item) => item.video_id === videoId);
+                if (target) selectVideo(target, { time });
+              }}
+              lang={lang}
+              t={t}
+            />
+          </Suspense>
+        ) : (
+          <div className="workspace-loading">
+            {loading ? <Spinner label={t.loading} /> : <p>{libraryError ? t.libraryError : t.noResults}</p>}
           </div>
         )}
       </main>
+      {!uploadOpen && videoImport.job && (
+        <div className="import-status-toast" role="status">
+          <button onClick={() => { setImportMode("link"); setUploadOpen(true); }}>
+            {videoImport.pending ? <Spinner /> : <Icon name={videoImport.job.status === "completed" ? "checkCircle" : "warning"} size={20} />}
+            <span>{videoImport.pending ? t.importing : videoImport.job.status === "completed" ? t.importComplete : t.importErrorTitle}</span>
+            <Icon name="chevron" size={16} />
+          </button>
+          {!videoImport.pending && (
+            <button className="icon-button" aria-label={t.close} onClick={videoImport.clearImport}>
+              <Icon name="close" size={17} />
+            </button>
+          )}
+        </div>
+      )}
+      <ImportDialog
+        open={uploadOpen}
+        onClose={() => setUploadOpen(false)}
+        mode={importMode}
+        onModeChange={(mode) => { setImportMode(mode); setUploadError(""); }}
+        onUpload={uploadFile}
+        uploading={uploading}
+        filename={uploadFilename}
+        error={uploadError}
+        videoImport={videoImport}
+        onOpenVideo={(video) => { selectVideo(video); setUploadOpen(false); videoImport.clearImport(); }}
+        t={t}
+      />
+      <HelpDialog open={helpOpen} onClose={() => setHelpOpen(false)} t={t} />
     </div>
   );
 }
-
-export default App;
