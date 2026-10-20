@@ -135,6 +135,11 @@ const ChatMessage = memo(function ChatMessage({ message, onSeek, onRetry, onSour
             <FormattedText text={message.text} onSeek={onSeek} t={t} />
           )}
         </div>
+        {!user && message.rewritten && (
+          <p className="answer-rewritten" title={t.rewrittenHint}>
+            {t.understoodAs}: {message.rewritten}
+          </p>
+        )}
         {!user && message.sources?.length > 0 && (
           <div className="answer-sources">
             <span>{t.sources}</span>
@@ -169,6 +174,57 @@ const ChatMessage = memo(function ChatMessage({ message, onSeek, onRetry, onSour
   );
 });
 
+function ChatHistory({ currentId, onOpen, t }) {
+  const [items, setItems] = useState(null);
+  const [failed, setFailed] = useState(false);
+  const [refresh, setRefresh] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    request("/conversations")
+      .then((data) => alive && setItems(Array.isArray(data) ? data : []))
+      .catch(() => alive && setFailed(true));
+    return () => {
+      alive = false;
+    };
+  }, [refresh]);
+  async function remove(id) {
+    try {
+      await request(`/conversations/${id}`, { method: "DELETE" });
+    } finally {
+      setRefresh((value) => value + 1);
+    }
+  }
+  return (
+    <div className="chat-history" role="dialog" aria-label={t.chatHistory}>
+      <p className="chat-history-title">{t.chatHistory}</p>
+      {failed ? (
+        <p className="chat-history-empty">{t.historyError}</p>
+      ) : items === null ? (
+        <Spinner label={t.loading} />
+      ) : items.length === 0 ? (
+        <p className="chat-history-empty">{t.historyEmpty}</p>
+      ) : (
+        <ul>
+          {items.map((item) => (
+            <li key={item.id} className={item.id === currentId ? "active" : ""}>
+              <button className="chat-history-open" onClick={() => onOpen(item.id)}>
+                <span>{item.title || t.untitledChat}</span>
+                <small>
+                  {new Date(item.updated_at).toLocaleString()} · {item.turns} {t.questionsWord}
+                  {item.video_ids?.length > 1 ? ` · ${item.video_ids.length} ${t.videosWord}` : ""}
+                </small>
+              </button>
+              <button className="icon-button" onClick={() => remove(item.id)} aria-label={t.deleteChat} title={t.deleteChat}>
+                <Icon name="close" size={14} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function ChatPanel({
   messages,
   asking,
@@ -182,9 +238,11 @@ function ChatPanel({
   scope,
   ready,
   onClose,
+  history,
   t,
 }) {
   const textareaRef = useRef(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const messagesRef = useRef(null);
   const nearBottom = useRef(true);
 
@@ -218,6 +276,31 @@ function ChatPanel({
           <h2>{t.assistant}</h2>
           <p>{scope > 1 ? `${t.askingAcross} ${scope} ${t.videosWord}` : t.assistantSubtitle}</p>
         </div>
+        {history && (
+          <div className="chat-session-actions">
+            <button
+              className="icon-button"
+              onClick={() => setHistoryOpen((value) => !value)}
+              aria-expanded={historyOpen}
+              aria-label={t.chatHistory}
+              title={t.chatHistory}
+            >
+              <Icon name="clock" size={18} />
+            </button>
+            <button
+              className="icon-button"
+              onClick={() => {
+                setHistoryOpen(false);
+                history.onNew();
+              }}
+              aria-label={t.newChat}
+              title={t.newChat}
+              disabled={!messages.length}
+            >
+              <Icon name="plus" size={18} />
+            </button>
+          </div>
+        )}
         {onClose ? (
           <button
             className="icon-button"
@@ -233,6 +316,16 @@ function ChatPanel({
           />
         )}
       </div>
+      {history && historyOpen && (
+        <ChatHistory
+          currentId={history.currentId}
+          onOpen={(id) => {
+            setHistoryOpen(false);
+            history.onOpen(id);
+          }}
+          t={t}
+        />
+      )}
       <div
         ref={messagesRef}
         className="chat-messages"
@@ -800,11 +893,13 @@ export default function Workspace({
         current_time: time,
         previous_question: previousQuestion ?? null,
         video_ids: askVideoIds.length ? askVideoIds : null,
+        conversation_id: chat?.conversationId ?? null,
       });
       const answerId = crypto.randomUUID();
       try {
         // Indexed videos stream the answer as it is written; others answer in one piece.
         let sources = [];
+        let rewritten = null;
         const streamed = await streamAnswer(
           body,
           controller.signal,
@@ -814,10 +909,14 @@ export default function Workspace({
                 ? items.map((item) =>
                     item.id === answerId ? { ...item, text: item.text + text } : item,
                   )
-                : [...items, { id: answerId, role: "ai", text, sources }],
+                : [...items, { id: answerId, role: "ai", text, sources, rewritten }],
             ),
           (found) => {
             sources = found;
+          },
+          (meta) => {
+            rewritten = meta.rewritten || null;
+            if (meta.conversation_id) chat?.onConversation?.(meta.conversation_id);
           },
         );
         if (!streamed) {
@@ -831,8 +930,9 @@ export default function Workspace({
           if (!controller.signal.aborted)
             setMessages((items) => [
               ...items,
-              { id: answerId, role: "ai", text: data.answer, sources: data.sources },
+              { id: answerId, role: "ai", text: data.answer, sources: data.sources, rewritten: data.rewritten },
             ]);
+          if (data.conversation_id) chat?.onConversation?.(data.conversation_id);
         }
       } catch (error) {
         if (!controller.signal.aborted)
@@ -909,6 +1009,7 @@ export default function Workspace({
         : seekTo(source.start),
     currentVideoId: video.video_id,
     scope: askVideoIds.length || 1,
+    history: chat?.history,
     ready: video.has_transcript,
     t,
   };

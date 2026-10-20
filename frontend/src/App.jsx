@@ -25,6 +25,7 @@ export default function App() {
   const [mobileNav, setMobileNav] = useState(false);
   const [checkedIds, setCheckedIds] = useState([]);   // videos to ask across; [] = the one being watched
   const [messages, setMessages] = useState([]);
+  const [conversationId, setConversationId] = useState(null);
   const [startTime, setStartTime] = useState(0);
   const [railWidth, setRailWidth, resetRailWidth] = useStoredSize("rail", 290, 220, 520);
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -113,6 +114,26 @@ export default function App() {
     });
     setMobileNav(false);
     window.scrollTo({ top: 0, behavior: "instant" });
+  }
+
+  // Reopen a saved chat: its turns become messages again, with the videos it was asked across.
+  async function openConversation(id) {
+    try {
+      const conversation = await request(`/conversations/${id}`);
+      setMessages(
+        conversation.turns.flatMap((turn, index) => [
+          { id: `${id}-q${index}`, role: "user", text: turn.question },
+          { id: `${id}-a${index}`, role: "ai", text: turn.answer, sources: turn.sources, rewritten: turn.rewritten },
+        ]),
+      );
+      setConversationId(conversation.id);
+      const ids = conversation.video_ids || [];
+      setCheckedIds(ids.length > 1 ? ids : []);
+      const target = videoList?.find((item) => item.video_id === conversation.video_id);
+      if (target && target.video_id !== currentVideo?.video_id) selectVideo(target);
+    } catch {
+      // the list shows the error when it reloads
+    }
   }
 
   function openUpload(mode = "link") {
@@ -252,7 +273,20 @@ export default function App() {
               initialChatOpen={workspaceStart.focusChat}
               initialTime={startTime}
               askVideoIds={checkedIds}
-              chat={{ messages, setMessages }}
+              chat={{
+                messages,
+                setMessages,
+                conversationId,
+                onConversation: setConversationId,
+                history: {
+                  currentId: conversationId,
+                  onNew: () => {
+                    setMessages([]);
+                    setConversationId(null);
+                  },
+                  onOpen: openConversation,
+                },
+              }}
               onOpenSource={(videoId, time) => {
                 const target = videoList?.find((item) => item.video_id === videoId);
                 if (target) selectVideo(target, { time });

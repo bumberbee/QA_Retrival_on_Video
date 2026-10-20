@@ -3756,3 +3756,79 @@ p {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Q&A sessions: history list and "understood as" line */
+.chat-session-actions {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+.chat-panel-header {
+  position: relative;
+}
+.chat-history {
+  max-height: 46%;
+  overflow-y: auto;
+  margin: 0 12px 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.chat-history-title {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.chat-history ul {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.chat-history li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 9px;
+}
+.chat-history li.active,
+.chat-history li:hover {
+  background: var(--surface-3);
+}
+.chat-history-open {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.chat-history-open span {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-history-open small,
+.chat-history-empty {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+.answer-rewritten {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-style: italic;
+}

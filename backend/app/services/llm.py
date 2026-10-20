@@ -71,21 +71,22 @@ def _build_prompt(transcript: Transcript, question: str, current_time: float | N
     )
 
 
-def _ollama(prompt: str) -> str:
+def _ollama(prompt: str, max_tokens: int | None = None, temperature: float = 0.2,
+            timeout: float | None = None) -> str:
     base = os.getenv("OLLAMA_BASE_URL", DEFAULT_OLLAMA_URL).rstrip("/")
     model = os.getenv("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL)
-    timeout = float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "1800"))
+    timeout = timeout or float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "1800"))
     payload = {
         "model": model,
         "stream": False,
         "messages": [{"role": "user", "content": prompt}],
         "options": {
-            "temperature": 0.2,
+            "temperature": temperature,
             # Ollama defaults to a 4096-token window and truncates silently; the
             # transcript of a 27-minute lecture is already ~3.4k tokens.
             "num_ctx": int(os.getenv("OLLAMA_NUM_CTX", "8192")),
             # Keeps a CPU-only smoke test bounded instead of rambling for minutes.
-            "num_predict": int(os.getenv("OLLAMA_MAX_TOKENS", "512")),
+            "num_predict": max_tokens or int(os.getenv("OLLAMA_MAX_TOKENS", "512")),
         },
     }
     request = urllib.request.Request(
@@ -158,8 +159,23 @@ def _ollama_stream(prompt: str):
                 break
 
 
+def _history_block(history: list | None, summary: str = "", answer_chars: int = 600) -> str:
+    """The last turns (answers cut to answer_chars) and the running summary of older ones."""
+    lines = []
+    if summary:
+        lines.append(f"Tóm tắt phần trước của cuộc trò chuyện: {summary}")
+    for turn in history or []:
+        answer = " ".join((turn.get("answer") or "").split())
+        lines.append(f"Người dùng: {turn['question']}\nTrợ lý: {answer[:answer_chars]}")
+    if not lines:
+        return ""
+    return ("--- HỘI THOẠI TRƯỚC (chỉ để hiểu câu hỏi, không phải bằng chứng) ---\n"
+            + "\n".join(lines) + "\n--- HẾT ---\n\n")
+
+
 def _evidence_prompt(question: str, current_time: float | None, found: dict, context: str,
-                     previous: str | None = None) -> str:
+                     previous: str | None = None, history: list | None = None, summary: str = "",
+                     rewritten: str | None = None) -> str:
     time_hint = ""
     if current_time is not None:
         time_hint = f"\nNgười dùng đang xem tại {int(current_time // 60):02d}:{int(current_time % 60):02d}."
@@ -167,9 +183,11 @@ def _evidence_prompt(question: str, current_time: float | None, found: dict, con
     if found.get("best_semantic", 1.0) < 0.85 and not found.get("temporal"):
         # measured on a 20-min lecture: questions it answers score >= 0.89, others 0.81-0.87
         weak = "\nLưu ý: bằng chứng tìm được khớp yếu với câu hỏi, rất có thể bài giảng không đề cập."
-    follow = f"Câu hỏi trước đó của người dùng (câu hỏi dưới đây nối tiếp nó): {previous}\n" if previous else ""
-    return (f"{EVIDENCE_INSTRUCTION}{time_hint}{weak}\n\n--- BẰNG CHỨNG ---\n{context}\n--- HẾT ---\n\n"
-            f"{follow}Câu hỏi: {question}\n")
+    follow = "" if history else (
+        f"Câu hỏi trước đó của người dùng (câu hỏi dưới đây nối tiếp nó): {previous}\n" if previous else "")
+    meant = f"(Nghĩa đầy đủ của câu hỏi: {rewritten})\n" if rewritten and rewritten != question else ""
+    return (f"{EVIDENCE_INSTRUCTION}{time_hint}{weak}\n\n{_history_block(history, summary)}"
+            f"--- BẰNG CHỨNG ---\n{context}\n--- HẾT ---\n\n{follow}Câu hỏi: {question}\n{meant}")
 
 
 def _slide_images(found: dict) -> list:
@@ -186,18 +204,19 @@ def _slide_images(found: dict) -> list:
 
 
 def answer_with_evidence(question: str, current_time: float | None, found: dict, context: str,
-                         previous: str | None = None) -> str:
-    """Answer from retrieved slide evidence (text + up to 2 slide images for Gemini)."""
-    prompt = _evidence_prompt(question, current_time, found, context, previous)
+                         previous: str | None = None, **memory) -> str:
+    """Answer from retrieved slide evidence (text + up to 2 slide images for Gemini).
+    memory: history (last turns), summary, rewritten (see _evidence_prompt)."""
+    prompt = _evidence_prompt(question, current_time, found, context, previous, **memory)
     if provider() == "ollama":
         return _ollama(prompt)
     return gemini.complete_parts([prompt] + _slide_images(found))
 
 
 def stream_with_evidence(question: str, current_time: float | None, found: dict, context: str,
-                         previous: str | None = None):
+                         previous: str | None = None, **memory):
     """Same answer as answer_with_evidence, yielded piece by piece as the model writes it."""
-    prompt = _evidence_prompt(question, current_time, found, context, previous)
+    prompt = _evidence_prompt(question, current_time, found, context, previous, **memory)
     if provider() == "ollama":
         yield from _ollama_stream(prompt)
     else:
@@ -209,3 +228,67 @@ def answer_question(transcript: Transcript, question: str, current_time: float |
     if provider() == "ollama":
         return _ollama(prompt)
     return gemini.complete(prompt)
+
+
+# ---- multi-turn: rewrite follow-ups (LLM4CS-style few-shot) and summarize older turns ----
+
+REWRITE_INSTRUCTION = (
+    "Viết lại CÂU HỎI CUỐI thành một câu hỏi độc lập, đọc riêng vẫn đủ nghĩa, dựa vào hội thoại phía trên "
+    "(thay \"nó\", \"cái đó\", \"còn … thì sao\" bằng đúng đối tượng được nhắc). Giữ nguyên ngôn ngữ của câu "
+    "hỏi. Nếu câu hỏi đã đủ nghĩa thì chép lại nguyên văn. Chỉ trả về đúng một câu hỏi, không giải thích.\n\n"
+    "Ví dụ:\n"
+    "Người dùng: Liên hợp quốc ra đời trong hoàn cảnh nào?\nTrợ lý: Sau Hội nghị Yalta tháng 2/1945 …\n"
+    "Câu hỏi cuối: Còn ASEAN thì sao?\nViết lại: ASEAN ra đời trong hoàn cảnh nào?\n\n"
+    "Người dùng: Công thức Bayes là gì?\nTrợ lý: P(Bk|A) = P(A|Bk)P(Bk) / tổng P(A|Bi)P(Bi) …\n"
+    "Câu hỏi cuối: Cho ví dụ về nó\nViết lại: Cho ví dụ áp dụng công thức Bayes.\n\n"
+    "User: What is an eigenvector?\nAssistant: A vector v with Tv = λv …\n"
+    "Câu hỏi cuối: And how do I find them?\nViết lại: How do I find the eigenvectors of a linear map?\n"
+)
+
+
+def _complete(prompt: str, max_tokens: int, temperature: float, timeout: float) -> str:
+    if provider() == "ollama":
+        return _ollama(prompt, max_tokens=max_tokens, temperature=temperature, timeout=timeout)
+    return gemini.complete(prompt)
+
+
+def _clip(turn: dict, chars: int) -> str:
+    return " ".join((turn.get("answer") or "").split())[:chars]
+
+
+def rewrite_question(question: str, history: list, timeout: float | None = None) -> str | None:
+    """Standalone form of a follow-up question, or None when the model fails or is too slow
+    (the caller then searches with the previous question appended, as before)."""
+    if not history:
+        return None
+    turns = "\n".join(f"Người dùng: {turn['question']}\nTrợ lý: {_clip(turn, 300)}" for turn in history[-2:])
+    prompt = f"{REWRITE_INSTRUCTION}\n--- HỘI THOẠI ---\n{turns}\nCâu hỏi cuối: {question}\nViết lại:"
+    try:
+        text = _complete(prompt, max_tokens=60, temperature=0.0,
+                         timeout=timeout or float(os.getenv("REWRITE_TIMEOUT_SECONDS", "40")))
+    except Exception:   # Ollama down or slow, Gemini quota: fall back, never fail the answer
+        return None
+    line = next((part.strip() for part in text.splitlines() if part.strip()), "")
+    line = line.removeprefix("Viết lại:").strip().strip('"“”').strip()
+    return line if 4 <= len(line) <= 300 else None
+
+
+SUMMARY_INSTRUCTION = (
+    "Tóm tắt cuộc trò chuyện hỏi đáp về bài giảng dưới đây trong tối đa 4 câu: người dùng đã hỏi những gì, "
+    "các ý chính đã trả lời (giữ mốc thời gian [mm:ss] quan trọng). Viết bằng ngôn ngữ của cuộc trò chuyện. "
+    "Chỉ trả về bản tóm tắt.\n"
+)
+
+
+def summarize(previous_summary: str, turns: list, timeout: float | None = None) -> str | None:
+    """Recursive summary: the previous summary plus the turns it does not cover yet."""
+    body = "\n".join(f"Người dùng: {turn['question']}\nTrợ lý: {_clip(turn, 500)}" for turn in turns)
+    prompt = (SUMMARY_INSTRUCTION + "\n"
+              + (f"Tóm tắt trước đó: {previous_summary}\n\n" if previous_summary else "")
+              + f"--- CÁC LƯỢT MỚI ---\n{body}\n--- HẾT ---\nTóm tắt:")
+    try:
+        text = _complete(prompt, max_tokens=200, temperature=0.2,
+                         timeout=timeout or float(os.getenv("SUMMARY_TIMEOUT_SECONDS", "300")))
+    except Exception:
+        return None
+    return text.strip() or None

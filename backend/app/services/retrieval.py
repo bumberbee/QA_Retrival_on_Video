@@ -32,6 +32,8 @@ CANDIDATES, MAX_SLIDES, MAX_IMAGES = 20, 3, 2
 # answers only written on the slide. 66 questions / 6 videos: hit@1 50 -> 55, hit@3 64 -> 65
 # (1.1-1.5, ranking speech and slide separately, or summing chunk scores per slide all did worse).
 SOURCE_BOOST = {"ocr": 1.05, "region": 1.05}
+# A follow-up usually asks about the slides just cited: their chunks get this extra factor.
+FOLLOW_UP_BOOST = 1.1
 STOPWORDS = set("""a ai anh ay ba bang bao bi boi cac cach cai can cho chi chua chung co con cua cung da dang
 de den deu di do doi duoc gi gio ha hay hon khi khong la lai lam len luc ma minh mot moi muon nao nay
 neu ngay nhieu nhu nhung noi o phai qua ra rang rat roi sao se sau tai the thi thoi theo thu tren tro
@@ -50,6 +52,9 @@ def index_dir(video_id: str) -> Path:
 
 
 def has_index(video_id: str) -> bool:
+    if storage.cloud():
+        from . import supa
+        return supa.has_index(video_id)
     folder = index_dir(video_id)
     return all((folder / name).exists() for name in ("chunks.jsonl", "embeddings.npy", "lexical.sqlite3"))
 
@@ -132,6 +137,7 @@ class LectureIndex:
     segments: list
     by_segment: dict = field(default_factory=dict)
     model: str = E5_REPO
+    video_id: str = ""   # set for Supabase indexes (folder is None)
 
 
 @lru_cache(maxsize=16)
@@ -139,6 +145,11 @@ def load_index(video_id: str) -> LectureIndex:
     import numpy as np
 
     folder = index_dir(video_id)
+    if storage.cloud():
+        from . import supa
+        chunks, vectors, segments = supa.load_index(video_id)
+        return LectureIndex(None, chunks, vectors, segments, {s["segment_id"]: s for s in segments}, E5_REPO,
+                            video_id)
     chunks = [json.loads(line) for line in (folder / "chunks.jsonl").read_text(encoding="utf-8").splitlines() if line]
     vectors = np.load(folder / "embeddings.npy", allow_pickle=False)
     if len(vectors) != len(chunks):
@@ -153,11 +164,14 @@ def load_index(video_id: str) -> LectureIndex:
                         model if model in ENCODERS else E5_REPO)
 
 
-def lexical_hits(folder: Path, question: str, count: int) -> list[str]:
+def lexical_hits(folder: Path | None, question: str, count: int, video_id: str = "") -> list[str]:
     words = list(dict.fromkeys(re.findall(r"[^\W_]+", normalize_search(question))))
     terms = [word for word in words if word not in STOPWORDS] or words
     if not terms:
         return []
+    if folder is None:   # Supabase: the same terms against the chunks' unaccented tsvector
+        from . import supa
+        return supa.lexical_hits(video_id, terms, count)
     expression = " OR ".join(f'"{term}"' for term in terms[:64])
     with closing(sqlite3.connect((folder / "lexical.sqlite3").resolve().as_uri() + "?mode=ro", uri=True)) as db:
         return [row[0] for row in db.execute(
@@ -202,7 +216,7 @@ def segment_at(segments: list, time_sec: float):
 
 
 def search(video_id: str, question: str, current_time: float | None = None, encoder=None,
-           sources: frozenset | None = None) -> dict:
+           sources: frozenset | None = None, prefer_segments: frozenset = frozenset()) -> dict:
     """Ranked chunks fused per slide -> {'slides': [...], 'best_semantic': float, 'temporal': bool}.
     sources limits search and evidence to some chunk types ("speech", "ocr", "region") for ablations."""
     import numpy as np
@@ -219,12 +233,14 @@ def search(video_id: str, question: str, current_time: float | None = None, enco
     for rank, n in enumerate(np.argsort(-similarities, kind="stable")[:CANDIDATES], 1):
         cid = index.chunks[n]["chunk_id"]
         scores[cid] = scores.get(cid, 0) + SEMANTIC_WEIGHT / (RRF_K + rank)
-    lexical = lexical_hits(index.folder, question, CANDIDATES if sources is None else CANDIDATES * 4)
+    lexical = lexical_hits(index.folder, question, CANDIDATES if sources is None else CANDIDATES * 4, video_id)
     lexical = [cid for cid in lexical if cid in by_id and (sources is None or kinds[by_id[cid]] in sources)]
     for rank, cid in enumerate(lexical[:CANDIDATES], 1):
         scores[cid] = scores.get(cid, 0) + LEXICAL_WEIGHT / (RRF_K + rank)
     for cid in scores:
         scores[cid] *= SOURCE_BOOST.get(kinds[by_id[cid]], 1.0)
+        if index.chunks[by_id[cid]]["segment_id"] in prefer_segments:
+            scores[cid] *= FOLLOW_UP_BOOST
     ranked = sorted(scores, key=lambda cid: -scores[cid])
     temporal = current_time is not None and any(p in normalize_search(question) for p in TEMPORAL)
     order: list[str] = []
@@ -258,7 +274,7 @@ def search(video_id: str, question: str, current_time: float | None = None, enco
                        "end_sec": segment.get("end_sec", chunks[-1]["end_sec"] if chunks else 0),
                        "title": visual.get("title_clean", visual.get("title")) or (chunks[0].get("title") if chunks else ""),
                        "ocr_text": ocr, "speech_text": speech, "figures": figures,
-                       "image": str(index.folder / "lecture" / image) if image else None,
+                       "image": str(index.folder / "lecture" / image) if image and index.folder else None,
                        "semantic_score": round(best, 4), "score": round(fused, 6),
                        "video_id": video_id})
     return {"slides": slides, "temporal": temporal,
@@ -271,11 +287,13 @@ def video_title(video_id: str) -> str:
 
 
 def search_many(video_ids: list, question: str, current_video: str | None = None,
-                current_time: float | None = None, max_slides: int = MAX_SLIDES + 1) -> dict:
+                current_time: float | None = None, max_slides: int = MAX_SLIDES + 1,
+                prefer_segments: frozenset = frozenset()) -> dict:
     """search() on several indexed videos. RRF scores come from per-video ranks (every video's
     top slide scores about the same), so slides are merged by E5 cosine, which all indexes share.
     A "this slide" match in the video being watched stays first."""
-    results = [search(vid, question, current_time if vid == current_video else None)
+    results = [search(vid, question, current_time if vid == current_video else None,
+                      prefer_segments=prefer_segments)
                for vid in dict.fromkeys(video_ids) if has_index(vid)]
     if not results:
         return {"slides": [], "temporal": False, "best_semantic": 0.0}

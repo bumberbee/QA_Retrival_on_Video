@@ -1,9 +1,47 @@
-export const API_BASE = (
+export let API_BASE = (
   import.meta.env.VITE_API_BASE_URL || "http://localhost:8001/api"
 ).replace(/\/$/, "");
 
+// Deployed build: the backend runs on a Vast.ai machine behind a temporary Cloudflare tunnel
+// whose URL changes at every start; the machine writes it to Supabase app_config.backend_url
+// and the page reads it (anon key, read-only) before rendering.
+export async function resolveApiBase() {
+  const url = import.meta.env.VITE_SUPABASE_URL;
+  const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  if (!url || !key) return API_BASE;
+  try {
+    const response = await fetch(
+      `${url.replace(/\/$/, "")}/rest/v1/app_config?key=eq.backend_url&select=value`,
+      { headers: { apikey: key, Authorization: `Bearer ${key}` } },
+    );
+    const rows = response.ok ? await response.json() : [];
+    if (rows[0]?.value) API_BASE = `${rows[0].value.replace(/\/$/, "")}/api`;
+  } catch {
+    // keep the build-time default; the page shows "cannot reach the server"
+  }
+  return API_BASE;
+}
+
+// Anonymous id of this browser: the backend keeps the Q&A history per id (no login).
+export function clientId() {
+  try {
+    let id = localStorage.getItem("client-id");
+    if (!id) {
+      id = crypto.randomUUID();
+      localStorage.setItem("client-id", id);
+    }
+    return id;
+  } catch {
+    return "anonymous-browser";
+  }
+}
+
 export async function request(path, options = {}) {
-  const response = await fetch(`${API_BASE}${path}`, options);
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    headers: { "X-Client-Id": clientId(), ...(options.headers || {}) },
+  });
+  if (response.status === 204) return null;
   if (!response.ok) {
     const body = await response.json().catch(() => null);
     const detail = body?.detail;
@@ -98,10 +136,10 @@ export function videoTitle(filename) {
 
 // POST /qa/stream: calls onSources with the evidence slides, then onText with each piece of the answer. Returns false when the video
 // has no index (the caller then uses POST /qa), true once the answer is complete.
-export async function streamAnswer(body, signal, onText, onSources) {
+export async function streamAnswer(body, signal, onText, onSources, onMeta) {
   const response = await fetch(`${API_BASE}/qa/stream`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-Client-Id": clientId() },
     body,
     signal,
   });
@@ -123,6 +161,7 @@ export async function streamAnswer(body, signal, onText, onSources) {
       const event = JSON.parse(line);
       if (event.type === "delta") onText(event.text);
       else if (event.type === "sources") onSources?.(event.sources);
+      else if (event.type === "meta") onMeta?.(event);
       else if (event.type === "error") throw new Error(event.detail);
     }
   }

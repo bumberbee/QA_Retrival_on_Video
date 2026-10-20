@@ -30,7 +30,7 @@ def client():
 
     endpoint = os.getenv("R2_ENDPOINT") or f"https://{os.environ['R2_ACCOUNT_ID']}.r2.cloudflarestorage.com"
     return boto3.client(
-        "s3", endpoint_url=endpoint, region_name="auto",
+        "s3", endpoint_url=endpoint, region_name=os.getenv("R2_REGION", "auto"),
         aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
         aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
         config=Config(signature_version="s3v4", retries={"max_attempts": 3}),

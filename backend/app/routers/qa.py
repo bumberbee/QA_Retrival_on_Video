@@ -1,24 +1,29 @@
 import json
+import threading
 import time
 
 from google.api_core.exceptions import GoogleAPICallError, ResourceExhausted
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException
 from fastapi.responses import StreamingResponse
 
 from .. import storage
 from ..models import AnswerSource, AskRequest, AskResponse
-from ..services import llm, retrieval
+from ..services import llm, retrieval, sessions
 
 router = APIRouter(prefix="/api/qa", tags=["qa"])
 
 
-def find_evidence(req: AskRequest, query: str) -> tuple[dict, str]:
+SUMMARY_EVERY = 4      # turns between two updates of the running summary
+HISTORY_TURNS = 3      # last turns given to the answer model (older ones live in the summary)
+
+
+def find_evidence(req: AskRequest, query: str, prefer: frozenset = frozenset()) -> tuple[dict, str]:
     """Search the videos ticked in the list (video_ids), or the video being watched when none is."""
     ids = list(dict.fromkeys(req.video_ids or [req.video_id]))
     if ids == [req.video_id]:
-        found = retrieval.search(req.video_id, query, req.current_time)
+        found = retrieval.search(req.video_id, query, req.current_time, prefer_segments=prefer)
         return found, retrieval.build_context(found)
-    found = retrieval.search_many(ids, query, req.video_id, req.current_time)
+    found = retrieval.search_many(ids, query, req.video_id, req.current_time, prefer_segments=prefer)
     note = (f"(Bằng chứng lấy từ {found.get('videos', len(ids))} video; khi trích mốc thời gian, "
             "ghi kèm tên video.)\n\n")
     return found, note + retrieval.build_context(found)
@@ -30,8 +35,59 @@ def source_dict(slide: dict) -> dict:
             "video_title": slide.get("video_title", "")}
 
 
+def prepare(req: AskRequest, client_id: str | None) -> dict:
+    """The conversation, the query to search with and the memory for the prompt.
+
+    A follow-up ("còn … thì sao", "nó") is rewritten into a standalone question from the last turns
+    (LLM4CS); if that fails it falls back to appending the previous question. A standalone question
+    is searched as it is (appending history hurts after a topic switch, TopiOCQA)."""
+    conversation = None
+    if client_id and sessions.valid_client(client_id):
+        if req.conversation_id:
+            conversation = sessions.get(req.conversation_id, client_id)
+        if conversation is None:
+            conversation = sessions.create(client_id, req.video_id, req.video_ids)
+    history = sessions.recent(conversation, HISTORY_TURNS)
+    previous = history[-1]["question"] if history else req.previous_question
+    follow_up = bool(previous) and retrieval.is_follow_up(req.question)
+    rewritten = llm.rewrite_question(req.question, history) if follow_up and history else None
+    query = rewritten or retrieval.search_question(req.question, previous)
+    last_sources = history[-1].get("sources", []) if history else []
+    prefer = frozenset(s["segment_id"] for s in last_sources) if follow_up else frozenset()
+    return {"conversation": conversation, "history": history, "query": query, "prefer": prefer,
+            "rewritten": rewritten, "follow_up": follow_up,
+            "previous": previous if (query != req.question and not history) else None,
+            "summary": (conversation or {}).get("summary", "")}
+
+
+def remember(req: AskRequest, client_id: str | None, plan: dict, answer: str, sources: list, seconds: float) -> None:
+    """Save the turn; once SUMMARY_EVERY turns are older than the history window, fold them into
+    the running summary in the background (recursive summarizing)."""
+    conversation = plan["conversation"]
+    if not conversation or not answer.strip():
+        return
+    saved = sessions.append_turn(conversation["id"], client_id, {
+        "question": req.question, "rewritten": plan["rewritten"], "query": plan["query"],
+        "answer": answer, "sources": sources, "seconds": round(seconds, 1),
+        "video_id": req.video_id, "video_ids": req.video_ids}, req.video_id, req.video_ids)
+    if not saved:
+        return
+    covered = saved.get("summarized_turns", 0)
+    older = saved["turns"][covered:max(covered, len(saved["turns"]) - HISTORY_TURNS)]
+    if len(older) >= SUMMARY_EVERY:
+        def run():
+            summary = llm.summarize(saved.get("summary", ""), older)
+            if summary:
+                sessions.set_summary(saved["id"], client_id, summary, covered + len(older))
+        threading.Thread(target=run, daemon=True).start()
+
+
+def memory(plan: dict) -> dict:
+    return {"history": plan["history"], "summary": plan["summary"], "rewritten": plan["rewritten"]}
+
+
 @router.post("", response_model=AskResponse)
-async def ask_question(req: AskRequest):
+def ask_question(req: AskRequest, x_client_id: str | None = Header(default=None)):
     # Videos imported from the extraction pipeline have a stage-05 index: answer from the
     # retrieved slide evidence (OCR + speech + slide images). Others: the whole transcript.
     use_index = retrieval.has_index(req.video_id)
@@ -42,13 +98,16 @@ async def ask_question(req: AskRequest):
     backend = llm.describe()
     started = time.perf_counter()
     sources: list[AnswerSource] = []
+    plan = None
     try:
         if use_index:
-            query = retrieval.search_question(req.question, req.previous_question)
-            found, context = find_evidence(req, query)
+            plan = prepare(req, x_client_id)
+            found, context = find_evidence(req, plan["query"], plan["prefer"])
             answer = llm.answer_with_evidence(req.question, req.current_time, found, context,
-                                              previous=req.previous_question if query != req.question else None)
+                                              previous=plan["previous"], **memory(plan))
             sources = [AnswerSource(**source_dict(s)) for s in found["slides"]]
+            remember(req, x_client_id, plan, answer, [s.model_dump() for s in sources],
+                     time.perf_counter() - started)
         else:
             answer = llm.answer_question(transcript, req.question, req.current_time)
     except llm.LLMUnavailable as e:
@@ -69,28 +128,35 @@ async def ask_question(req: AskRequest):
         f"[qa] {backend['provider']}:{backend['model']} mode={'evidence' if use_index else 'transcript'} "
         f"video={req.video_id} elapsed={elapsed:.1f}s"
     )
-    return AskResponse(answer=answer, sources=sources, mode="evidence" if use_index else "transcript")
+    return AskResponse(answer=answer, sources=sources, mode="evidence" if use_index else "transcript",
+                       conversation_id=((plan or {}).get("conversation") or {}).get("id"),
+                       rewritten=(plan or {}).get("rewritten"))
 
 
 @router.post("/stream")
-def ask_question_stream(req: AskRequest):
+def ask_question_stream(req: AskRequest, x_client_id: str | None = Header(default=None)):
     """The evidence answer as NDJSON lines: {"type": "sources"}, then {"type": "delta"} pieces,
     then {"type": "done"} or {"type": "error"}. Videos without an index use POST /api/qa."""
     if not retrieval.has_index(req.video_id):
         raise HTTPException(404, "Video này chưa có chỉ mục, dùng /api/qa")
-    query = retrieval.search_question(req.question, req.previous_question)
-    previous = req.previous_question if query != req.question else None
-    found, context = find_evidence(req, query)
+    plan = prepare(req, x_client_id)
+    found, context = find_evidence(req, plan["query"], plan["prefer"])
     sources = [source_dict(s) for s in found["slides"]]
 
     def lines():
         backend = llm.describe()
         started = time.perf_counter()
         first = None
+        yield json.dumps({"type": "meta", "conversation_id": (plan["conversation"] or {}).get("id"),
+                          "rewritten": plan["rewritten"], "follow_up": plan["follow_up"]},
+                         ensure_ascii=False) + "\n"
         yield json.dumps({"type": "sources", "sources": sources}, ensure_ascii=False) + "\n"
+        answer = []
         try:
-            for piece in llm.stream_with_evidence(req.question, req.current_time, found, context, previous):
+            for piece in llm.stream_with_evidence(req.question, req.current_time, found, context,
+                                                  plan["previous"], **memory(plan)):
                 first = first or time.perf_counter() - started
+                answer.append(piece)
                 yield json.dumps({"type": "delta", "text": piece}, ensure_ascii=False) + "\n"
         except ResourceExhausted:
             yield json.dumps({"type": "error", "detail": "Đã hết quota Gemini API miễn phí cho hôm nay."},
@@ -100,7 +166,9 @@ def ask_question_stream(req: AskRequest):
             yield json.dumps({"type": "error", "detail": str(e)}, ensure_ascii=False) + "\n"
             return
         print(f"[qa-stream] {backend['provider']}:{backend['model']} video={req.video_id} "
-              f"first={first or 0:.1f}s total={time.perf_counter() - started:.1f}s")
+              f"first={first or 0:.1f}s total={time.perf_counter() - started:.1f}s"
+              + (f" rewritten={plan['rewritten']!r}" if plan["rewritten"] else ""))
+        remember(req, x_client_id, plan, "".join(answer), sources, time.perf_counter() - started)
         yield json.dumps({"type": "done"}) + "\n"
 
     return StreamingResponse(lines(), media_type="application/x-ndjson")

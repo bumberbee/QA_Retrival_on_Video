@@ -99,6 +99,15 @@ create table if not exists jobs (
 );
 create index if not exists jobs_status_idx on jobs (status, created_at);
 
+-- Q&A sessions of one anonymous browser (doc = the conversation JSON of app/services/sessions.py).
+create table if not exists conversations (
+  id          text primary key,
+  client_id   text not null,
+  doc         jsonb not null,
+  updated_at  timestamptz not null default now()
+);
+create index if not exists conversations_client_idx on conversations (client_id, updated_at desc);
+
 -- Small settings the browser may read, e.g. the current backend URL of the Vast machine.
 create table if not exists app_config (
   key        text primary key,
@@ -114,6 +123,7 @@ alter table transcript_segments enable row level security;
 alter table chunks              enable row level security;
 alter table slide_reviews       enable row level security;
 alter table jobs                enable row level security;
+alter table conversations       enable row level security;
 alter table app_config          enable row level security;
 
 do $$

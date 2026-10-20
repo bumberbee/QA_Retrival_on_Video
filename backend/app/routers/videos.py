@@ -1,11 +1,11 @@
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 
 from .. import storage
 from ..models import SlideReview, Transcript, VideoImportRequest, VideoImportStatus, VideoInfo
-from ..services import video_import
+from ..services import objects, video_import
 from ..services.media import video_response
 
 router = APIRouter(prefix="/api/videos", tags=["videos"])
@@ -64,6 +64,11 @@ async def get_video_import(import_id: str):
 @router.head("/{video_id}/file", include_in_schema=False)
 @router.get("/{video_id}/file")
 async def get_video_file(video_id: str, request: Request):
+    if storage.cloud():   # the browser plays the mp4 straight from R2 (signed URL, range requests work)
+        key = (storage.load_video_meta(video_id) or {}).get("video_key")
+        if not key:
+            raise HTTPException(404, "Không tìm thấy video")
+        return RedirectResponse(objects.signed_url(key), status_code=307)
     path = storage.find_video_file(video_id)
     if not path:
         raise HTTPException(404, "Không tìm thấy video")
@@ -142,6 +147,12 @@ async def put_slide_review(video_id: str, variant: str, slide_key: str, review: 
 
 @router.get("/{video_id}/slides/{filename:path}")
 async def get_slide_file(video_id: str, filename: str):
+    if storage.cloud():
+        from ..services import supa
+        key = supa.keyframe_keys(video_id).get(filename)
+        if not key:
+            raise HTTPException(404, "Không tìm thấy slide")
+        return RedirectResponse(objects.signed_url(key), status_code=307)
     path = storage.slide_file(video_id, filename)
     if not path:
         raise HTTPException(404, "Không tìm thấy slide")

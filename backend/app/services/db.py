@@ -10,7 +10,8 @@ import os
 import threading
 from contextlib import contextmanager
 
-SCHEMA_TABLES = ("videos", "segments", "transcript_segments", "chunks", "slide_reviews", "jobs", "app_config")
+SCHEMA_TABLES = ("videos", "segments", "transcript_segments", "chunks", "slide_reviews", "jobs",
+                 "conversations", "app_config")
 _pool = None
 _lock = threading.Lock()
 

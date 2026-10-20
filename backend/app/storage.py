@@ -7,6 +7,16 @@ from pathlib import Path
 
 from .models import Transcript, VideoInfo
 
+
+def cloud() -> bool:
+    """Supabase holds the data (SUPABASE_DB_URL set); otherwise the files under DATA_DIR."""
+    return bool(os.getenv("SUPABASE_DB_URL"))
+
+
+def _supa():
+    from .services import supa
+    return supa
+
 # LECTURE_RAG_DATA_DIR moves the app data off the default backend/data (e.g. to a bigger drive).
 DATA_DIR = Path(os.getenv("LECTURE_RAG_DATA_DIR") or Path(__file__).resolve().parent.parent / "data")
 VIDEOS_DIR = DATA_DIR / "videos"
@@ -78,6 +88,8 @@ def save_video_meta(
 
 
 def load_video_meta(video_id: str) -> dict | None:
+    if cloud():
+        return _supa().video_meta(video_id)
     path = video_meta_path(video_id)
     if not path.exists():
         return None
@@ -85,6 +97,8 @@ def load_video_meta(video_id: str) -> dict | None:
 
 
 def find_video_id_by_original_filename(original_filename: str) -> str | None:
+    if cloud():
+        return _supa().find_id_by_filename(original_filename)
     for meta_file in VIDEOS_DIR.glob("*.meta.json"):
         meta = json.loads(meta_file.read_text(encoding="utf-8"))
         if meta.get("original_filename") == original_filename:
@@ -102,6 +116,8 @@ def save_transcript(transcript: Transcript) -> None:
 
 
 def load_transcript(video_id: str) -> Transcript | None:
+    if cloud():
+        return _supa().transcript(video_id)
     path = transcript_path(video_id)
     if not path.exists():
         return None
@@ -114,6 +130,8 @@ def keyframes_dir(video_id: str) -> Path:
 
 
 def list_keyframes(video_id: str) -> list[str]:
+    if cloud():
+        return sorted(name for name in _supa().keyframe_keys(video_id) if "/" not in name)
     d = keyframes_dir(video_id)
     if not d.exists():
         return []
@@ -131,6 +149,8 @@ def slide_file(video_id: str, name: str) -> Path | None:
 
 def load_slide_variants(video_id: str) -> dict | None:
     """Alternative slide segmentations for evaluation (written by scripts/import_slide_variants.py)."""
+    if cloud():
+        return _supa().slide_variants(video_id)
     path = SLIDE_VARIANTS_DIR / f"{video_id}.json"
     if not path.exists():
         return None
@@ -138,6 +158,8 @@ def load_slide_variants(video_id: str) -> dict | None:
 
 
 def load_slide_reviews(video_id: str) -> dict:
+    if cloud():
+        return _supa().slide_reviews(video_id)
     path = SLIDE_REVIEWS_DIR / f"{video_id}.json"
     if not path.exists():
         return {}
@@ -145,12 +167,16 @@ def load_slide_reviews(video_id: str) -> dict:
 
 
 def save_slide_reviews(video_id: str, reviews: dict) -> None:
+    if cloud():
+        return _supa().save_slide_reviews(video_id, reviews)
     SLIDE_REVIEWS_DIR.mkdir(parents=True, exist_ok=True)
     path = SLIDE_REVIEWS_DIR / f"{video_id}.json"
     path.write_text(json.dumps(reviews, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def list_videos() -> list[VideoInfo]:
+    if cloud():
+        return _supa().list_videos()
     videos = []
     for f in sorted(VIDEOS_DIR.iterdir()):
         if not f.is_file() or f.name.endswith(".meta.json"):

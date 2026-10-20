@@ -51,6 +51,7 @@ class AskRequest(BaseModel):
     current_time: float | None = None  # thời điểm video đang phát, giây
     previous_question: str | None = None  # câu hỏi liền trước trong cuộc trò chuyện
     video_ids: list[str] | None = None  # hỏi trên các video được chọn (có thể không gồm video đang xem)
+    conversation_id: str | None = None  # phiên hỏi đáp; trống = tạo phiên mới (cần header X-Client-Id)
 
 
 class AnswerSource(BaseModel):
@@ -67,3 +68,5 @@ class AskResponse(BaseModel):
     used_segments: list[TranscriptSegment] = []
     sources: list[AnswerSource] = []
     mode: Literal["evidence", "transcript"] = "transcript"
+    conversation_id: str | None = None
+    rewritten: str | None = None  # câu nối tiếp đã viết lại thành câu độc lập để tìm kiếm
