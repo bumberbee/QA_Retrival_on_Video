@@ -11,7 +11,8 @@ export async function resolveApiBase() {
   if (!url || !key) return API_BASE;
   try {
     const response = await fetch(
-      `${url.replace(/\/$/, "")}/rest/v1/app_config?key=eq.backend_url&select=value`,
+      // tolerate the REST URL pasted in place of the project URL
+      `${url.replace(/\/+$/, "").replace(/\/rest\/v1$/, "")}/rest/v1/app_config?key=eq.backend_url&select=value`,
       { headers: { apikey: key, Authorization: `Bearer ${key}` } },
     );
     const rows = response.ok ? await response.json() : [];
