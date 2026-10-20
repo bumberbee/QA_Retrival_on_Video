@@ -68,7 +68,8 @@ def sync_video(data: Path, video_id: str, skip_files: bool) -> str:
         return f"lỗi {video_id}: {len(chunks)} chunk nhưng {len(vectors)} vector"
 
     with db.connection() as conn, conn.transaction():
-        conn.execute("delete from videos where id = %s", (video_id,))   # cascades to every child table
+        # cascades to every child table; an older import of the same file has the same segment ids
+        conn.execute("delete from videos where id = %s or filename = %s", (video_id, filename))
         conn.execute(
             "insert into videos (id, filename, language, duration_sec, status, video_key, source_url, "
             "source_platform, has_transcript, has_slides, meta, uploaded_at) "

@@ -41,7 +41,11 @@ Kết quả mỗi video giống cấu trúc notebook 01–05, nên notebook 06 v
 
 CONFIG = """from pathlib import Path
 
-VIDEO_IDS = ['L25_V001', 'L25_V005', 'L25_V030', 'L25_V052']
+# 10 video, nhiều môn: Sử, Toán, Hóa, Lý, Kinh tế, Lập trình, XSTK, Toán lớp 2, Khoa học máy tính (tiếng Anh, SlideSpeech)
+VIDEO_IDS = ['L25_V011', 'L25_V037', 'L25_V008', '_eDGTHhyQ7M', 'tHE1mC_n0-E', 'v2YTz8ToEag',
+             'y1CvB950VlU', 'hVU5Mw19V_c', 'D_kuulxKuxc', 'cs_0001']
+# Ngôn ngữ lời giảng (ASR) và prompt OCR / mô tả hình; video không ghi là 'vi'.
+VIDEO_LANGUAGES = {'cs_0001': 'en'}
 OUTPUT_ROOT = Path('/kaggle/working/lecture_rag')
 
 # 01 · slide
@@ -200,6 +204,7 @@ def ocr(video_id, stage01):
         hybrid_devices=HYBRID_DEVICES, ocr_gate=ocr_gate, hybrid_rescue_area=HYBRID_RESCUE_AREA,
         hybrid_skip_repeated_decor=HYBRID_SKIP_REPEATED_DECOR, hybrid_min_region_area=HYBRID_MIN_REGION_AREA,
         reuse_near_duplicates=REUSE_NEAR_DUPLICATES, hybrid_pipelined=HYBRID_PIPELINED,
+        describe_language=VIDEO_LANGUAGES.get(video_id, 'vi'),
     )
     return directory, time.monotonic() - started
 
@@ -208,7 +213,7 @@ def asr(video_id):
     started = time.monotonic()
     directory, _, _ = run_transcription(
         None, find_video_file(video_id), OUTPUT_ROOT / video_id, video_id,
-        model_id=ASR_MODEL, revision=ASR_REVISION, language='vi',
+        model_id=ASR_MODEL, revision=ASR_REVISION, language=VIDEO_LANGUAGES.get(video_id, 'vi'),
         transcription_mode=ASR_MODE, device_index=ASR_DEVICE_INDEX,
     )
     return directory, time.monotonic() - started
