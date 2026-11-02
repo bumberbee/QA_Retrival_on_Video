@@ -112,12 +112,15 @@ def load_index(video_id: str):
     return chunks, vectors, [r["extra"] for r in segment_rows]
 
 
-def lexical_hits(video_id: str, terms: list[str], count: int) -> list[str]:
+def lexical_hits(video_id: str, terms: list[str], count: int, phrases=()) -> list[str]:
     """Chunk ids matching any term, best ts_rank first (terms are already lower-case, unaccented)."""
     words = [term for term in terms if term.isalnum()][:64]
     if not words:
         return []
     query = " | ".join(words)
+    pairs = [(a, b) for a, b in phrases if a in words and b in words and a.isalnum() and b.isalnum()]
+    if pairs:
+        query += " | " + " | ".join(f"({a} <-> {b})" for a, b in pairs)
     with db.connection() as conn:
         rows = conn.execute(
             "select id from chunks where video_id = %s and tsv @@ to_tsquery('simple', %s) "

@@ -17,7 +17,7 @@ import sqlite3
 import threading
 import unicodedata
 from contextlib import closing
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from functools import lru_cache
 from pathlib import Path
 
@@ -28,16 +28,48 @@ E5_REPO = "intfloat/multilingual-e5-small"
 E5_REVISION = "614241f622f53c4eeff9890bdc4f31cfecc418b3"
 SEMANTIC_WEIGHT, LEXICAL_WEIGHT, RRF_K = 1.0, 0.5, 60
 CANDIDATES, MAX_SLIDES, MAX_IMAGES = 20, 3, 2
-# Slide text gets a small edge over speech, which has ~2x more chunks and otherwise wins rank 1 for
-# answers only written on the slide. 66 questions / 6 videos: hit@1 50 -> 55, hit@3 64 -> 65
-# (1.1-1.5, ranking speech and slide separately, or summing chunk scores per slide all did worse).
+# Legacy boost retained for ablation; disabled after query-time OCR grouping (eval/PHASE2.md).
 SOURCE_BOOST = {"ocr": 1.05, "region": 1.05}
+# Independent query-time ablations; no index files are changed.
+RANKED_CONTEXT = True
+NEIGHBOR_EXPANSION = True
+VIETNAMESE_LEXICAL = True
+LEXICAL_PHRASES = True
+OCR_DEDUP = True
+SLIDE_DIVERSITY = True
+APPLY_SOURCE_BOOST = False
+MAX_CONTEXT_CHARS = 8000
+NEIGHBOR_GAP_SEC = 2.0
+
+
+@dataclass(frozen=True)
+class RetrievalOptions:
+    ranked_context: bool = RANKED_CONTEXT
+    neighbors: bool = NEIGHBOR_EXPANSION
+    vietnamese_lexical: bool = VIETNAMESE_LEXICAL
+    phrases: bool = LEXICAL_PHRASES
+    dedup: bool = OCR_DEDUP
+    diversity: bool = SLIDE_DIVERSITY
+    source_boost: bool = APPLY_SOURCE_BOOST
+
+
+def retrieval_options(features=None):
+    if features is None:
+        return RetrievalOptions()
+    return RetrievalOptions(**{key: (key in features) if key != "source_boost" else "no_boost" not in features
+                               for key in asdict(RetrievalOptions())})
+
+
 # A follow-up usually asks about the slides just cited: their chunks get this extra factor.
 FOLLOW_UP_BOOST = 1.1
 STOPWORDS = set("""a ai anh ay ba bang bao bi boi cac cach cai can cho chi chua chung co con cua cung da dang
 de den deu di do doi duoc gi gio ha hay hon khi khong la lai lam len luc ma minh mot moi muon nao nay
 neu ngay nhieu nhu nhung noi o phai qua ra rang rat roi sao se sau tai the thi thoi theo thu tren tro
 trong tu va van ve vi voi vua xin what how why which when who is are of an to in on for and or do does""".split())
+VI_STOPWORDS = set("""ai anh ấy bằng bao bị bởi các cái cần cho chưa chúng có còn của cũng đã đang
+để đến đều đi đó được gì giờ hãy hơn khi không là lại làm mà mình một mỗi muốn nào này
+nếu nhiều như những nói ở phải quá ra rằng rất rồi sao sẽ sau tại thì thôi theo trên
+trong và vẫn về vì với vừa xin what how why which when who is are of an to in on for and or do does""".split())
 TEMPORAL = ("slide nay", "doan nay", "luc nay", "cho nay", "hien tai", "this slide", "current slide")
 
 
@@ -164,15 +196,32 @@ def load_index(video_id: str) -> LectureIndex:
                         model if model in ENCODERS else E5_REPO)
 
 
-def lexical_hits(folder: Path | None, question: str, count: int, video_id: str = "") -> list[str]:
-    words = list(dict.fromkeys(re.findall(r"[^\W_]+", normalize_search(question))))
-    terms = [word for word in words if word not in STOPWORDS] or words
+def lexical_query(question, vietnamese=True, phrases=False):
+    # Remove only unambiguous accented function words; bare syllables may be technical terms.
+    original = re.findall(r"[^\W_]+", unicodedata.normalize("NFC", question.casefold()))
+    words = [normalize_search(word) for word in original]
+    keep = [word not in VI_STOPWORDS if vietnamese else folded not in STOPWORDS
+            for word, folded in zip(original, words)]
+    terms = list(dict.fromkeys(word for word, allowed in zip(words, keep) if allowed))[:64]
+    if not vietnamese and not terms:
+        terms = list(dict.fromkeys(words))[:64]
+    pairs = list(dict.fromkeys((words[i], words[i + 1]) for i in range(len(words) - 1)
+                              if keep[i] and keep[i + 1] and words[i] in terms and words[i + 1] in terms))[:32] if phrases else []
+    return terms, pairs
+
+
+def lexical_hits(folder: Path | None, question: str, count: int, video_id: str = "",
+                 options: RetrievalOptions | None = None) -> list[str]:
+    options = options or RetrievalOptions()
+    terms, phrases = lexical_query(question, options.vietnamese_lexical, options.phrases)
     if not terms:
         return []
     if folder is None:   # Supabase: the same terms against the chunks' unaccented tsvector
         from . import supa
-        return supa.lexical_hits(video_id, terms, count)
-    expression = " OR ".join(f'"{term}"' for term in terms[:64])
+        return supa.lexical_hits(video_id, terms, count, phrases=phrases)
+    expression = " OR ".join(f'"{term}"' for term in terms)
+    if phrases:
+        expression += " OR " + " OR ".join(f'"{a} {b}"' for a, b in phrases)
     with closing(sqlite3.connect((folder / "lexical.sqlite3").resolve().as_uri() + "?mode=ro", uri=True)) as db:
         return [row[0] for row in db.execute(
             "SELECT chunk_id FROM evidence WHERE evidence MATCH ? ORDER BY bm25(evidence) LIMIT ?",
@@ -215,13 +264,122 @@ def segment_at(segments: list, time_sec: float):
     return None
 
 
+def content_groups(index: LectureIndex):
+    """Conservative OCR groups; changed numbers are never treated as near duplicates."""
+    if hasattr(index, "_content_groups"):
+        return index._content_groups
+    groups, exact, representatives = {}, {}, []
+    for chunk in index.chunks:
+        cid = chunk["chunk_id"]
+        if chunk["source_type"] != "ocr":
+            groups[cid] = cid
+            continue
+        normalized = normalize_search(chunk["text"])
+        words = re.findall(r"[^\W_]+", normalized)
+        identity = " ".join(normalized.split())
+        numbers = tuple(re.findall(r"\d+(?:[.,]\d+)*|[=+*/−-]", normalized))
+        shingles = {tuple(words[i:i + 3]) for i in range(len(words) - 2)}
+        group = exact.get(identity)
+        if group is None and len(words) >= 16:
+            for other_id, other_numbers, other_shingles in representatives:
+                if numbers == other_numbers and len(shingles & other_shingles) / max(1, len(shingles | other_shingles)) >= 0.9:
+                    group = other_id
+                    break
+        if group is None:
+            group = cid
+            if len(words) >= 16:
+                representatives.append((cid, numbers, shingles))
+        exact[identity] = group
+        groups[cid] = group
+    index._content_groups = groups
+    return groups
+
+
+def context_candidates(index, sid, ranked, similarities, options, sources=None, question=""):
+    chunks = [c for c in index.chunks if c["segment_id"] == sid
+              and (sources is None or c["source_type"] in sources)]
+    by_id = {c["chunk_id"]: c for c in index.chunks}
+    positions = {c["chunk_id"]: i for i, c in enumerate(index.chunks)}
+    matched = [by_id[cid] for cid in ranked if by_id[cid]["segment_id"] == sid]
+    anchor = matched[0] if matched else (chunks[0] if chunks else None)
+    if anchor is None:
+        return [], []
+    selected, seen = [], set()
+
+    def add(chunk, reason, priority):
+        if chunk["chunk_id"] in seen or (sources is not None and chunk["source_type"] not in sources):
+            return
+        seen.add(chunk["chunk_id"])
+        segment = index.by_segment.get(chunk["segment_id"], {})
+        selected.append({**chunk, "selection_reason": reason, "priority": priority,
+                         "slide_start_sec": segment.get("start_sec", chunk["start_sec"]),
+                         "slide_end_sec": segment.get("end_sec", chunk["end_sec"])})
+
+    add(anchor, "matched", 0)
+    for kind in ("ocr", "speech", "region"):
+        candidates = [c for c in chunks if c["source_type"] == kind]
+        if candidates:
+            best = max(candidates, key=lambda c: float(similarities[positions[c["chunk_id"]]]))
+            add(best, "same_slide", 1)
+        elif kind in {"ocr", "speech"}:
+            segment = index.by_segment.get(sid, {})
+            text = (segment.get("visual", {}).get("ocr_text_clean") if kind == "ocr"
+                    else segment.get("speech", {}).get("text"))
+            if text:
+                add({"chunk_id": sid + ":" + kind, "segment_id": sid, "source_type": kind,
+                     "text": text, "start_sec": segment["start_sec"], "end_sec": segment["end_sec"]},
+                    "same_slide", 1)
+    for chunk in matched[1:]:
+        add(chunk, "matched", 2)
+    speech = sorted((c for c in chunks if c["source_type"] == "speech"), key=lambda c: c["start_sec"])
+    seeds = [c for c in selected if c["source_type"] == "speech"][:2]
+    for seed in seeds:
+        position = next((i for i, c in enumerate(speech) if c["chunk_id"] == seed["chunk_id"]), None)
+        if position is None:
+            continue
+        for n in (position - 1, position + 1):
+            if 0 <= n < len(speech):
+                add(speech[n], "speech_window", 3)
+    if options.neighbors:
+        segment = index.by_segment.get(sid, {})
+        ordered = sorted(index.segments, key=lambda s: s["start_sec"])
+        position = next((i for i, s in enumerate(ordered) if s["segment_id"] == sid), None)
+        explain = any(p in normalize_search(question) for p in
+                      ("giai thich", "cac buoc", "quy trinh", "the nao", "tai sao", "explain", "steps", "how", "why"))
+        for delta in (-1, 1):
+            boundary = segment.get("start_sec" if delta < 0 else "end_sec", anchor["start_sec"])
+            edge = anchor["start_sec" if delta < 0 else "end_sec"]
+            needed = explain or len(anchor["text"]) < 80 or abs(edge - boundary) <= NEIGHBOR_GAP_SEC
+            if position is None or not needed or not 0 <= position + delta < len(ordered):
+                continue
+            neighbor = ordered[position + delta]
+            gap = (segment.get("start_sec", 0) - neighbor["end_sec"] if delta < 0
+                   else neighbor["start_sec"] - segment.get("end_sec", 0))
+            if is_ad(neighbor) or gap > NEIGHBOR_GAP_SEC:
+                continue
+            adjacent = [c for c in index.chunks if c["segment_id"] == neighbor["segment_id"]]
+            narration = sorted((c for c in adjacent if c["source_type"] == "speech"),
+                               key=lambda c: c["start_sec"], reverse=delta < 0)
+            for chunk in narration[:1]:
+                # A visual boundary alone does not justify jumping over a long silent gap.
+                speech_gap = (anchor["start_sec"] - chunk["end_sec"] if delta < 0
+                              else chunk["start_sec"] - anchor["end_sec"])
+                if explain or anchor["source_type"] != "speech" or speech_gap <= NEIGHBOR_GAP_SEC:
+                    add(chunk, "previous" if delta < 0 else "next", 4)
+    return matched, selected
+
+
 def search(video_id: str, question: str, current_time: float | None = None, encoder=None,
-           sources: frozenset | None = None, prefer_segments: frozenset = frozenset()) -> dict:
+           sources: frozenset | None = None, prefer_segments: frozenset = frozenset(),
+           options: RetrievalOptions | None = None) -> dict:
     """Ranked chunks fused per slide -> {'slides': [...], 'best_semantic': float, 'temporal': bool}.
     sources limits search and evidence to some chunk types ("speech", "ocr", "region") for ablations."""
     import numpy as np
 
     index = load_index(video_id)
+    options = options or RetrievalOptions()
+    temporal = current_time is not None and any(p in normalize_search(question) for p in TEMPORAL)
+    current = segment_at(index.segments, current_time) if temporal else None
     vector = (encoder or default_encoder(index.model)).encode(question)
     similarities = index.vectors @ vector
     if sources is not None:
@@ -230,28 +388,56 @@ def search(video_id: str, question: str, current_time: float | None = None, enco
     by_id = {chunk["chunk_id"]: n for n, chunk in enumerate(index.chunks)}
     kinds = [c["source_type"] for c in index.chunks]
     scores: dict[str, float] = {}
-    for rank, n in enumerate(np.argsort(-similarities, kind="stable")[:CANDIDATES], 1):
+    groups = content_groups(index) if options.dedup else {cid: cid for cid in by_id}
+    representatives = {}
+    # Group before taking the twenty candidates, so copies cannot consume the pool.
+    for n in np.argsort(-similarities, kind="stable"):
         cid = index.chunks[n]["chunk_id"]
+        if sources is None or kinds[n] in sources:
+            representatives.setdefault(groups[cid], cid)
+    if options.dedup and (prefer_segments or current):
+        def preference(candidate):
+            sid = index.chunks[by_id[candidate]]["segment_id"]
+            return (bool(current and sid == current["segment_id"]), sid in prefer_segments,
+                    float(similarities[by_id[candidate]]))
+
+        for cid in by_id:
+            group = groups[cid]
+            if group not in representatives:
+                continue
+            previous = representatives[group]
+            if preference(cid) > preference(previous):
+                representatives[group] = cid
+    semantic = list(representatives.values())[:CANDIDATES]
+    for rank, cid in enumerate(semantic, 1):
         scores[cid] = scores.get(cid, 0) + SEMANTIC_WEIGHT / (RRF_K + rank)
-    lexical = lexical_hits(index.folder, question, CANDIDATES if sources is None else CANDIDATES * 4, video_id)
+    lexical = lexical_hits(index.folder, question, len(index.chunks) if options.dedup else
+                           (CANDIDATES if sources is None else CANDIDATES * 4), video_id, options)
     lexical = [cid for cid in lexical if cid in by_id and (sources is None or kinds[by_id[cid]] in sources)]
+    if options.dedup:
+        lexical = list(dict.fromkeys(representatives[groups[cid]] for cid in lexical))
     for rank, cid in enumerate(lexical[:CANDIDATES], 1):
         scores[cid] = scores.get(cid, 0) + LEXICAL_WEIGHT / (RRF_K + rank)
     for cid in scores:
-        scores[cid] *= SOURCE_BOOST.get(kinds[by_id[cid]], 1.0)
-        if index.chunks[by_id[cid]]["segment_id"] in prefer_segments:
+        if options.source_boost:
+            scores[cid] *= SOURCE_BOOST.get(kinds[by_id[cid]], 1.0)
+        if prefer_segments and any(c["segment_id"] in prefer_segments for c in index.chunks
+                                   if groups[c["chunk_id"]] == groups[cid]):
             scores[cid] *= FOLLOW_UP_BOOST
     ranked = sorted(scores, key=lambda cid: -scores[cid])
-    temporal = current_time is not None and any(p in normalize_search(question) for p in TEMPORAL)
     order: list[str] = []
     if temporal:
-        current = segment_at(index.segments, current_time)
         if current:
             order.append(current["segment_id"])
+    diversity_groups = content_groups(index) if options.diversity else groups
+    used_groups = {diversity_groups[cid] for cid in ranked if index.chunks[by_id[cid]]["segment_id"] in order}
     for cid in ranked:
         sid = index.chunks[by_id[cid]]["segment_id"]
+        if options.diversity and diversity_groups[cid] in used_groups and sid not in order:
+            continue
         if sid not in order:
             order.append(sid)
+            used_groups.add(diversity_groups[cid])
         if len(order) >= MAX_SLIDES:
             break
     slides = []
@@ -269,6 +455,12 @@ def search(video_id: str, question: str, current_time: float | None = None, enco
         image = visual.get("image_path") or (chunks[0].get("image_path") if chunks else None)
         best = max((float(similarities[by_id[c["chunk_id"]]]) for c in chunks), default=0.0)   # -1 = source left out
         fused = max((scores.get(c["chunk_id"], 0.0) for c in chunks), default=0.0)
+        matched, evidence = context_candidates(index, sid, ranked, similarities, options, sources, question)
+        if options.dedup:
+            for chunk in evidence:
+                chunk["occurrences"] = [{"chunk_id": c["chunk_id"], "segment_id": c["segment_id"],
+                                         "start_sec": c["start_sec"], "end_sec": c["end_sec"]}
+                                        for c in index.chunks if groups[c["chunk_id"]] == groups.get(chunk["chunk_id"])]
         slides.append({"segment_id": sid, "rank": rank,
                        "start_sec": segment.get("start_sec", chunks[0]["start_sec"] if chunks else 0),
                        "end_sec": segment.get("end_sec", chunks[-1]["end_sec"] if chunks else 0),
@@ -276,8 +468,12 @@ def search(video_id: str, question: str, current_time: float | None = None, enco
                        "ocr_text": ocr, "speech_text": speech, "figures": figures,
                        "image": str(index.folder / "lecture" / image) if image and index.folder else None,
                        "semantic_score": round(best, 4), "score": round(fused, 6),
-                       "video_id": video_id})
+                       "video_id": video_id, "matched_chunk_ids": [c["chunk_id"] for c in matched],
+                       "matched_spans": [{"chunk_id": c["chunk_id"], "start_sec": c["start_sec"],
+                                          "end_sec": c["end_sec"]} for c in matched],
+                       "evidence_candidates": evidence})
     return {"slides": slides, "temporal": temporal,
+            "question": question, "retrieval_options": asdict(options),
             "best_semantic": round(float(similarities.max()), 4) if len(similarities) else 0.0}
 
 
@@ -288,12 +484,12 @@ def video_title(video_id: str) -> str:
 
 def search_many(video_ids: list, question: str, current_video: str | None = None,
                 current_time: float | None = None, max_slides: int = MAX_SLIDES + 1,
-                prefer_segments: frozenset = frozenset()) -> dict:
+                prefer_segments: frozenset = frozenset(), options: RetrievalOptions | None = None) -> dict:
     """search() on several indexed videos. RRF scores come from per-video ranks (every video's
     top slide scores about the same), so slides are merged by E5 cosine, which all indexes share.
     A "this slide" match in the video being watched stays first."""
     results = [search(vid, question, current_time if vid == current_video else None,
-                      prefer_segments=prefer_segments)
+                      prefer_segments=prefer_segments, options=options)
                for vid in dict.fromkeys(video_ids) if has_index(vid)]
     if not results:
         return {"slides": [], "temporal": False, "best_semantic": 0.0}
@@ -303,7 +499,8 @@ def search_many(video_ids: list, question: str, current_video: str | None = None
     for slide in slides:
         slide["video_title"] = video_title(slide["video_id"])
     return {"slides": slides, "temporal": bool(pinned),
-            "best_semantic": max(r["best_semantic"] for r in results), "videos": len(results)}
+            "best_semantic": max(r["best_semantic"] for r in results), "videos": len(results),
+            "question": question, "retrieval_options": asdict(options or RetrievalOptions())}
 
 
 def clock(seconds: float) -> str:
@@ -311,7 +508,7 @@ def clock(seconds: float) -> str:
     return f"{seconds // 60:02d}:{seconds % 60:02d}"
 
 
-def build_context(found: dict, speech_chars: int = 2500, ocr_chars: int = 1800) -> str:
+def _legacy_context(found: dict, speech_chars: int = 2500, ocr_chars: int = 1800) -> str:
     """Evidence text for the answer model, slide by slide in time order."""
     blocks = []
     several = len({slide.get("video_id") for slide in found["slides"]}) > 1
@@ -328,3 +525,60 @@ def build_context(found: dict, speech_chars: int = 2500, ocr_chars: int = 1800) 
             parts.append("Lời giảng:\n" + slide["speech_text"][:speech_chars])
         blocks.append("\n".join(parts))
     return "\n\n".join(blocks)
+
+
+def evidence_block(chunk, several=False):
+    where = f"Video {chunk.get('video_title', chunk.get('video_id', ''))} · " if several else ""
+    label = {"speech": "Lời giảng", "ocr": "Chữ trên slide (OCR)", "region": "Hình/bảng/công thức"}[chunk["source_type"]]
+    return (f"[{where}Slide {chunk['segment_id'].split(':')[-1]} · "
+            f"{clock(chunk['start_sec'])}–{clock(chunk['end_sec'])}] {label}\n"
+            + (f"Tiêu đề: {chunk['title']}\n" if chunk.get("title") else "")
+            + chunk["text"])
+
+
+def build_context(found: dict, speech_chars: int = 2500, ocr_chars: int = 1800,
+                  max_chars: int = MAX_CONTEXT_CHARS, options: RetrievalOptions | None = None) -> str:
+    """Ranked evidence first, then bounded speech windows and conditional neighbors.
+
+    Slide intervals stay in the response for the UI; each text block cites its own span.
+    context_evidence records only text actually sent, for evaluation and debugging.
+    """
+    options = options or RetrievalOptions(**found.get("retrieval_options", {}))
+    if not (options.ranked_context or options.neighbors) or not any("evidence_candidates" in s for s in found["slides"]):
+        return _legacy_context(found, speech_chars, ocr_chars)
+    if max_chars < 1:
+        raise ValueError("Context budget must be positive.")
+    several = len({s.get("video_id") for s in found["slides"]}) > 1
+    candidates = []
+    for rank, slide in enumerate(found["slides"]):
+        for chunk in slide.get("evidence_candidates", []):
+            if options.ranked_context or chunk["selection_reason"] in {"previous", "next"}:
+                candidates.append({**chunk, "video_id": slide.get("video_id", ""),
+                                   "video_title": slide.get("video_title", ""), "slide_rank": rank})
+    candidates.sort(key=lambda c: (c["priority"], c["slide_rank"]))
+    selected, seen, usage = [], set(), {}
+    legacy = "" if options.ranked_context else _legacy_context(found, speech_chars, ocr_chars)[:max_chars]
+    context = legacy
+    for chunk in candidates:
+        kind = chunk["source_type"]
+        identity = (chunk.get("video_id"), kind, normalize_search(chunk["text"]).strip())
+        if identity in seen:
+            continue
+        key = (chunk.get("video_id"), chunk["segment_id"], kind)
+        limit = speech_chars if kind == "speech" else ocr_chars if kind == "ocr" else 1800
+        if usage.get(key, 0) + len(chunk["text"]) > limit:
+            continue
+        block = evidence_block(chunk, several)
+        proposed = context + ("\n\n" if context else "") + block
+        if len(proposed) > max_chars:
+            continue
+        context = proposed
+        selected.append(chunk)
+        seen.add(identity)
+        usage[key] = usage.get(key, 0) + len(chunk["text"])
+    selected.sort(key=lambda c: (c.get("video_title", ""), c.get("video_id", ""), c["start_sec"], c["end_sec"]))
+    context = "\n\n".join(([legacy] if legacy else []) + [evidence_block(c, several) for c in selected])
+    found["context_evidence"] = selected
+    found["context_legacy"] = legacy
+    found["context_chars"] = len(context)
+    return context
