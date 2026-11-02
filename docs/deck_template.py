@@ -1,7 +1,8 @@
-"""Build docs/thesis-slides.html: the defense deck. Look = the school template (Template Powerpoint
-v1.pptx: backgrounds, logos, divider, embedded as base64); content structure = the reference
-defense deck (cover, agenda, 1 intro ... 8 references, metric definitions, result tables, demo,
-conclusion, roadmap, thanks)."""
+"""Deck template shared by docs/make_progress_slides.py: the school look (Template Powerpoint
+v1.pptx: backgrounds, logos, divider, embedded as base64), the CSS and the slide helpers
+(content, section, card, table, diagrams). The progress report runs everything above `S = []`.
+Run directly, it still builds the old 37-slide defense draft (no longer kept in docs/), a starting
+point for the real defense deck."""
 import base64, io, sys
 from pathlib import Path
 from PIL import Image
