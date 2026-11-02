@@ -18,6 +18,40 @@ def split_text_tokens(text, tokenizer, limit=350, overlap=40):
     return parts
 
 
+def split_layout_tokens(text, tokenizer, limit, overlap):
+    """Keep literal OCR whitespace; overlap complete lines rather than decoded code tokens."""
+    parts, pending = [], []
+    for line in text.splitlines():
+        proposed = "\n".join([*pending, line])
+        if pending and len(tokenizer.encode(proposed, add_special_tokens=False)) > limit:
+            parts.append("\n".join(pending))
+            tail = []
+            for previous in reversed(pending):
+                if len(tokenizer.encode("\n".join([previous, *tail]), add_special_tokens=False)) > overlap:
+                    break
+                tail.insert(0, previous)
+            pending = tail
+            if len(tokenizer.encode("\n".join([*pending, line]), add_special_tokens=False)) > limit:
+                pending = []
+        if len(tokenizer.encode(line, add_special_tokens=False)) > limit:
+            parts.extend(split_text_tokens(line, tokenizer, limit, overlap))
+        else:
+            pending.append(line)
+    if pending:
+        parts.append("\n".join(pending))
+    return [part for part in parts if part.strip()]
+
+
+def usable_figure_description(text):
+    """Generated no-figure placeholders, punctuation and repetition are not evidence."""
+    text = (text or "").strip()
+    folded = unicodedata.normalize("NFD", text.lower())
+    folded = "".join(c for c in folded if unicodedata.category(c) != "Mn").replace("đ", "d")
+    return bool(re.search(r"[^\W\d_]", text) and not re.match(
+        r"^(?:khong co (?:hinh|bieu do|so do)|no (?:figure|image|diagram)|there is no (?:figure|image|diagram))\b", folded)
+        and not re.search(r"(\b\w+(?:\s+\w+){0,7}\b)(?:\s+\1){7,}", folded))
+
+
 def group_speech_spans(spans, tokenizer, maximum_tokens=180, maximum_seconds=50.0):
     """Keep complete sentences together; never merge across visual intervals."""
     groups, pending = [], []
@@ -48,7 +82,7 @@ def make_evidence_chunks(segments, fallback_spans, tokenizer, *,
                          chunk_tokens=350, overlap_tokens=40, model_limit=512,
                          video_id="L25_V001", speech_chunk_tokens=180,
                          speech_maximum_seconds=50.0, include_generated_descriptions=False,
-                         dedupe_previous=False, passage_prefix="passage: "):
+                         dedupe_previous=False, passage_prefix="passage: ", generated_semantic_only=False):
     """passage_prefix: "passage: " for E5, "" for bge-m3. dedupe_previous: index only the OCR lines not already on the previous slide (stage 04
     ocr_text_new), so a repeated slide does not crowd the search with copies."""
     if not 0 <= overlap_tokens < chunk_tokens <= model_limit - 32:
@@ -64,8 +98,9 @@ def make_evidence_chunks(segments, fallback_spans, tokenizer, *,
             seen_coarse.update(segment["speech"]["fallback_span_ids"])
             continue
         visual = segment["visual"]
+        visual_failed = visual.get("ocr_quality", {}).get("evidence_excluded", False)
         # Bound the title separately so it cannot consume the encoder budget.
-        title_tokens = tokenizer.encode(visual.get("title_clean", visual.get("title", "")),
+        title_tokens = tokenizer.encode("" if visual_failed else visual.get("title_clean", visual.get("title", "")),
                                         add_special_tokens=False)[:64]
         title = tokenizer.decode(title_tokens, skip_special_tokens=True).strip()
         header = f"{passage_prefix}{title}\n" if title else passage_prefix
@@ -91,6 +126,8 @@ def make_evidence_chunks(segments, fallback_spans, tokenizer, *,
              else visual.get("ocr_text_clean", visual.get("ocr_text", ""))),
             ("visual", visual.get("visual_description", "")),
         ]:
+            if visual_failed:
+                continue
             # Older stage-02 bundles may store malformed JSON or degenerate
             # generation (e.g. repeated punctuation) as visual_description.
             # Preserve those raw records in lecture/, but never index them.
@@ -99,6 +136,9 @@ def make_evidence_chunks(segments, fallback_spans, tokenizer, *,
             if (source_type == "visual" and not include_generated_descriptions
                     and visual.get("description_verification") != "human_verified"):
                 continue
+            generated = source_type == "visual" and visual.get("description_verification") != "human_verified"
+            if generated and not usable_figure_description(text):
+                continue
             if text.strip():
                 units.append({
                     "source_type": source_type, "text": text,
@@ -106,15 +146,21 @@ def make_evidence_chunks(segments, fallback_spans, tokenizer, *,
                     "source_ids": [visual["occurrence_id"]],
                     "timing_precision": "visual_interval",
                     "uncertainty": "OCR/mô tả tự động; đối chiếu hình gốc khi cần.",
+                    **({"layout_preserved": True} if source_type == "ocr" and visual.get("ocr_layout_preserved") else {}),
+                    **({"verification": "model_generated_unverified",
+                        "retrieval_policy": "semantic_only" if generated_semantic_only else "hybrid"} if generated else {}),
                 })
         for region in visual.get("regions", []):
-            if region.get("noise"):
+            if visual_failed or region.get("noise"):
                 continue
             if (not include_generated_descriptions and region.get("extraction_status")
                     not in {"human_verified", "hybrid_ocr_unverified"}):
                 continue
             text = "\n".join(value for value in
                              [region.get("text"), region.get("description")] if value)
+            generated = region.get("extraction_status") == "model_generated_unverified"
+            if generated and not usable_figure_description(text):
+                continue
             if text.strip():
                 units.append({
                     "source_type": "region", "text": text,
@@ -123,10 +169,12 @@ def make_evidence_chunks(segments, fallback_spans, tokenizer, *,
                     "image_path": region["image_path"],
                     "timing_precision": "visual_interval",
                     "uncertainty": "Vùng và nội dung do mô hình đề xuất, chưa xác minh.",
+                    **({"verification": "model_generated_unverified",
+                        "retrieval_policy": "semantic_only" if generated_semantic_only else "hybrid"} if generated else {}),
                 })
         for unit_index, unit in enumerate(units):
-            parts = split_text_tokens(unit["text"], tokenizer, budget,
-                                      min(overlap_tokens, budget - 1))
+            split = split_layout_tokens if unit.get("layout_preserved") else split_text_tokens
+            parts = split(unit["text"], tokenizer, budget, min(overlap_tokens, budget - 1))
             for part_index, text in enumerate(parts):
                 embedding_text = header + text
                 count = len(tokenizer.encode(embedding_text, add_special_tokens=True))
@@ -170,7 +218,7 @@ def build_lexical_index(path, chunks):
             "INSERT INTO evidence(chunk_id, text) VALUES (?, ?)",
             [(chunk["chunk_id"], normalize_search(
                 f"{chunk['title']}\n{chunk['text']}"
-            )) for chunk in chunks],
+            )) for chunk in chunks if chunk.get("retrieval_policy") != "semantic_only"],
         )
         connection.commit()
 
@@ -179,7 +227,7 @@ def run_indexing(stage04_dir, output_root, video_id="L25_V001", *,
                  embedding_model="intfloat/multilingual-e5-small", revision="main",
                  chunk_tokens=350, overlap_tokens=40, batch_size=32, device=None,
                  speech_chunk_tokens=180, speech_maximum_seconds=50.0,
-                 include_generated_descriptions=False, dedupe_previous=False):
+                 include_generated_descriptions=False, dedupe_previous=False, generated_semantic_only=False):
     import numpy as np
     # E5 was trained with "query: " / "passage: " prefixes; bge-m3 uses none.
     query_prefix, passage_prefix = ("query: ", "passage: ") if "e5" in embedding_model.lower() else ("", "")
@@ -199,7 +247,35 @@ def run_indexing(stage04_dir, output_root, video_id="L25_V001", *,
         speech_chunk_tokens=speech_chunk_tokens, speech_maximum_seconds=speech_maximum_seconds,
         include_generated_descriptions=include_generated_descriptions, dedupe_previous=dedupe_previous,
         passage_prefix=passage_prefix,
+        generated_semantic_only=generated_semantic_only,
     )
+    ad_review = []
+    if any("spans_before_ad_filter" in s["speech"] for s in segments):
+        before = [{**s, "speech": {**s["speech"], "spans": s["speech"].get("spans_before_ad_filter", s["speech"]["spans"])}}
+                  for s in segments]
+        original = make_evidence_chunks(
+            before, fallback_spans, model.tokenizer, chunk_tokens=chunk_tokens,
+            overlap_tokens=overlap_tokens, model_limit=model_limit, video_id=video_id,
+            speech_chunk_tokens=speech_chunk_tokens, speech_maximum_seconds=speech_maximum_seconds,
+            include_generated_descriptions=include_generated_descriptions, dedupe_previous=dedupe_previous,
+            passage_prefix=passage_prefix, generated_semantic_only=generated_semantic_only)
+        span_words = {span["span_id"]: set(span["word_ids"]) for s in before for span in s["speech"]["spans"]}
+        ad_words = {word_id for s in segments for word_id in s["speech"].get("promotional_word_ids", [])}
+        for chunk in original:
+            if chunk["source_type"] != "speech":
+                continue
+            ids = set().union(*(span_words.get(sid, set()) for sid in chunk["source_ids"]))
+            excluded = ids & ad_words
+            if excluded:
+                ad_review.append({**chunk, "review_status": "removed" if ids <= ad_words else "partially_filtered",
+                                  "excluded_word_ids": sorted(excluded),
+                                  "retained_word_ids": sorted(ids - ad_words)})
+        write_json(directory / "ad_chunk_review.json", {
+            "before_chunks": len(original), "after_chunks": len(chunks),
+            "chunk_count_delta": len(chunks) - len(original),
+            "removed_chunks": sum(c["review_status"] == "removed" for c in ad_review),
+            "partially_filtered_chunks": sum(c["review_status"] == "partially_filtered" for c in ad_review),
+            "chunks": ad_review})
     # Counts are checked above: no silent encoder truncation.
     vectors = model.encode(
         [chunk["embedding_text"] for chunk in chunks],
@@ -229,6 +305,7 @@ def run_indexing(stage04_dir, output_root, video_id="L25_V001", *,
         "normalize_embeddings": True, "model_limit": model_limit,
         "visual_description_policy": "structured_json_only" if include_generated_descriptions
                                      else "human_verified_only",
+        "generated_semantic_only": generated_semantic_only,
         "speech_chunk_tokens": speech_chunk_tokens,
         "speech_maximum_seconds": speech_maximum_seconds,
         "chunk_tokens": chunk_tokens, "overlap_tokens": overlap_tokens,

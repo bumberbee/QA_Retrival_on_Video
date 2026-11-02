@@ -182,7 +182,7 @@ Kaggle không tương thích CUDA/cuDNN của CTranslate2, đổi ASR_DEVICE='cp
 Lỗi không được đánh dấu là bước hoàn tất.""",
     },
     {
-        "name": "04_sync_lecture_l25_v001", "module": "alignment.py", "extra_modules": ["textclean.py"],
+        "name": "04_sync_lecture_l25_v001", "module": "alignment.py", "extra_modules": ["textclean.py", "adfilter.py"],
         "title": "04 · Đồng bộ slide và transcript",
         "intro": """**Input:** Output 01 + 02 + 03. **Thiết bị:** CPU. **Output:** 04_bundle.
 
@@ -191,12 +191,23 @@ vào interval chứa midpoint, giữ occurrence lặp lại và previous/next ID
 Span thiếu word timing được tham chiếu chung khi qua ranh giới; không ước lượng
 thời gian từng từ. Gói kết quả chứa hình ảnh, vùng crop và audio theo slide.""",
         "deps": "",
-        "config": "STAGE_01_DIR = None\nSTAGE_02_DIR = None\nSTAGE_03_DIR = None\n",
+        "config": """STAGE_01_DIR = None
+STAGE_02_DIR = None
+STAGE_03_DIR = None
+CONSERVATIVE_OCR = 'canonical_subscripts'
+HEADING_TITLES = False  # Heuristic remains opt-in; see eval/PHASE3.md
+ASR_CORRECTION = 'glossary_code'
+FAILURE_GUARD = True
+SPEECH_AD_FILTER = 'school_signatures'
+""",
         "run": """stage01_dir, _ = find_stage(1, STAGE_01_DIR, VIDEO_ID)
 stage02_dir, _ = find_stage(2, STAGE_02_DIR, VIDEO_ID)
 stage03_dir, _ = find_stage(3, STAGE_03_DIR, VIDEO_ID)
 output_dir, manifest, segments = run_alignment(
     stage01_dir, stage02_dir, stage03_dir, OUTPUT_ROOT, VIDEO_ID,
+    conservative_ocr=CONSERVATIVE_OCR, heading_titles=HEADING_TITLES,
+    asr_correction=ASR_CORRECTION, failure_guard=FAILURE_GUARD,
+    speech_ad_filter=SPEECH_AD_FILTER,
 )
 print('Số đoạn đồng bộ:', len(segments), '| Số từ:', manifest['word_count'])
 """,
@@ -234,6 +245,7 @@ EMBEDDING_DEVICE = None  # Tự chọn; hoặc 'cpu'/'cuda'
 SPEECH_CHUNK_TOKENS = 180
 SPEECH_MAXIMUM_SECONDS = 50.0
 INCLUDE_GENERATED_DESCRIPTIONS = False  # Chỉ bật cho ablation; JSON hợp lệ vẫn có thể sai nội dung
+GENERATED_SEMANTIC_ONLY = False  # Bật cùng mô tả tự động để chỉ dùng nhánh semantic
 """,
         "run": """stage04_dir, _ = find_stage(4, STAGE_04_DIR, VIDEO_ID)
 output_dir, manifest, chunks = run_indexing(
@@ -243,6 +255,7 @@ output_dir, manifest, chunks = run_indexing(
     batch_size=BATCH_SIZE, device=EMBEDDING_DEVICE,
     speech_chunk_tokens=SPEECH_CHUNK_TOKENS, speech_maximum_seconds=SPEECH_MAXIMUM_SECONDS,
     include_generated_descriptions=INCLUDE_GENERATED_DESCRIPTIONS,
+    generated_semantic_only=GENERATED_SEMANTIC_ONLY,
 )
 print('Số chunk:', len(chunks), '| Chiều vector:', manifest['parameters']['dimensions'])
 """,

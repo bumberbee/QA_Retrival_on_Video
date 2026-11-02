@@ -1,0 +1,25 @@
+{
+  "measured_utc": "2026-11-01T17:51:47.236282+00:00",
+  "checks": [
+    {
+      "command": "python -m pytest kaggle/lecture_rag/tests -q",
+      "exit_code": 0,
+      "output": ".................................................................. [ 54%]\r\n........................................................         [100%]\r\n122 passed, 14 subtests passed in 21.77s\r\n"
+    },
+    {
+      "command": "backend/.venv/Scripts/python.exe -m unittest discover -s kaggle/lecture_rag/tests -p test_eval_harness.py -q",
+      "exit_code": 0,
+      "output": "----------------------------------------------------------------------\r\nRan 15 tests in 0.384s\r\n\r\nOK\r\n"
+    },
+    {
+      "command": "backend/.venv/Scripts/python.exe -m unittest discover -s kaggle/lecture_rag/tests -p test_text_phase3.py -q",
+      "exit_code": 0,
+      "output": "----------------------------------------------------------------------\r\nRan 24 tests in 0.904s\r\n\r\nOK\r\n"
+    },
+    {
+      "command": "backend/.venv/Scripts/python.exe -m unittest discover -s backend/tests -q",
+      "exit_code": 0,
+      "output": "C:\\Users\\nguye\\OneDrive\\M\u00e1y t\u00ednh\\Thesis\\backend\\.venv\\Lib\\site-packages\\google\\api_core\\_python_version_support.py:254: FutureWarning: You are using a Python version (3.11.9) which Google will stop supporting in new releases of google.api_core once it reaches its end of life (2027-10-24). Please upgrade to the latest Python version, or at least Python 3.12, to continue receiving updates for google.api_core past that date.\r\n  warnings.warn(message, FutureWarning)\r\nVideo import 329350403b484e3992ea355e8e219383 failed: RuntimeError\r\nVideo import c546044fcc3b4022936fddcb096225a9 failed: OSError\r\n----------------------------------------------------------------------\r\nRan 57 tests in 3.277s\r\n\r\nOK (skipped=2)\r\n"
+    }
+  ]
+}

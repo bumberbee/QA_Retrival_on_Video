@@ -119,6 +119,15 @@ AD_SUSPECT_OVERLAP = None
 # speech_topic vào segments.json, chưa dùng để quyết định. L25 9 video: AUC 0,94 tách quảng cáo.
 SPEECH_RELEVANCE = True
 
+# Phase 3 · CPU text processing; raw stage-02/03 outputs remain available for retries.
+CONSERVATIVE_OCR = 'canonical_subscripts'  # Preserve layout; plain digits for formula subscripts outside code.
+HEADING_TITLES = False
+ASR_CORRECTION = 'glossary_code'  # Reviewed technical terms + literal local print feedback; raw ASR stays.
+FAILURE_GUARD = True
+SPEECH_AD_FILTER = 'school_signatures'  # Explicit SIU/Asian School opening/closing phrases; keeps mixed speech.
+INCLUDE_GENERATED_DESCRIPTIONS = False
+GENERATED_SEMANTIC_ONLY = False  # Generated descriptions receive only the semantic RRF branch.
+
 # 05 · chỉ lập chỉ mục dòng OCR chưa có ở slide liền trước (L25: 32% dòng lặp lại). Tắt cho tới khi
 # đo hỏi đáp (eval_retrieval.py) trên lần chạy lại 10 video.
 OCR_DEDUPE_PREVIOUS = False
@@ -249,12 +258,17 @@ with ThreadPoolExecutor(1) as cpu, ThreadPoolExecutor(1) as asr_queue, ThreadPoo
             stage04, manifest04, _ = run_alignment(
                 stage01, stage02, stage03, OUTPUT_ROOT / video_id, video_id,
                 ad_suspect_overlap=AD_SUSPECT_OVERLAP, speech_embed=speech_embed,
-                slide_speech=SLIDE_SPEECH if AD_FILTER == 'slide_speech' else None)
+                slide_speech=SLIDE_SPEECH if AD_FILTER == 'slide_speech' else None,
+                conservative_ocr=CONSERVATIVE_OCR, heading_titles=HEADING_TITLES,
+                asr_correction=ASR_CORRECTION, failure_guard=FAILURE_GUARD,
+                speech_ad_filter=SPEECH_AD_FILTER)
             row['04_sec'] = time.monotonic() - started
             started = time.monotonic()
             run_indexing(stage04, OUTPUT_ROOT / video_id, video_id,
                          embedding_model=EMBEDDING_MODEL, revision=EMBEDDING_REVISION,
-                         dedupe_previous=OCR_DEDUPE_PREVIOUS)
+                         dedupe_previous=OCR_DEDUPE_PREVIOUS,
+                         include_generated_descriptions=INCLUDE_GENERATED_DESCRIPTIONS,
+                         generated_semantic_only=GENERATED_SEMANTIC_ONLY)
             row['05_sec'] = time.monotonic() - started
         except Exception:
             traceback.print_exc()

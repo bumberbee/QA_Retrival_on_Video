@@ -65,9 +65,14 @@ HYBRID_OPTIONS = dict(hybrid_pipelined=True, hybrid_min_region_area=0.02, hybrid
 ASR_MODEL = 'Systran/faster-whisper-medium'
 ASR_REVISION = '08e178d48790749d25932bbc082711ddcfdfbc4f'
 ASR_DEVICE_INDEX, ASR_MODE = 1, 'windowed'
+# 04 · xử lý văn bản (phase 3)
+CONSERVATIVE_OCR, HEADING_TITLES = 'canonical_subscripts', False
+ASR_CORRECTION, FAILURE_GUARD = 'glossary_code', True
+SPEECH_AD_FILTER = 'school_signatures'
 # 05 · chỉ mục
 EMBEDDING_MODEL = 'intfloat/multilingual-e5-small'
 EMBEDDING_REVISION = '614241f622f53c4eeff9890bdc4f31cfecc418b3'
+INCLUDE_GENERATED_DESCRIPTIONS, GENERATED_SEMANTIC_ONLY = False, False
 # 7 · câu hỏi thử (None = hỏi cả bài; số = đang xem ở giây đó)
 QUESTIONS = [
     ('Xác suất của một biến cố được tính như thế nào?', None),
@@ -282,7 +287,8 @@ from sentence_transformers import SentenceTransformer
 _e5 = SentenceTransformer(EMBEDDING_MODEL, revision=EMBEDDING_REVISION, device='cuda:1')
 speech_embed = lambda texts: _e5.encode(['query: ' + t for t in texts], normalize_embeddings=True, convert_to_numpy=True)
 stage04, manifest04, segments = timed('04 đồng bộ', run_alignment, stage01, stage02, stage03, OUTPUT_ROOT, VIDEO_ID,
-                                      speech_embed=speech_embed)
+    speech_embed=speech_embed, conservative_ocr=CONSERVATIVE_OCR, heading_titles=HEADING_TITLES,
+    asr_correction=ASR_CORRECTION, failure_guard=FAILURE_GUARD, speech_ad_filter=SPEECH_AD_FILTER)
 table([{'chỉ số': k, 'giá trị': manifest04.get(k)} for k in ('segment_count', 'word_count', 'ad_segment_count', 'ad_flagged_count', 'ad_word_count')])
 table([{'#': s['sequence'], 'loại': s['content_kind'] + (' · nghi QC (không lập chỉ mục)' if s.get('ad_flagged') else ''),
         'thời gian': f"{clock(s['start_sec'])}–{clock(s['end_sec'])}",
@@ -309,7 +315,8 @@ table([{'ảnh': img(stage04 / example['visual']['image_path'], 420), 'chữ OCR
 
 STAGE05 = """heading('6 · Bước 05 · Chỉ mục tìm kiếm')
 stage05, manifest05, chunks = timed('05 chỉ mục', run_indexing, stage04, OUTPUT_ROOT, VIDEO_ID,
-    embedding_model=EMBEDDING_MODEL, revision=EMBEDDING_REVISION)
+    embedding_model=EMBEDDING_MODEL, revision=EMBEDDING_REVISION,
+    include_generated_descriptions=INCLUDE_GENERATED_DESCRIPTIONS, generated_semantic_only=GENERATED_SEMANTIC_ONLY)
 from collections import Counter
 table([{'nguồn': k, 'số đoạn': v} for k, v in Counter(c['source_type'] for c in chunks).items()])
 params(manifest05['parameters'], ['embedding_model', 'chunk_tokens', 'overlap_tokens', 'speech_chunk_tokens',

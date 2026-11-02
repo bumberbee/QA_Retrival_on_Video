@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CODE = ROOT / "notebook_code"
 
 
-EXTRA_MODULES = {"alignment": ["textclean.py"]}
+EXTRA_MODULES = {"alignment": ["textclean.py", "adfilter.py"]}
 
 
 def load_code(name):
@@ -362,6 +362,13 @@ class NotebookAndContractTests(unittest.TestCase):
             sources = ["".join(cell["source"]).strip() for cell in notebook["cells"]]
             self.assertIn((CODE / item["module"]).read_text(encoding="utf-8").strip(), sources)
             self.assertIn((CODE / "common.py").read_text(encoding="utf-8").strip(), sources)
+            for filename in item.get("extra_modules", []):
+                self.assertIn((CODE / filename).read_text(encoding="utf-8").strip(), sources)
+        for name in ("fast_pipeline_l25", "full_pipeline_walkthrough", "run_pipeline"):
+            notebook = json.loads((ROOT / "notebooks" / (name + ".ipynb")).read_text(encoding="utf-8"))
+            sources = ["".join(cell["source"]).strip() for cell in notebook["cells"]]
+            for filename in ("common.py", "textclean.py", "adfilter.py", "alignment.py", "indexing.py", "visual.py"):
+                self.assertIn((CODE / filename).read_text(encoding="utf-8").strip(), sources)
 
     def test_artifact_checks_reject_corruption_and_unfinished_runs(self):
         pipeline = load_code("alignment")

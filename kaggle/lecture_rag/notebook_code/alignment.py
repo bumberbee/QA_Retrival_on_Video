@@ -34,6 +34,21 @@ def words_to_spans(words, segment_id, maximum_sec=18.0, maximum_words=70):
     return spans
 
 
+def evidence_speech_spans(words, segment_id):
+    """Split at excluded words; preserve original timing and ownership for later retries."""
+    spans, group = [], []
+    for word in [*words, None]:
+        if word is None or word.get("evidence_excluded"):
+            if group:
+                spans.extend(words_to_spans(group, segment_id))
+                group = []
+        else:
+            group.append(word)
+    for index, span in enumerate(spans):
+        span["span_id"] = f"{segment_id}:speech_{index:04d}"
+    return spans
+
+
 def align_records(intervals, visuals, transcript, duration):
     verify_intervals(intervals, duration)
     visual_by_segment = unique_records(visuals, "segment_id")
@@ -206,7 +221,9 @@ def review_ad_speech(segments, threshold, min_pairs=20):
 
 
 def run_alignment(stage01_dir, stage02_dir, stage03_dir, output_root,
-                  video_id="L25_V001", ad_suspect_overlap=None, speech_embed=None, slide_speech=None):
+                  video_id="L25_V001", ad_suspect_overlap=None, speech_embed=None, slide_speech=None,
+                  conservative_ocr=False, heading_titles=False, asr_correction="legacy",
+                  failure_guard=False, speech_ad_filter=False):
     """ad_suspect_overlap: None (off) or a threshold for review_ad_speech().
     speech_embed: None (off) or embed(texts) -> unit vectors (E5): every segment gets
     speech_topic = the lowest topic_z of the speech windows it overlaps (speech_relevance();
@@ -226,15 +243,29 @@ def run_alignment(stage01_dir, stage02_dir, stage03_dir, output_root,
     intervals = read_json(paths[0] / "intervals.json")
     visuals = read_json(paths[1] / "visual.json")
     transcript = read_json(paths[2] / "transcript.json")
+    if asr_correction not in {"legacy", "off", "glossary", "glossary_lecture", "glossary_code"}:
+        raise ValueError("asr_correction phải là legacy, off, glossary, glossary_lecture hoặc glossary_code.")
+    if speech_ad_filter not in {False, True, "bounded_schools", "school_signatures"}:
+        raise ValueError("speech_ad_filter phải là False, True, bounded_schools hoặc school_signatures.")
+    if conservative_ocr not in {False, True, "canonical_subscripts"}:
+        raise ValueError("conservative_ocr phải là False, True hoặc canonical_subscripts.")
     # Clean slide OCR (lines repeated on most slides, [Unreadable], lecturer/logo regions) and fix
     # lecture terms Whisper misheard using the words printed on the slides (textclean.py).
     lesson = [visual for visual in visuals if visual.get("content_kind") != "ad"]
     repeated = repeated_lines([visual.get("ocr_text", "") for visual in lesson])
     for visual in visuals:
-        visual["ocr_text_clean"] = clean_ocr_text(visual.get("ocr_text", ""), repeated)
+        text = qwen_ocr_text(visual) if conservative_ocr else visual.get("ocr_text", "")
+        if failure_guard:
+            text, visual["ocr_quality"] = guard_ocr_text(text)
+        visual["ocr_text_clean"] = clean_ocr_text(text, repeated, conservative=conservative_ocr,
+                                                canonical_subscripts=conservative_ocr == "canonical_subscripts")
+        if conservative_ocr:
+            visual["ocr_layout_preserved"] = True
         lines = [line for line in visual["ocr_text_clean"].splitlines() if len(line.strip()) >= 12]
-        visual["title_clean"] = (lines[0][:160] if lines and visual.get("content_kind") in {"slide", "mixed", "board"}
-                                 else "")
+        visual["title_clean"] = (heading_title(visual["ocr_text_clean"]) if heading_titles
+                                 and visual.get("content_kind") != "ad" else
+                                 lines[0][:160] if not heading_titles and lines
+                                 and visual.get("content_kind") in {"slide", "mixed", "board"} else "")
         visual["regions"] = clean_regions(visual.get("regions", []))
     previous = ""
     for visual in visuals:   # visual.json follows the interval order
@@ -243,8 +274,14 @@ def run_alignment(stage01_dir, stage02_dir, stage03_dir, output_root,
         visual["ocr_text_new"], visual["ocr_repeat_share"] = lines_new_since(previous, visual["ocr_text_clean"])
         previous = visual["ocr_text_clean"] or previous
     vocabulary = ocr_vocabulary([visual["ocr_text_clean"] for visual in lesson])
-    transcript["words"], asr_corrections = correct_words(
-        sorted(transcript["words"], key=lambda word: (word["start_sec"], word["end_sec"])), vocabulary)
+    transcript["words"] = sorted(transcript["words"], key=lambda word: (word["start_sec"], word["end_sec"]))
+    asr_loops = flag_asr_loops(transcript["words"]) if failure_guard else []
+    asr_corrections = []
+    if asr_correction == "legacy":
+        transcript["words"], asr_corrections = correct_words(transcript["words"], vocabulary, atomic=False)
+    else:
+        for word in transcript["words"]:
+            word.setdefault("text_asr", word["text"])
     directory = begin_stage(output_root, 4)
     audio_root = paths[2]
     if independent_asr and transcript["status"] == "completed":
@@ -261,6 +298,34 @@ def run_alignment(stage01_dir, stage02_dir, stage03_dir, output_root,
             })
         audio_root = directory
     segments = align_records(intervals, visuals, transcript, parents[0]["source"]["duration_sec"])
+    if asr_correction in {"glossary", "glossary_lecture", "glossary_code"}:
+        transcript["words"], asr_corrections = correct_glossary_words(
+            transcript["words"], segments, lecture_support=asr_correction in {"glossary_lecture", "glossary_code"},
+            code_feedback=asr_correction == "glossary_code")
+        segments = align_records(intervals, visuals, transcript, parents[0]["source"]["duration_sec"])
+    word_by_id = {word["word_id"]: word for word in transcript["words"]}
+    retry_segments = []
+    for segment in segments:
+        quality = segment["visual"].get("ocr_quality", {})
+        if quality.get("reasons"):
+            retry_segments.append({"video_id": video_id, "segment_id": segment["segment_id"],
+                                   "start_sec": segment["start_sec"], "end_sec": segment["end_sec"],
+                                   "source": "ocr", "reasons": quality["reasons"],
+                                   "status": quality["status"], "loops": quality["loops"],
+                                   "raw_response_path": "_inputs/02_visual/visual.json"})
+        owned_ids = set(segment["speech"]["word_ids"])
+        for run in asr_loops:
+            if owned_ids.intersection(run["word_ids"]):
+                retry_segments.append({"video_id": video_id, "segment_id": segment["segment_id"],
+                                       "source": "asr", "reasons": ["asr_repetition_loop"],
+                                       **run, "raw_response_path": "_inputs/03_audio/transcript.json"})
+        if failure_guard:
+            owned = [word_by_id[word_id] for word_id in segment["speech"]["word_ids"]]
+            segment["speech"]["text_raw"] = words_to_text([{**w, "text": w.get("text_asr", w["text"])} for w in owned])
+            segment["speech"]["spans"] = evidence_speech_spans(owned, segment["segment_id"])
+            segment["speech"]["text"] = " ".join(span["text"] for span in segment["speech"]["spans"])
+            segment["speech"]["excluded_word_ids"] = [w["word_id"] for w in owned if w.get("evidence_excluded")]
+            segment["speech"]["evidence_status"] = ("partial" if segment["speech"]["spans"] else "failed") if segment["speech"]["excluded_word_ids"] else "available"
     if ad_suspect_overlap is not None:
         review_ad_speech(segments, ad_suspect_overlap)
     windows = []
@@ -285,6 +350,24 @@ def run_alignment(stage01_dir, stage02_dir, stage03_dir, output_root,
         filter_report = {"mode": "slide_speech", "options": slide_speech, "off_lecture": [[round(a, 2), round(b, 2)] for a, b in off],
                          "off_lecture_seconds": round(sum(b - a for a, b in off), 1),
                          "flagged_segments": sum(s["ad_flagged"] for s in segments)}
+    if speech_ad_filter:
+        ad_spans = promotional_word_spans(transcript["words"], asian_spots="signature" if
+                                         speech_ad_filter == "school_signatures" else speech_ad_filter == "bounded_schools")
+        ad_ids = {word_id for span in ad_spans for word_id in span["word_ids"]}
+        for word_id in ad_ids:
+            word_by_id[word_id]["evidence_excluded"] = True
+            word_by_id[word_id]["promotional"] = True
+        for segment in segments:
+            owned = [word_by_id[word_id] for word_id in segment["speech"]["word_ids"]]
+            segment["speech"]["text_raw"] = words_to_text([{**w, "text": w.get("text_asr", w["text"])} for w in owned])
+            segment["speech"]["spans_before_ad_filter"] = segment["speech"]["spans"]
+            segment["speech"]["spans"] = evidence_speech_spans(owned, segment["segment_id"])
+            segment["speech"]["text"] = " ".join(span["text"] for span in segment["speech"]["spans"])
+            segment["speech"]["promotional_word_ids"] = [w["word_id"] for w in owned if w.get("promotional")]
+        filter_report = {"mode": "speech_units", "policy": "explicit_school_signatures_and_cta" if
+                         speech_ad_filter == "school_signatures" else "explicit_bounded_schools_and_cta" if
+                         speech_ad_filter == "bounded_schools" else "explicit_bounded_spots_and_cta",
+                         "excluded_spans": ad_spans, "excluded_word_count": len(ad_ids)}
     for interval in intervals:
         name = interval["image_path"]
         target = relative_asset(directory, name)
@@ -313,6 +396,7 @@ def run_alignment(stage01_dir, stage02_dir, stage03_dir, output_root,
     if filter_report:
         write_json(directory / "content_filter.json", filter_report)
     write_json(directory / "asr_corrections.json", asr_corrections)
+    write_json(directory / "gpu_retry_segments.json", retry_segments)
     write_json(directory / "words.json", transcript["words"])
     write_json(directory / "fallback_spans.json", transcript["fallback_spans"])
     write_json(directory / "asr_windows.json", transcript["windows"])
@@ -334,8 +418,10 @@ def run_alignment(stage01_dir, stage02_dir, stage03_dir, output_root,
         directory, 4, video_id, parents[0]["source"],
         {"word_ownership": "midpoint_in_half_open_interval",
          "cross_boundary_fallback": "shared_reference_without_fabricated_word_times",
-         "ocr_cleaning": {"repeated_lines": sorted(repeated)},
-         "asr_correction": "slide_vocabulary_onset_s_x_ch_tr",
+         "ocr_cleaning": {"repeated_lines": [] if conservative_ocr else sorted(repeated),
+                          "conservative": conservative_ocr},
+         "heading_titles": heading_titles, "failure_guard": failure_guard,
+         "speech_ad_filter": speech_ad_filter, "asr_correction": asr_correction,
          **({"ad_suspect_overlap": ad_suspect_overlap} if ad_suspect_overlap is not None else {})},
         parents=parents,
         extra={"segment_count": len(segments), "word_count": len(transcript["words"]),

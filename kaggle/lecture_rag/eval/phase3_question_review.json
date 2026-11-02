@@ -1,0 +1,11 @@
+{
+  "L25_V011_q06": "Conservative cleaning restores the repeated MỤC TIÊU and VAI TRÒ branches. The gold mind-map interval remains rank 3 rather than rank 2, but all three heading terms now reach context.",
+  "L25_V011_q11": "The correct ASEAN interval seg_00006 moves from rank 1 to 2. Its Việt Nam/ASEAN teaching words remain; the Asian School exclusion starts at 327.29 s, after the 295.20–325.00 s gold speech. This is a ranking loss, not deletion of that lesson speech.",
+  "v2YTz8ToEag_q01": "The correct 100-triệu interval seg_00004 moves behind seg_00024, from rank 1 to 2. The amount is still indexed and recalled; no gold term was removed.",
+  "v2YTz8ToEag_q08": "The short G label survives conservative cleaning, and the correct PPF interval seg_00026 moves from rank 3 to 2. This restores the label-based context check; geometric answer accuracy was not graded.",
+  "v2YTz8ToEag_q09": "The short numeric label 11 survives cleaning alongside 27. The returned slide order is unchanged; keeping the printed number restores context recall without inventing a coordinate.",
+  "y1CvB950VlU_q01": "The repeated a4 assignment survives conservative cleaning and reaches context at the original gold interval. The key-term proxy checks a3/a4, not triple-quote correctness: raw seg_00005 still has broken quotes and an invented a5, so GPU re-OCR remains necessary.",
+  "y1CvB950VlU_q03": "The ký tự speech remains indexed in seg_00015 at 246.76–249.90 s. Retrieval replaces seg_00016 with seg_00017; the one-neighbor context policy then includes seg_00016 but misses seg_00015. This is a bounded-context loss, not cleaning of the definition.",
+  "_eDGTHhyQ7M_q02": "Gold oil-storage terms at 612.38–615.75 s belong to seg_00006, whose raw OCR is dominated by a repetition loop. The failure guard excludes its OCR/title/regions while retaining valid speech. The inspected gold image remains valid; re-OCR is needed instead of relabelling gold or indexing the failed output.",
+  "_eDGTHhyQ7M_q03": "Valid speech in the same failed-OCR interval seg_00006 remains indexed. It moves from rank 2 to 1 and retains the reaction-with-water explanation, showing that the guard does not remove the whole teaching interval."
+}

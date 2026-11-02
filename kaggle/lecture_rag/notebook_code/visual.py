@@ -690,7 +690,7 @@ def parse_qwen_slide(raw):
             if description:
                 figures.append(description)
         elif line.strip():
-            lines.append(line.strip())
+            lines.append(line.rstrip())
     blocks = [{"text": text, "bbox": [0, 0, 1, 1], "confidence": None, "source": "qwen3-vl",
                "block_type": "text", "line_index": order, "reading_order": order}
               for order, text in enumerate(lines)]
