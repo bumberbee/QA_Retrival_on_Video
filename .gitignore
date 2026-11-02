@@ -10,3 +10,24 @@ __pycache__/
 kaggle/lecture_rag/runs/
 
 kaggle/lecture_rag/gold/*/review/
+
+# Local secrets and tool state
+.env.*
+!.env.example
+kaggle.json
+service-account*.json
+/.mcp.json
+/.mcp.json.disabled
+/.claude/settings.local.json
+
+# Python and notebook caches
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.ipynb_checkpoints/
+*.log
+
+# Downloaded papers stay local
+/docs/paper/**/*.pdf
