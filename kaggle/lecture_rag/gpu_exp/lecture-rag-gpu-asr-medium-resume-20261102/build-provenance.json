@@ -1,0 +1,62 @@
+{
+  "historical_notebook_sha256": "1f93583a2d9676280e5a3ff59ee7965a435b7d12f53ba6bdad8758204cf3efd0",
+  "config": {
+    "videos": [
+      "L25_V011",
+      "cs_0001"
+    ],
+    "glossaries": {
+      "hVU5Mw19V_c": [
+        "Bayes",
+        "xác suất",
+        "biến cố",
+        "công thức xác suất đầy đủ"
+      ],
+      "v2YTz8ToEag": [
+        "PPF",
+        "đường giới hạn khả năng sản xuất",
+        "chi phí cơ hội",
+        "khan hiếm",
+        "kinh tế học"
+      ],
+      "y1CvB950VlU": [
+        "Python",
+        "len",
+        "for",
+        "print",
+        "end",
+        "sep",
+        "chuỗi",
+        "string",
+        "a1",
+        "a2"
+      ],
+      "L25_V011": [
+        "Liên Hiệp Quốc",
+        "Hội đồng Bảo an",
+        "quyền bình đẳng",
+        "chủ quyền"
+      ],
+      "cs_0001": [
+        "FIFO",
+        "MSCs",
+        "RSC",
+        "synchronous",
+        "asynchronous",
+        "partial order",
+        "message passing",
+        "decidable",
+        "undecidable"
+      ]
+    },
+    "soft_limit_seconds": 1100,
+    "models": [
+      {
+        "label": "medium_hints",
+        "model_id": "Systran/faster-whisper-medium",
+        "revision": "08e178d48790749d25932bbc082711ddcfdfbc4f",
+        "hints": true
+      }
+    ]
+  }
+}
