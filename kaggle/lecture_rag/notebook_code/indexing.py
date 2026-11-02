@@ -99,6 +99,10 @@ def make_evidence_chunks(segments, fallback_spans, tokenizer, *,
             continue
         visual = segment["visual"]
         visual_failed = visual.get("ocr_quality", {}).get("evidence_excluded", False)
+        visual_start = visual.get("representative_content_onset_sec", segment["start_sec"])
+        if not segment["start_sec"] <= visual_start < segment["end_sec"]:
+            raise ValueError("Representative visual onset must be inside its interval")
+        visual_timing = ("visual_state" if "representative_content_onset_sec" in visual else "visual_interval")
         # Bound the title separately so it cannot consume the encoder budget.
         title_tokens = tokenizer.encode("" if visual_failed else visual.get("title_clean", visual.get("title", "")),
                                         add_special_tokens=False)[:64]
@@ -142,9 +146,9 @@ def make_evidence_chunks(segments, fallback_spans, tokenizer, *,
             if text.strip():
                 units.append({
                     "source_type": source_type, "text": text,
-                    "start_sec": segment["start_sec"], "end_sec": segment["end_sec"],
+                    "start_sec": visual_start, "end_sec": segment["end_sec"],
                     "source_ids": [visual["occurrence_id"]],
-                    "timing_precision": "visual_interval",
+                    "timing_precision": visual_timing,
                     "uncertainty": "OCR/mô tả tự động; đối chiếu hình gốc khi cần.",
                     **({"layout_preserved": True} if source_type == "ocr" and visual.get("ocr_layout_preserved") else {}),
                     **({"verification": "model_generated_unverified",
@@ -164,10 +168,10 @@ def make_evidence_chunks(segments, fallback_spans, tokenizer, *,
             if text.strip():
                 units.append({
                     "source_type": "region", "text": text,
-                    "start_sec": segment["start_sec"], "end_sec": segment["end_sec"],
+                    "start_sec": visual_start, "end_sec": segment["end_sec"],
                     "source_ids": [region["region_id"]],
                     "image_path": region["image_path"],
-                    "timing_precision": "visual_interval",
+                    "timing_precision": visual_timing,
                     "uncertainty": "Vùng và nội dung do mô hình đề xuất, chưa xác minh.",
                     **({"verification": "model_generated_unverified",
                         "retrieval_policy": "semantic_only" if generated_semantic_only else "hybrid"} if generated else {}),

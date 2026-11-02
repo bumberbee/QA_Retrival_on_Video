@@ -32,6 +32,9 @@ STABLE_SAMPLES = 2
 MIN_INTERVAL_SEC = 2.0
 MANUAL_BOUNDARIES_SEC = None  # Nếu sửa tay: [0.0, ..., đúng duration của video]
 MERGE_REVEALS = True  # Gộp slide hiện dần (animation thêm dòng/hình) thành một đoạn
+EXPORT_STATE_ONSETS = True
+MERGE_SAME_CONTENT = True
+# Board/editor heuristics remain off in this generic stage notebook; see STAGE01.md for scoped options.
 REVEAL_THRESHOLDS = {}  # Ví dụ {'retained_threshold': 0.9}; mặc định trong reveal_decision
 USE_SLIDE_CLASSIFIER = False  # ResNet-34 Lecture2Notes: chặn gộp qua cảnh giảng viên (p_slide < 0.2)
 MERGE_OCR = False  # Tesseract vie+eng: tách khi chữ bị thay, gộp khi chữ cũ còn giữ
@@ -46,6 +49,7 @@ output_dir, manifest, intervals = run_slide_detection(
     merge_reveals=MERGE_REVEALS, reveal_thresholds=REVEAL_THRESHOLDS,
     slide_classifier=load_slide_classifier() if USE_SLIDE_CLASSIFIER else None,
     merge_ocr=MERGE_OCR,
+    export_state_onsets=EXPORT_STATE_ONSETS, merge_same_content=MERGE_SAME_CONTENT,
 )
 print('Video:', video_path)
 print('Duration:', manifest['source']['duration_sec'])
@@ -128,7 +132,7 @@ nội dung. OCR và mô hình nhỏ chưa bảo đảm đọc đúng mọi công
 
 Chuẩn hóa mono 16 kHz nhưng giữ offset audio với video. Gom core window 20–60
 giây, ưu tiên khoảng lặng gần 45 giây, đệm 1,25 giây hai bên. Faster-Whisper
-medium dùng VAD, xuất word timestamps; giữ từ theo midpoint trong core rồi khử trùng.
+large-v3-turbo dùng VAD, xuất word timestamps; giữ từ theo midpoint trong core rồi khử trùng.
 Không ngắt STT ở mọi lần chuyển slide. Vẫn xuất WAV theo mỗi visual interval
 để nghe đối chiếu; notebook 04 mới gán từ về slide. Notebook cũ giữ làm baseline.
 ASR_MODE='batched' là ablation dùng VAD batching, không dùng tham số cửa sổ.
@@ -136,10 +140,10 @@ INITIAL_PROMPT mặc định để trống sau khi quan sát glossary lọt vào
         "deps": '"faster-whisper>=1.1,<2" "huggingface-hub>=0.25,<1"',
         "config": """STAGE_01_DIR = None
 VIDEO_PATH = None
-ASR_MODEL = 'Systran/faster-whisper-medium'
-ASR_REVISION = '08e178d48790749d25932bbc082711ddcfdfbc4f'
+ASR_MODEL = 'dropbox-dash/faster-whisper-large-v3-turbo'
+ASR_REVISION = '0a363e9161cbc7ed1431c9597a8ceaf0c4f78fcf'
 ASR_MODE = 'windowed'  # Cửa sổ có overlap; 'batched' là tùy chọn cần đánh giá chất lượng
-ASR_BATCH_SIZE = 8  # Chỉ dùng khi ASR_MODE='batched'
+ASR_BATCH_SIZE = 1  # Chỉ dùng khi ASR_MODE='batched'; FP16 trên CUDA, int8 trên CPU.
 LANGUAGE = 'vi'
 ASR_DEVICE = 'auto'  # 'cuda' hoặc 'cpu'
 INITIAL_PROMPT = None  # Chỉ thử glossary trong ablation; prompt có thể lọt vào transcript

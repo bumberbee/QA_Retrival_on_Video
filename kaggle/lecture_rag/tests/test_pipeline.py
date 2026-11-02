@@ -995,7 +995,9 @@ class MediaAndPipelineTests(unittest.TestCase):
 
         def qwen_read(images, language):
             qwen_calls.append(len(images))
-            return ["ĐỊNH LUẬT BẢO TOÀN\nΔm = Zm_p\n[Hình] Đồ thị năng lượng liên kết." for _ in images]
+            return [{"text": "ĐỊNH LUẬT BẢO TOÀN\nΔm = Zm_p\n[Hình] Đồ thị năng lượng liên kết.",
+                     "ocr_quality": {"status": "available", "reasons": [], "evidence_excluded": False}}
+                    for _ in images]
         with mock.patch.object(visual, "load_qwen_ocr", return_value=qwen_read):
             qwen02, qwen_manifest, qwen_records = visual.run_visual_extraction(
                 self.stage01, output / "qwen", ocr_engine="qwen")

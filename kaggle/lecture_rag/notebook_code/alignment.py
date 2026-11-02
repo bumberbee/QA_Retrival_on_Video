@@ -93,6 +93,9 @@ def align_records(intervals, visuals, transcript, duration):
                 **visual,
                 "image_path": interval["image_path"],
                 "keyframe_time_sec": interval["keyframe_time_sec"],
+                **{key: interval[key] for key in ("representative_content_onset_sec",
+                                                  "visual_evidence_windows", "long_dynamic_review")
+                   if key in interval},
             },
             "speech": {
                 "text": words_to_text(owned[segment_id]), "spans": spans,
@@ -256,7 +259,15 @@ def run_alignment(stage01_dir, stage02_dir, stage03_dir, output_root,
     for visual in visuals:
         text = qwen_ocr_text(visual) if conservative_ocr else visual.get("ocr_text", "")
         if failure_guard:
-            text, visual["ocr_quality"] = guard_ocr_text(text)
+            generation_quality = visual.get("ocr_quality", {})
+            text, quality = guard_ocr_text(text)
+            if generation_quality.get("evidence_excluded"):
+                text = ""
+                quality.update(status="failed", evidence_excluded=True,
+                               reasons=list(dict.fromkeys(generation_quality.get("reasons", [])
+                                                          + quality["reasons"])),
+                               generation_validation=generation_quality)
+            visual["ocr_quality"] = quality
         visual["ocr_text_clean"] = clean_ocr_text(text, repeated, conservative=conservative_ocr,
                                                 canonical_subscripts=conservative_ocr == "canonical_subscripts")
         if conservative_ocr:
@@ -311,7 +322,7 @@ def run_alignment(stage01_dir, stage02_dir, stage03_dir, output_root,
             retry_segments.append({"video_id": video_id, "segment_id": segment["segment_id"],
                                    "start_sec": segment["start_sec"], "end_sec": segment["end_sec"],
                                    "source": "ocr", "reasons": quality["reasons"],
-                                   "status": quality["status"], "loops": quality["loops"],
+                                   "status": quality["status"], "loops": quality.get("loops", []),
                                    "raw_response_path": "_inputs/02_visual/visual.json"})
         owned_ids = set(segment["speech"]["word_ids"])
         for run in asr_loops:
@@ -369,10 +380,12 @@ def run_alignment(stage01_dir, stage02_dir, stage03_dir, output_root,
                          speech_ad_filter == "bounded_schools" else "explicit_bounded_spots_and_cta",
                          "excluded_spans": ad_spans, "excluded_word_count": len(ad_ids)}
     for interval in intervals:
-        name = interval["image_path"]
-        target = relative_asset(directory, name)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(relative_asset(paths[0], name), target)
+        names = {interval["image_path"],
+                 *(window["image_path"] for window in interval.get("visual_evidence_windows", []))}
+        for name in names:
+            target = relative_asset(directory, name)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(relative_asset(paths[0], name), target)
     for visual in visuals:
         if visual.get("content_image_path"):
             name = visual["content_image_path"]

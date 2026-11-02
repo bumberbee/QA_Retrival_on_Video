@@ -52,6 +52,23 @@ OUTPUT_ROOT = Path('/kaggle/working/lecture_rag')
 SAMPLE_HZ = 1.0
 FINE_HZ = 8.0  # Tần số giữ frame nhỏ để tinh chỉnh ranh giới, không cần tua
 MERGE_REVEALS = True
+EXPORT_STATE_ONSETS = True
+MERGE_SAME_CONTENT = True
+# Only these audited layouts use board/editor heuristics (STAGE01.md).
+STAGE01_VIDEO_OPTIONS = {
+    'hVU5Mw19V_c': {
+        'board_options': {'roi': (0.0, 0.08, 1.0, 0.96), 'window_samples': 5,
+                          'check_every_sec': 5.0, 'min_state_sec': 15.0,
+                          'snapshot_sec': 120.0, 'minimum_pixels': 24},
+        'keyframe_options': {'roi': (0.0, 0.08, 1.0, 0.96), 'mode': 'board', 'complementary': True},
+        'merge_reveals': False,
+    },
+    'y1CvB950VlU': {
+        'reveal_thresholds': {'replacement_safe': True, 'directional_threshold': 0.94,
+                              'deletion_minimum_pixels': 12, 'deletion_fraction': 0.20},
+        'keyframe_options': {'roi': (0.26, 0.08, 0.99, 0.57)},
+    },
+}
 # Lọc quảng cáo: 'student' (SigLIP base + hồi quy logistic, file ad_student.npz từ thí nghiệm
 # bộ lọc), 'teacher' (SigLIP so400m zero-shot) hoặc None để tắt.
 # Mặc định KHÔNG dùng bộ lọc quảng cáo học từ L25 (không tổng quát sang kênh khác); bộ gác OCR
@@ -82,8 +99,18 @@ OCR_GATE_VIEWS = 'frame+crops'
 # mỗi GPU một bản: so trên 2 video tiếng Việt + 2 tiếng Anh (13/10) nhanh hơn hybrid ×1,8–7, chữ sạch
 # hơn (không lặp dòng, đúng dấu hơn). 'hybrid' = Unlimited-OCR (GPU 0) + Qwen3-VL đọc từng vùng hình
 # (GPU 1); 'easyocr' = bản cũ. Các mục HYBRID_* chỉ dùng cho 'hybrid'.
-# Viền hồng chỉ đúng với L25_V001; video khác dùng cả khung hình.
+# Qwen crops audited content ROIs or the expanded screen ROI exported by stage 01;
+# if neither is available it retains the full frame. Never use tight numeric audit crops here.
 OCR_ENGINE = 'qwen'
+QWEN_OCR_MODEL = 'Qwen/Qwen3-VL-4B-Instruct'
+QWEN_OCR_REVISION = 'ebb281ec70b05090aa6165b016eac8ec08e71b17'
+QWEN_CONTENT_CROP = True
+QWEN_CONTENT_ROIS = {'hVU5Mw19V_c': (0.0, 0.08, 1.0, 0.96),
+                     'y1CvB950VlU': (0.25, 0.05, 0.95, 0.76)}
+QWEN_MIN_PIXELS = 256 * 32 * 32
+QWEN_MAX_PIXELS = 1280 * 32 * 32
+QWEN_VALIDATE = True
+QWEN_RETRY_INVALID = True  # Exactly one literal-only retry: 2048 tokens, repetition penalty 1.10.
 HYBRID_DEVICES = ('cuda:0', 'cuda:1')
 OCR_LANGUAGES = ('vi', 'en')
 OCR_SCALE = 1.5
@@ -104,12 +131,13 @@ REUSE_NEAR_DUPLICATES = True
 # cs_0001 (tiếng Anh) ×1,40.
 HYBRID_PIPELINED = True
 
-# 03 · ASR (giữ model của dự án; turbo đã bị loại sau kiểm tra nội dung)
-ASR_MODEL = 'Systran/faster-whisper-medium'
-ASR_REVISION = '08e178d48790749d25932bbc082711ddcfdfbc4f'
-# Whisper dùng chung GPU 1 với Qwen3-VL (~8.4 GB + ~2 GB).
+# 03 · ASR: experiment-pinned CT2 turbo; FP16 is selected on CUDA by load_asr_model.
+ASR_MODEL = 'dropbox-dash/faster-whisper-large-v3-turbo'
+ASR_REVISION = '0a363e9161cbc7ed1431c9597a8ceaf0c4f78fcf'
+# GPU 1: Qwen ~9.1 GB + turbo ~2.2 GB + shared E5. One ASR window and OCR image at a time.
 ASR_DEVICE_INDEX = 0 if OCR_ENGINE == 'easyocr' else 1
 ASR_MODE = 'windowed'
+ASR_BATCH_SIZE = 1  # Conservative if opting into VAD batching; ignored in windowed mode.
 
 # 04 · đoạn quảng cáo có lời nói giống bài giảng (cặp từ trùng với phần còn lại của bài/slide)
 # vẫn giữ lời giảng và chỉ mục (ad_suspect). None = tắt (bản gốc). L25 dev: 0.25 -> 0/27 quảng
@@ -135,7 +163,13 @@ OCR_DEDUPE_PREVIOUS = False
 # 05 · chỉ mục
 EMBEDDING_MODEL = 'intfloat/multilingual-e5-small'   # bge-m3 lost on the 66-question set (hit@1 53 vs 55, hit@3 62 vs 65)
 EMBEDDING_REVISION = '614241f622f53c4eeff9890bdc4f31cfecc418b3'
+EMBEDDING_DEVICE = 'cuda:0' if OCR_ENGINE == 'easyocr' else 'cuda:1'
 """
+
+# Reuse the production settings in the single-video builders without copying defaults.
+STAGE01_CONFIG = CONFIG.split('MERGE_REVEALS = True\n', 1)[1].split('# Lọc quảng cáo:', 1)[0]
+QWEN_CONFIG = CONFIG.split("OCR_ENGINE = 'qwen'\n", 1)[1].split('HYBRID_DEVICES =', 1)[0]
+ASR_CONFIG = '# 03 · ASR:' + CONFIG.split('# 03 · ASR:', 1)[1].split('# 04 ·', 1)[0]
 
 RUN = """import json, shutil, subprocess, threading, time, traceback
 from concurrent.futures import ThreadPoolExecutor
@@ -188,8 +222,8 @@ if AD_FILTER == 'slide_speech' and not SPEECH_RELEVANCE:
 
 def speech_embed_model():
     from sentence_transformers import SentenceTransformer
-    model = shared_model(('e5', EMBEDDING_MODEL), lambda: SentenceTransformer(
-        EMBEDDING_MODEL, revision=EMBEDDING_REVISION, device='cuda' if OCR_ENGINE == 'easyocr' else 'cuda:1'))
+    model = shared_model(('e5', EMBEDDING_MODEL, EMBEDDING_REVISION, EMBEDDING_DEVICE), lambda: SentenceTransformer(
+        EMBEDDING_MODEL, revision=EMBEDDING_REVISION, device=EMBEDDING_DEVICE))
     return lambda texts: model.encode(['query: ' + t for t in texts], normalize_embeddings=True,
                                       batch_size=32, convert_to_numpy=True)
 speech_embed = speech_embed_model() if SPEECH_RELEVANCE else None
@@ -197,9 +231,12 @@ speech_embed = speech_embed_model() if SPEECH_RELEVANCE else None
 def detect(video_id):
     started = time.monotonic()
     video = find_video_file(video_id)
+    options = dict(merge_reveals=MERGE_REVEALS, export_state_onsets=EXPORT_STATE_ONSETS,
+                   merge_same_content=MERGE_SAME_CONTENT)
+    options.update(STAGE01_VIDEO_OPTIONS.get(video_id, {}))
     stage01, manifest, intervals = run_slide_detection(
         video, OUTPUT_ROOT / video_id, video_id, sample_hz=SAMPLE_HZ,
-        fine_hz=FINE_HZ, merge_reveals=MERGE_REVEALS, scan='single_pass',
+        fine_hz=FINE_HZ, scan='single_pass', **options,
         ad_scorer=ad_scorer, ad_options={'mode': AD_MODE}, content_scorer=content_scorer,
     )
     return video, stage01, manifest, time.monotonic() - started
@@ -214,6 +251,10 @@ def ocr(video_id, stage01):
         hybrid_skip_repeated_decor=HYBRID_SKIP_REPEATED_DECOR, hybrid_min_region_area=HYBRID_MIN_REGION_AREA,
         reuse_near_duplicates=REUSE_NEAR_DUPLICATES, hybrid_pipelined=HYBRID_PIPELINED,
         describe_language=VIDEO_LANGUAGES.get(video_id, 'vi'),
+        qwen_model=QWEN_OCR_MODEL, qwen_revision=QWEN_OCR_REVISION,
+        qwen_content_crop=QWEN_CONTENT_CROP, qwen_content_rois=QWEN_CONTENT_ROIS,
+        qwen_min_pixels=QWEN_MIN_PIXELS, qwen_max_pixels=QWEN_MAX_PIXELS,
+        qwen_validate=QWEN_VALIDATE, qwen_retry_invalid=QWEN_RETRY_INVALID,
     )
     return directory, time.monotonic() - started
 
@@ -223,7 +264,7 @@ def asr(video_id):
     directory, _, _ = run_transcription(
         None, find_video_file(video_id), OUTPUT_ROOT / video_id, video_id,
         model_id=ASR_MODEL, revision=ASR_REVISION, language=VIDEO_LANGUAGES.get(video_id, 'vi'),
-        transcription_mode=ASR_MODE, device_index=ASR_DEVICE_INDEX,
+        transcription_mode=ASR_MODE, batch_size=ASR_BATCH_SIZE, device_index=ASR_DEVICE_INDEX,
     )
     return directory, time.monotonic() - started
 
@@ -251,6 +292,7 @@ with ThreadPoolExecutor(1) as cpu, ThreadPoolExecutor(1) as asr_queue, ThreadPoo
             visual_manifest = json.loads((stage02 / 'manifest.json').read_text(encoding='utf-8'))
             row['ocr_read'] = visual_manifest.get('ocr_read_count')
             row['ocr_skipped'] = visual_manifest.get('ocr_skipped_no_content')
+            row['ocr_failed'] = visual_manifest.get('ocr_failed_count', 0)
             row['02_sec_per_slide'] = round(row['02_sec'] / max(row['ocr_read'] or row['slides'], 1), 1)
             stage03, row['03_sec'] = asr_jobs[video_id].result()
             row['ready_at_sec'] = time.monotonic() - pipeline_started
@@ -266,6 +308,7 @@ with ThreadPoolExecutor(1) as cpu, ThreadPoolExecutor(1) as asr_queue, ThreadPoo
             started = time.monotonic()
             run_indexing(stage04, OUTPUT_ROOT / video_id, video_id,
                          embedding_model=EMBEDDING_MODEL, revision=EMBEDDING_REVISION,
+                         device=EMBEDDING_DEVICE,
                          dedupe_previous=OCR_DEDUPE_PREVIOUS,
                          include_generated_descriptions=INCLUDE_GENERATED_DESCRIPTIONS,
                          generated_semantic_only=GENERATED_SEMANTIC_ONLY)
