@@ -1,0 +1,2455 @@
+{
+  "status": "auto-written by Codex, needs human review",
+  "version": 1,
+  "authoring": {
+    "method": "Codex visually inspected 71 selected stage-01 keyframes (saved as contact sheets) and read corresponding raw stage-03 word spans plus targeted surrounding spans. No gold labels were inferred from retrieval rankings.",
+    "scope": "Draft dev set; no acoustic listening or independent human review. Speech quotes are checked transcript readings; terminology is corroborated against visible frames where available.",
+    "visual_gold": "Narrow spans around inspected keyframe times; they do not assume every final reveal was visible throughout the slide interval.",
+    "known_uncertainty": [
+      "hVU5Mw19V_c: the seed heading says type II 1.5 kg but the calculation uses 2/5; preserve this lecturer inconsistency.",
+      "Temporal recall is any positive overlap and may overestimate success for very long production slide intervals. Context recall additionally checks retained text."
+    ],
+    "review_directory": "runs/exp/baseline/review"
+  },
+  "questions": [
+    {
+      "id": "cs_0001_q01",
+      "video": "cs_0001",
+      "question": "What is the title of the talk?",
+      "type": "slide",
+      "gold_spans": [
+        [
+          29,
+          33
+        ]
+      ],
+      "answer": "A Partial Order View of Message-Passing Communication Models",
+      "evidence": "A Partial Order View of Message-Passing Communication Models",
+      "key_terms": [
+        "Partial Order",
+        "Message-Passing"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "cs_0001/01_slides/keyframes/seg_00000.jpg",
+      "keyframe_time_sec": 31.066667
+    },
+    {
+      "id": "cs_0001_q02",
+      "video": "cs_0001",
+      "question": "Which university and country are printed under the authors?",
+      "type": "slide",
+      "gold_spans": [
+        [
+          29,
+          33
+        ]
+      ],
+      "answer": "Université Côte d’Azur, France.",
+      "evidence": "Université Côte d’Azur, France",
+      "key_terms": [
+        "Université",
+        "France"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "cs_0001/01_slides/keyframes/seg_00000.jpg",
+      "keyframe_time_sec": 31.066667
+    },
+    {
+      "id": "cs_0001_q03",
+      "video": "cs_0001",
+      "question": "Why does the speaker say he is a little anxious?",
+      "type": "speech",
+      "gold_spans": [
+        [
+          17,
+          34
+        ]
+      ],
+      "answer": "This is his first conference.",
+      "evidence": "a little anxious because this is my first conference ever",
+      "key_terms": [
+        "first conference"
+      ],
+      "evidence_source": "speech",
+      "checked_keyframe": "cs_0001/01_slides/keyframes/seg_00000.jpg",
+      "keyframe_time_sec": 31.066667
+    },
+    {
+      "id": "cs_0001_q04",
+      "video": "cs_0001",
+      "question": "Why does asynchronous communication make verification difficult?",
+      "type": "both",
+      "gold_spans": [
+        [
+          137,
+          166
+        ]
+      ],
+      "answer": "It introduces an infinite state space and undecidability.",
+      "evidence": "Asynchronous communication ⇔ Infinite state space (undecidability); those properties ... become undecidable",
+      "key_terms": [
+        "infinite state space",
+        "undecidable"
+      ],
+      "evidence_source": "either",
+      "checked_keyframe": "cs_0001/01_slides/keyframes/seg_00001.jpg",
+      "keyframe_time_sec": 162.966667
+    },
+    {
+      "id": "cs_0001_q05",
+      "video": "cs_0001",
+      "question": "How many communication models does the speaker compare?",
+      "type": "numeric",
+      "gold_spans": [
+        [
+          401,
+          428
+        ]
+      ],
+      "answer": "Seven.",
+      "evidence": "any of these seven communication models",
+      "key_terms": [
+        "seven communication models"
+      ],
+      "evidence_source": "speech",
+      "checked_keyframe": "cs_0001/01_slides/keyframes/seg_00005.jpg",
+      "keyframe_time_sec": 426.266667
+    },
+    {
+      "id": "cs_0001_q06",
+      "video": "cs_0001",
+      "question": "Which FIFO model is also called the mailbox model?",
+      "type": "term",
+      "gold_spans": [
+        [
+          424,
+          428
+        ]
+      ],
+      "answer": "FIFO n-1.",
+      "evidence": "FIFO n-1 or mailbox",
+      "key_terms": [
+        "FIFO",
+        "mailbox"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "cs_0001/01_slides/keyframes/seg_00005.jpg",
+      "keyframe_time_sec": 426.266667
+    },
+    {
+      "id": "cs_0001_q07",
+      "video": "cs_0001",
+      "question": "What are the three process labels in the MSC drawing?",
+      "type": "visual",
+      "gold_spans": [
+        [
+          424,
+          428
+        ]
+      ],
+      "answer": "p, q, r.",
+      "evidence": "Three vertical process lines labelled p, q, r, joined by message arrows.",
+      "key_terms": [
+        "p",
+        "q",
+        "r"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "cs_0001/01_slides/keyframes/seg_00005.jpg",
+      "keyframe_time_sec": 426.266667
+    },
+    {
+      "id": "cs_0001_q08",
+      "video": "cs_0001",
+      "question": "In the upper model-checking Venn diagram, where is the bounded STW set?",
+      "type": "visual",
+      "gold_spans": [
+        [
+          799,
+          802
+        ]
+      ],
+      "answer": "Inside the intersection of system behaviours and the property language.",
+      "evidence": "Bounded STW L_com(S) is drawn inside both L_com(S) and L(phi).",
+      "key_terms": [
+        "Bounded",
+        "STW"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "cs_0001/01_slides/keyframes/seg_00011.jpg",
+      "keyframe_time_sec": 801.366667
+    },
+    {
+      "id": "cs_0001_q09",
+      "video": "cs_0001",
+      "question": "What does k = 1 mean for weakly k-synchronous MSCs?",
+      "type": "numeric",
+      "gold_spans": [
+        [
+          878,
+          933
+        ]
+      ],
+      "answer": "Purely synchronous communication.",
+      "evidence": "when k equals 1, we are purely synchronous communication",
+      "key_terms": [
+        "purely synchronous"
+      ],
+      "evidence_source": "speech",
+      "checked_keyframe": "cs_0001/01_slides/keyframes/seg_00013.jpg",
+      "keyframe_time_sec": 903.466667
+    },
+    {
+      "id": "cs_0001_q10",
+      "video": "cs_0001",
+      "question": "Is weakly synchronous model-checking decidable for causally ordered communication in the table?",
+      "type": "slide",
+      "gold_spans": [
+        [
+          901,
+          905
+        ]
+      ],
+      "answer": "It is marked undecidable.",
+      "evidence": "Causally ordered / Weakly sync: red cross; legend × = undecidable",
+      "key_terms": [
+        "Causally ordered",
+        "Weakly sync",
+        "undecidable"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "cs_0001/01_slides/keyframes/seg_00013.jpg",
+      "keyframe_time_sec": 903.466667
+    },
+    {
+      "id": "cs_0001_q11",
+      "video": "cs_0001",
+      "question": "What can a user do with the speaker’s web tool?",
+      "type": "speech",
+      "gold_spans": [
+        [
+          1044,
+          1080
+        ]
+      ],
+      "answer": "Draw MSCs and check realizability under the considered asynchronous models.",
+      "evidence": "draw your own MSCs and see if they can be realizable with any of the asynchronous communication models",
+      "key_terms": [
+        "draw your own MSCs",
+        "realizable"
+      ],
+      "evidence_source": "speech",
+      "checked_keyframe": "cs_0001/01_slides/keyframes/seg_00016.jpg",
+      "keyframe_time_sec": 1069.2
+    },
+    {
+      "id": "cs_0001_q12",
+      "video": "cs_0001",
+      "question": "What Python package implements the full verification tool, and how do I install it?",
+      "type": "unanswerable",
+      "gold_spans": [],
+      "answer": "Not specified in this lecture.",
+      "evidence": "The lecture proposes a verification tool and links an MSC analyser; no Python installation procedure is given.",
+      "key_terms": [],
+      "evidence_source": "none",
+      "checked_keyframe": "cs_0001/01_slides/keyframes/seg_00016.jpg",
+      "keyframe_time_sec": 1069.2
+    },
+    {
+      "id": "D_kuulxKuxc_q01",
+      "video": "D_kuulxKuxc",
+      "question": "10 tru 3 bang may?",
+      "type": "numeric",
+      "gold_spans": [
+        [
+          78.4,
+          102.4
+        ]
+      ],
+      "answer": "7.",
+      "evidence": "10 -3 bằng 7",
+      "key_terms": [
+        "7"
+      ],
+      "evidence_source": "speech",
+      "checked_keyframe": "D_kuulxKuxc/01_slides/keyframes/seg_00006.jpg",
+      "keyframe_time_sec": 92.36
+    },
+    {
+      "id": "D_kuulxKuxc_q02",
+      "video": "D_kuulxKuxc",
+      "question": "Trong thử thách đầu tiên, 10 trừ 6 bằng bao nhiêu?",
+      "type": "numeric",
+      "gold_spans": [
+        [
+          78.4,
+          102.4
+        ]
+      ],
+      "answer": "4.",
+      "evidence": "10 -6 bằng 4",
+      "key_terms": [
+        "4"
+      ],
+      "evidence_source": "speech",
+      "checked_keyframe": "D_kuulxKuxc/01_slides/keyframes/seg_00006.jpg",
+      "keyframe_time_sec": 92.36
+    },
+    {
+      "id": "D_kuulxKuxc_q03",
+      "video": "D_kuulxKuxc",
+      "question": "Trên đường đi của bạn gấu, 14 được tách thành 10 cộng số nào?",
+      "type": "slide",
+      "gold_spans": [
+        [
+          226.6,
+          230.6
+        ]
+      ],
+      "answer": "4.",
+      "evidence": "14 = 10 + ?",
+      "key_terms": [
+        "14",
+        "10"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "D_kuulxKuxc/01_slides/keyframes/seg_00016.jpg",
+      "keyframe_time_sec": 228.6
+    },
+    {
+      "id": "D_kuulxKuxc_q04",
+      "video": "D_kuulxKuxc",
+      "question": "Hình 12 chấm tròn gạch bỏ 3 chấm biểu diễn phép tính nào?",
+      "type": "visual",
+      "gold_spans": [
+        [
+          402.68,
+          406.68
+        ]
+      ],
+      "answer": "12 − 3 = 9.",
+      "evidence": "12 − 3 = ?; ba chấm cuối bị gạch, còn chín chấm.",
+      "key_terms": [
+        "12",
+        "3",
+        "9"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "D_kuulxKuxc/01_slides/keyframes/seg_00026.jpg",
+      "keyframe_time_sec": 404.68
+    },
+    {
+      "id": "D_kuulxKuxc_q05",
+      "video": "D_kuulxKuxc",
+      "question": "Bạn voi tính 13 trừ 4 được kết quả gì?",
+      "type": "both",
+      "gold_spans": [
+        [
+          694.52,
+          720.64
+        ]
+      ],
+      "answer": "9.",
+      "evidence": "13 trừ 3 bằng 10, 10 trừ 1 bằng 9; Vậy 13 − 4 = 9",
+      "key_terms": [
+        "13",
+        "4",
+        "9"
+      ],
+      "evidence_source": "either",
+      "checked_keyframe": "D_kuulxKuxc/01_slides/keyframes/seg_00044.jpg",
+      "keyframe_time_sec": 719.52
+    },
+    {
+      "id": "D_kuulxKuxc_q06",
+      "video": "D_kuulxKuxc",
+      "question": "Bạn voi bớt 4 chấm tròn theo hai bước nào?",
+      "type": "speech",
+      "gold_spans": [
+        [
+          694.52,
+          720.64
+        ]
+      ],
+      "answer": "Bớt 3 chấm ngoài khay trước rồi bớt 1 chấm trong khay.",
+      "evidence": "bớt 3 chấm tròn ngoài khay trước, rồi bớt 1 chấm tròn ... trong khay",
+      "key_terms": [
+        "3 chấm tròn",
+        "1 chấm tròn"
+      ],
+      "evidence_source": "speech",
+      "checked_keyframe": "D_kuulxKuxc/01_slides/keyframes/seg_00044.jpg",
+      "keyframe_time_sec": 719.52
+    },
+    {
+      "id": "D_kuulxKuxc_q07",
+      "video": "D_kuulxKuxc",
+      "question": "“Đếm bớt” để tính 11 trừ 5 bắt đầu từ số nào?",
+      "type": "term",
+      "gold_spans": [
+        [
+          1079.64,
+          1106.12
+        ]
+      ],
+      "answer": "Bắt đầu từ 11 rồi đếm lùi 5 lần.",
+      "evidence": "Em ... bớt 5 bắt đầu từ 11 ... 10, 9, 8 ... 7 ... 6",
+      "key_terms": [
+        "bắt đầu từ 11"
+      ],
+      "evidence_source": "speech",
+      "checked_keyframe": "D_kuulxKuxc/01_slides/keyframes/seg_00060.jpg",
+      "keyframe_time_sec": 1104.64
+    },
+    {
+      "id": "D_kuulxKuxc_q08",
+      "video": "D_kuulxKuxc",
+      "question": "Kết quả 11 − 5 được viết trên màn hình là gì?",
+      "type": "numeric",
+      "gold_spans": [
+        [
+          1102.64,
+          1106.12
+        ]
+      ],
+      "answer": "6.",
+      "evidence": "11 − 5 = 6",
+      "key_terms": [
+        "11",
+        "5",
+        "6"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "D_kuulxKuxc/01_slides/keyframes/seg_00060.jpg",
+      "keyframe_time_sec": 1104.64
+    },
+    {
+      "id": "D_kuulxKuxc_q09",
+      "video": "D_kuulxKuxc",
+      "question": "Nhà bà có 18 quả gấc, 9 quả đã chín, còn mấy quả chưa chín?",
+      "type": "speech",
+      "gold_spans": [
+        [
+          1789.04,
+          1824.2
+        ]
+      ],
+      "answer": "9 quả.",
+      "evidence": "có 18 quả, trong đó có 9 quả đã chín, còn lại 18 -9 bằng 9 ... chưa chín",
+      "key_terms": [
+        "18",
+        "9",
+        "chưa chín"
+      ],
+      "evidence_source": "speech",
+      "checked_keyframe": "D_kuulxKuxc/01_slides/keyframes/seg_00098.jpg",
+      "keyframe_time_sec": 1794.2
+    },
+    {
+      "id": "D_kuulxKuxc_q10",
+      "video": "D_kuulxKuxc",
+      "question": "Cô nhờ ai quay lại các tình huống dùng phép trừ của học sinh?",
+      "type": "speech",
+      "gold_spans": [
+        [
+          1789.04,
+          1824.2
+        ]
+      ],
+      "answer": "Cha mẹ.",
+      "evidence": "Hãy nhờ cha mẹ quay lại và gửi về",
+      "key_terms": [
+        "cha mẹ",
+        "quay lại"
+      ],
+      "evidence_source": "speech",
+      "checked_keyframe": "D_kuulxKuxc/01_slides/keyframes/seg_00098.jpg",
+      "keyframe_time_sec": 1794.2
+    },
+    {
+      "id": "D_kuulxKuxc_q11",
+      "video": "D_kuulxKuxc",
+      "question": "Sau vòng tròn màu xanh trên đường đi của gấu là phép trừ nào?",
+      "type": "slide",
+      "gold_spans": [
+        [
+          226.6,
+          230.6
+        ]
+      ],
+      "answer": "17 − 7.",
+      "evidence": "The blue circle on the top right connects to 17 − 7.",
+      "key_terms": [
+        "17",
+        "7"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "D_kuulxKuxc/01_slides/keyframes/seg_00016.jpg",
+      "keyframe_time_sec": 228.6
+    },
+    {
+      "id": "D_kuulxKuxc_q12",
+      "video": "D_kuulxKuxc",
+      "question": "Cô hướng dẫn giải phương trình bậc hai bằng công thức nào?",
+      "type": "unanswerable",
+      "gold_spans": [],
+      "answer": "Bài này không hướng dẫn phương trình bậc hai.",
+      "evidence": "Bài học tập trung vào phép trừ qua 10.",
+      "key_terms": [],
+      "evidence_source": "none",
+      "checked_keyframe": "D_kuulxKuxc/01_slides/keyframes/seg_00098.jpg",
+      "keyframe_time_sec": 1794.2
+    },
+    {
+      "id": "hVU5Mw19V_c_q01",
+      "video": "hVU5Mw19V_c",
+      "question": "Bảng lớp 10 ghi bao nhiêu nam và bao nhiêu nữ?",
+      "type": "slide",
+      "gold_spans": [
+        [
+          486.96,
+          490.96
+        ]
+      ],
+      "answer": "50 nam và 50 nữ.",
+      "evidence": "L10: Nam 50, Nữ 50",
+      "key_terms": [
+        "L10",
+        "50"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "hVU5Mw19V_c/01_slides/keyframes/seg_00000.jpg",
+      "keyframe_time_sec": 488.96
+    },
+    {
+      "id": "hVU5Mw19V_c_q02",
+      "video": "hVU5Mw19V_c",
+      "question": "Tổng học sinh dùng làm mẫu số khi chọn ngẫu nhiên trong ba lớp là bao nhiêu?",
+      "type": "numeric",
+      "gold_spans": [
+        [
+          463.96,
+          518.96
+        ]
+      ],
+      "answer": "370, không phải 330 như OCR.",
+      "evidence": "Thì cái ... 370 ... 100 trên 370 ... 120 trên 370 ... 150 trên 370; the board shows denominator 370.",
+      "key_terms": [
+        "370"
+      ],
+      "evidence_source": "either",
+      "checked_keyframe": "hVU5Mw19V_c/01_slides/keyframes/seg_00000.jpg",
+      "keyframe_time_sec": 488.96
+    },
+    {
+      "id": "hVU5Mw19V_c_q03",
+      "video": "hVU5Mw19V_c",
+      "question": "Trên bảng, xác suất chọn nữ khi đã chọn lớp 12 viết dưới dạng phân số nào?",
+      "type": "numeric",
+      "gold_spans": [
+        [
+          486.96,
+          490.96
+        ]
+      ],
+      "answer": "70/150.",
+      "evidence": "P(A|B3) = 70/150",
+      "key_terms": [
+        "70",
+        "150"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "hVU5Mw19V_c/01_slides/keyframes/seg_00000.jpg",
+      "keyframe_time_sec": 488.96
+    },
+    {
+      "id": "hVU5Mw19V_c_q04",
+      "video": "hVU5Mw19V_c",
+      "question": "Công thức nào trên tiêu đề dùng để tính xác suất ngược sau khi biết biến cố A?",
+      "type": "term",
+      "gold_spans": [
+        [
+          1072.08,
+          1076.08
+        ]
+      ],
+      "answer": "Công thức Bayes.",
+      "evidence": "CÔNG THỨC XÁC SUẤT ĐẦY ĐỦ VÀ CÔNG THỨC BAYES",
+      "key_terms": [
+        "BAYES"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "hVU5Mw19V_c/01_slides/keyframes/seg_00006.jpg",
+      "keyframe_time_sec": 1074.08
+    },
+    {
+      "id": "hVU5Mw19V_c_q05",
+      "video": "hVU5Mw19V_c",
+      "question": "Khi đã chọn một bạn nữ, thầy yêu cầu tính xác suất bạn đó thuộc khối lớp nào?",
+      "type": "speech",
+      "gold_spans": [
+        [
+          1049.08,
+          1104.08
+        ]
+      ],
+      "answer": "Lớp 12 (B3).",
+      "evidence": "nếu đã nhặt ra một bạn nữ thì ... rơi vào lớp 12 là bao nhiêu ... tức là B3",
+      "key_terms": [
+        "lớp 12",
+        "B3"
+      ],
+      "evidence_source": "speech",
+      "checked_keyframe": "hVU5Mw19V_c/01_slides/keyframes/seg_00006.jpg",
+      "keyframe_time_sec": 1074.08
+    },
+    {
+      "id": "hVU5Mw19V_c_q06",
+      "video": "hVU5Mw19V_c",
+      "question": "Trong ví dụ hạt giống, ba tỉ lệ nảy mầm được ghi là bao nhiêu?",
+      "type": "numeric",
+      "gold_spans": [
+        [
+          1555.08,
+          1559.08
+        ]
+      ],
+      "answer": "Loại I: 90%; II: 80%; III: 60%.",
+      "evidence": "Loại I: 90% nảy mầm; Loại II: 80% nảy mầm; Loại III: 60% nảy mầm",
+      "key_terms": [
+        "90",
+        "80",
+        "60"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "hVU5Mw19V_c/01_slides/keyframes/seg_00012.jpg",
+      "keyframe_time_sec": 1557.08
+    },
+    {
+      "id": "hVU5Mw19V_c_q07",
+      "video": "hVU5Mw19V_c",
+      "question": "Dòng mô tả loại II trên bảng ghi khối lượng mấy kg?",
+      "type": "slide",
+      "gold_spans": [
+        [
+          1555.08,
+          1559.08
+        ]
+      ],
+      "answer": "1,5 kg. Dòng thay số phía dưới dùng 2/5, nên ví dụ có sự không nhất quán.",
+      "evidence": "Loại II; 1,5 kg; 80% nảy mầm (visible heading, not OCR 4,5 kg).",
+      "key_terms": [
+        "1,5",
+        "kg"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "hVU5Mw19V_c/01_slides/keyframes/seg_00012.jpg",
+      "keyframe_time_sec": 1557.08
+    },
+    {
+      "id": "hVU5Mw19V_c_q08",
+      "video": "hVU5Mw19V_c",
+      "question": "Kết quả cuối thầy đọc cho xác suất hạt đã nảy mầm thuộc nhóm III là bao nhiêu?",
+      "type": "numeric",
+      "gold_spans": [
+        [
+          1490,
+          1549
+        ]
+      ],
+      "answer": "46,75%.",
+      "evidence": "số ... 0 .4675, tức là 46 .75 %; the board also shows 46,75%.",
+      "key_terms": [
+        "46.75"
+      ],
+      "evidence_source": "speech",
+      "checked_keyframe": "hVU5Mw19V_c/01_slides/keyframes/seg_00012.jpg",
+      "keyframe_time_sec": 1557.08
+    },
+    {
+      "id": "hVU5Mw19V_c_q09",
+      "video": "hVU5Mw19V_c",
+      "question": "Trong ví dụ viện bỏng, bệnh nhân bỏng nhiệt và bỏng hóa chất chiếm tỉ lệ nào?",
+      "type": "both",
+      "gold_spans": [
+        [
+          1549.64,
+          1587.08
+        ],
+        [
+          1789.28,
+          1793.28
+        ]
+      ],
+      "answer": "70% bỏng nhiệt, 30% bỏng hóa chất.",
+      "evidence": "70 % ... bỏng nhiệt và 30 % ... bỏng do hóa chất; board: Bỏng nhiệt 70%, Bỏng hoá chất 30%.",
+      "key_terms": [
+        "70",
+        "30"
+      ],
+      "evidence_source": "either",
+      "checked_keyframe": "hVU5Mw19V_c/01_slides/keyframes/seg_00015.jpg",
+      "keyframe_time_sec": 1791.28
+    },
+    {
+      "id": "hVU5Mw19V_c_q10",
+      "video": "hVU5Mw19V_c",
+      "question": "Xác suất biến chứng chung trong ví dụ viện bỏng bằng bao nhiêu?",
+      "type": "numeric",
+      "gold_spans": [
+        [
+          1720,
+          1787
+        ]
+      ],
+      "answer": "0,36 = 36%.",
+      "evidence": "0,3 × 0,7 + 0,5 × 0,3 = 9/25 = 36%; ... bằng 0,36",
+      "key_terms": [
+        "0,36"
+      ],
+      "evidence_source": "either",
+      "checked_keyframe": "hVU5Mw19V_c/01_slides/keyframes/seg_00015.jpg",
+      "keyframe_time_sec": 1791.28
+    },
+    {
+      "id": "hVU5Mw19V_c_q11",
+      "video": "hVU5Mw19V_c",
+      "question": "Khi tính xác suất bỏng nhiệt nếu đã biến chứng, mẫu số của công thức Bayes là gì?",
+      "type": "speech",
+      "gold_spans": [
+        [
+          1720,
+          1787
+        ]
+      ],
+      "answer": "P(A), xác suất biến chứng chung, bằng 0,36.",
+      "evidence": "cái mẫu số ở dưới này ... pa ở đây là bằng 0 ,36",
+      "key_terms": [
+        "mẫu số",
+        "0,36"
+      ],
+      "evidence_source": "speech",
+      "checked_keyframe": "hVU5Mw19V_c/01_slides/keyframes/seg_00015.jpg",
+      "keyframe_time_sec": 1791.28
+    },
+    {
+      "id": "hVU5Mw19V_c_q12",
+      "video": "hVU5Mw19V_c",
+      "question": "Thầy cho biết độ nhạy và độ đặc hiệu của xét nghiệm COVID là bao nhiêu?",
+      "type": "unanswerable",
+      "gold_spans": [],
+      "answer": "Không có ví dụ xét nghiệm COVID trong bài.",
+      "evidence": "Các ví dụ được kiểm tra là học sinh, hạt giống và bệnh nhân bỏng.",
+      "key_terms": [],
+      "evidence_source": "none",
+      "checked_keyframe": "hVU5Mw19V_c/01_slides/keyframes/seg_00015.jpg",
+      "keyframe_time_sec": 1791.28
+    },
+    {
+      "id": "L25_V008_q01",
+      "video": "L25_V008",
+      "question": "Công thức định nghĩa xác suất P(A) trên slide là gì?",
+      "type": "term",
+      "gold_spans": [
+        [
+          90.93,
+          94.93
+        ]
+      ],
+      "answer": "P(A) = n(A)/n(Ω).",
+      "evidence": "P(A)=n(A)/n(Ω); n(A) là số kết quả thuận lợi, n(Ω) là số kết quả của phép thử.",
+      "key_terms": [
+        "n(A)",
+        "n(Ω)"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "L25_V008/01_slides/keyframes/seg_00003.jpg",
+      "keyframe_time_sec": 92.926167
+    },
+    {
+      "id": "L25_V008_q02",
+      "video": "L25_V008",
+      "question": "Hộp ở câu 1 có bao nhiêu quả đỏ và bao nhiêu quả xanh?",
+      "type": "slide",
+      "gold_spans": [
+        [
+          282.52,
+          286.52
+        ]
+      ],
+      "answer": "6 quả đỏ và 9 quả xanh.",
+      "evidence": "15 quả cầu gồm 6 quả màu đỏ ... và 9 quả màu xanh",
+      "key_terms": [
+        "6",
+        "9",
+        "đỏ",
+        "xanh"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "L25_V008/01_slides/keyframes/seg_00006.jpg",
+      "keyframe_time_sec": 284.517567
+    },
+    {
+      "id": "L25_V008_q03",
+      "video": "L25_V008",
+      "question": "Số phần tử không gian mẫu khi chọn 2 quả từ 15 quả là bao nhiêu?",
+      "type": "both",
+      "gold_spans": [
+        [
+          259.52,
+          300
+        ]
+      ],
+      "answer": "C(15,2) = 105.",
+      "evidence": "Chọn 2 quả cầu từ hộp có 15 quả cầu. Do đó n(Ω)=C(15,2)=105.",
+      "key_terms": [
+        "105"
+      ],
+      "evidence_source": "either",
+      "checked_keyframe": "L25_V008/01_slides/keyframes/seg_00006.jpg",
+      "keyframe_time_sec": 284.517567
+    },
+    {
+      "id": "L25_V008_q04",
+      "video": "L25_V008",
+      "question": "Câu 1 có tổng cộng bao nhiêu cách thuận lợi?",
+      "type": "numeric",
+      "gold_spans": [
+        [
+          259.52,
+          300
+        ]
+      ],
+      "answer": "27.",
+      "evidence": "15 cộng 12 là bằng 27",
+      "key_terms": [
+        "27"
+      ],
+      "evidence_source": "speech",
+      "checked_keyframe": "L25_V008/01_slides/keyframes/seg_00006.jpg",
+      "keyframe_time_sec": 284.517567
+    },
+    {
+      "id": "L25_V008_q05",
+      "video": "L25_V008",
+      "question": "Xác suất lấy hai quả khác màu có tổng số chẵn ở câu 1 là gì?",
+      "type": "numeric",
+      "gold_spans": [
+        [
+          259.52,
+          300
+        ]
+      ],
+      "answer": "9/35.",
+      "evidence": "27 phần 105 và bằng 9 phần 35; P(A)=9/35",
+      "key_terms": [
+        "9",
+        "35"
+      ],
+      "evidence_source": "either",
+      "checked_keyframe": "L25_V008/01_slides/keyframes/seg_00006.jpg",
+      "keyframe_time_sec": 284.517567
+    },
+    {
+      "id": "L25_V008_q06",
+      "video": "L25_V008",
+      "question": "Thầy cộng số cách của hai trường hợp thế nào ở ví dụ quả cầu?",
+      "type": "speech",
+      "gold_spans": [
+        [
+          259.52,
+          300
+        ]
+      ],
+      "answer": "Cộng 15 và 12 để được 27.",
+      "evidence": "lấy 2 trường hợp này ... cộng lại ... 15 cộng 12 là bằng 27",
+      "key_terms": [
+        "15",
+        "12",
+        "27"
+      ],
+      "evidence_source": "speech",
+      "checked_keyframe": "L25_V008/01_slides/keyframes/seg_00006.jpg",
+      "keyframe_time_sec": 284.517567
+    },
+    {
+      "id": "L25_V008_q07",
+      "video": "L25_V008",
+      "question": "Slide câu 2 chia việc chọn 10 thẻ thành những bước nào?",
+      "type": "visual",
+      "gold_spans": [
+        [
+          456.96,
+          460.96
+        ]
+      ],
+      "answer": "Chọn 1 thẻ chia hết cho 10, 4 thẻ chẵn còn lại, rồi 5 thẻ lẻ.",
+      "evidence": "Bước 1: Chọn 1 thẻ mang số chia hết cho 10; Bước 2: Chọn 4 thẻ mang số chẵn; Bước 3: Chọn 5 thẻ mang số lẻ.",
+      "key_terms": [
+        "1",
+        "4",
+        "5"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "L25_V008/01_slides/keyframes/seg_00007.jpg",
+      "keyframe_time_sec": 458.9585
+    },
+    {
+      "id": "L25_V008_q08",
+      "video": "L25_V008",
+      "question": "Kết quả xác suất ở câu chọn 10 trong 30 thẻ là bao nhiêu?",
+      "type": "numeric",
+      "gold_spans": [
+        [
+          433.96,
+          464.2
+        ]
+      ],
+      "answer": "99/667.",
+      "evidence": "Ta được kết quả là 99 phần 667",
+      "key_terms": [
+        "99",
+        "667"
+      ],
+      "evidence_source": "speech",
+      "checked_keyframe": "L25_V008/01_slides/keyframes/seg_00007.jpg",
+      "keyframe_time_sec": 458.9585
+    },
+    {
+      "id": "L25_V008_q09",
+      "video": "L25_V008",
+      "question": "Từ 1 đến 40, ba nhóm số theo số dư chia 3 có bao nhiêu phần tử?",
+      "type": "slide",
+      "gold_spans": [
+        [
+          782.32,
+          786.32
+        ]
+      ],
+      "answer": "Chia hết: 13; dư 1: 14; dư 2: 13.",
+      "evidence": "Số chia cho 3 ... 13 số; số chia cho 3 dư 1 ... 14 số; ... dư 2 ... 13 số.",
+      "key_terms": [
+        "13",
+        "14"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "L25_V008/01_slides/keyframes/seg_00009.jpg",
+      "keyframe_time_sec": 784.316867
+    },
+    {
+      "id": "L25_V008_q10",
+      "video": "L25_V008",
+      "question": "Xác suất tổng ba số trên thẻ chia hết cho 3 ở câu 3 là gì?",
+      "type": "both",
+      "gold_spans": [
+        [
+          759.32,
+          813.41
+        ]
+      ],
+      "answer": "127/380.",
+      "evidence": "3302 ... chia cho ... C3 của 40 ... 127 phần 380; slide: 127/380",
+      "key_terms": [
+        "127",
+        "380"
+      ],
+      "evidence_source": "either",
+      "checked_keyframe": "L25_V008/01_slides/keyframes/seg_00009.jpg",
+      "keyframe_time_sec": 784.316867
+    },
+    {
+      "id": "L25_V008_q11",
+      "video": "L25_V008",
+      "question": "Ví dụ sắp xếp tiếp theo yêu cầu gì với ba học sinh lớp 12?",
+      "type": "speech",
+      "gold_spans": [
+        [
+          759.32,
+          813.41
+        ]
+      ],
+      "answer": "Không có hai học sinh lớp 12 đứng cạnh nhau.",
+      "evidence": "xếp 9 học sinh ... không có 2 em học sinh lớp 12 nào đứng cạnh nhau",
+      "key_terms": [
+        "lớp 12",
+        "đứng cạnh nhau"
+      ],
+      "evidence_source": "speech",
+      "checked_keyframe": "L25_V008/01_slides/keyframes/seg_00009.jpg",
+      "keyframe_time_sec": 784.316867
+    },
+    {
+      "id": "L25_V008_q12",
+      "video": "L25_V008",
+      "question": "Bài này tính hậu nghiệm liên tục bằng tích phân Bayes như thế nào?",
+      "type": "unanswerable",
+      "gold_spans": [],
+      "answer": "Không trình bày Bayes liên tục.",
+      "evidence": "Bài này giải các bài xác suất đếm hữu hạn.",
+      "key_terms": [],
+      "evidence_source": "none",
+      "checked_keyframe": "L25_V008/01_slides/keyframes/seg_00009.jpg",
+      "keyframe_time_sec": 784.316867
+    },
+    {
+      "id": "L25_V011_q01",
+      "video": "L25_V011",
+      "question": "Tên chuyên đề trên trang vàng là gì?",
+      "type": "slide",
+      "gold_spans": [
+        [
+          10.48,
+          14.48
+        ]
+      ],
+      "answer": "Các tổ chức quốc tế.",
+      "evidence": "CÁC TỔ CHỨC QUỐC TẾ",
+      "key_terms": [
+        "tổ chức quốc tế"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "L25_V011/01_slides/keyframes/seg_00002.jpg",
+      "keyframe_time_sec": 12.48
+    },
+    {
+      "id": "L25_V011_q02",
+      "video": "L25_V011",
+      "question": "Theo thầy, có bao nhiêu nước đến San Francisco soạn hiến chương LHQ?",
+      "type": "numeric",
+      "gold_spans": [
+        [
+          132.2,
+          158.28
+        ]
+      ],
+      "answer": "50 nước.",
+      "evidence": "Đại biểu 50 nước đã đến họp tại San Francisco",
+      "key_terms": [
+        "50 nước"
+      ],
+      "evidence_source": "speech",
+      "checked_keyframe": "L25_V011/01_slides/keyframes/seg_00005.jpg",
+      "keyframe_time_sec": 157.2
+    },
+    {
+      "id": "L25_V011_q03",
+      "video": "L25_V011",
+      "question": "Hội nghị nào nêu ý tưởng thành lập Liên Hiệp Quốc?",
+      "type": "both",
+      "gold_spans": [
+        [
+          132.2,
+          158.28
+        ]
+      ],
+      "answer": "Hội nghị Yalta, tháng 2 năm 1945.",
+      "evidence": "tại hội nghị ... tháng 2 năm 1945 ... ý tưởng thành lập; slide: Hội nghị Yalta đưa ra ý tưởng thành lập LHQ.",
+      "key_terms": [
+        "1945"
+      ],
+      "evidence_source": "either",
+      "checked_keyframe": "L25_V011/01_slides/keyframes/seg_00005.jpg",
+      "keyframe_time_sec": 157.2
+    },
+    {
+      "id": "L25_V011_q04",
+      "video": "L25_V011",
+      "question": "Nguyên tắc nhất trí của LHQ áp dụng giữa nhóm nước nào?",
+      "type": "term",
+      "gold_spans": [
+        [
+          318.2,
+          322.2
+        ]
+      ],
+      "answer": "Năm nước lớn: Anh, Pháp, Mỹ, Liên Xô, Trung Quốc.",
+      "evidence": "Nguyên tắc nhất trí giữa 5 nước lớn (A-P-M-LX-TQ)",
+      "key_terms": [
+        "5",
+        "nước lớn"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "L25_V011/01_slides/keyframes/seg_00006.jpg",
+      "keyframe_time_sec": 320.2
+    },
+    {
+      "id": "L25_V011_q05",
+      "video": "L25_V011",
+      "question": "Slide ghi hai nhiệm kì Việt Nam là ủy viên không thường trực HĐBA nào?",
+      "type": "slide",
+      "gold_spans": [
+        [
+          318.2,
+          322.2
+        ]
+      ],
+      "answer": "2008–2009 và 2020–2021.",
+      "evidence": "VN là ủy viên không thường trực ... 2008-2009, 2020-2021",
+      "key_terms": [
+        "2008",
+        "2009",
+        "2020",
+        "2021"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "L25_V011/01_slides/keyframes/seg_00006.jpg",
+      "keyframe_time_sec": 320.2
+    },
+    {
+      "id": "L25_V011_q06",
+      "video": "L25_V011",
+      "question": "Sơ đồ tư duy Liên Hiệp Quốc có những nhánh nội dung nào?",
+      "type": "visual",
+      "gold_spans": [
+        [
+          318.2,
+          322.2
+        ]
+      ],
+      "answer": "Hoàn cảnh ra đời, mục tiêu, vai trò, nguyên tắc hoạt động, quan hệ với Việt Nam.",
+      "evidence": "Five coloured nodes around LIÊN HIỆP QUỐC: HOÀN CẢNH RA ĐỜI, MỤC TIÊU, VAI TRÒ, NGUYÊN TẮC HOẠT ĐỘNG, QUAN HỆ VỚI VIỆT NAM.",
+      "key_terms": [
+        "MỤC TIÊU",
+        "VAI TRÒ",
+        "NGUYÊN TẮC"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "L25_V011/01_slides/keyframes/seg_00006.jpg",
+      "keyframe_time_sec": 320.2
+    },
+    {
+      "id": "L25_V011_q07",
+      "video": "L25_V011",
+      "question": "Mốc kí hiệp ước thân thiện và hợp tác của ASEAN trên sơ đồ là năm nào?",
+      "type": "numeric",
+      "gold_spans": [
+        [
+          673.2,
+          677.2
+        ]
+      ],
+      "answer": "1976.",
+      "evidence": "1976: Kí hiệp ước thân thiện và hợp tác.",
+      "key_terms": [
+        "1976"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "L25_V011/01_slides/keyframes/seg_00007.jpg",
+      "keyframe_time_sec": 675.2
+    },
+    {
+      "id": "L25_V011_q08",
+      "video": "L25_V011",
+      "question": "Vai trò của ASEAN được thầy và sơ đồ mô tả ra sao?",
+      "type": "both",
+      "gold_spans": [
+        [
+          650.2,
+          692.64
+        ]
+      ],
+      "answer": "Tổ chức hợp tác kinh tế, chính trị, văn hóa của các quốc gia Đông Nam Á.",
+      "evidence": "tổ chức hợp tác kinh tế chính trị văn hóa ... Đông Nam Á",
+      "key_terms": [
+        "kinh tế",
+        "chính trị",
+        "văn hóa",
+        "Đông Nam Á"
+      ],
+      "evidence_source": "either",
+      "checked_keyframe": "L25_V011/01_slides/keyframes/seg_00007.jpg",
+      "keyframe_time_sec": 675.2
+    },
+    {
+      "id": "L25_V011_q09",
+      "video": "L25_V011",
+      "question": "Sau hiệp ước nào tổ chức châu Âu đổi tên thành Liên minh châu Âu?",
+      "type": "slide",
+      "gold_spans": [
+        [
+          870,
+          874
+        ]
+      ],
+      "answer": "Hiệp ước Maastricht.",
+      "evidence": "Sau hiệp ước Masstricht thì đổi tên thành Liên minh châu Âu. (Visible slide misspells Maastricht.)",
+      "key_terms": [
+        "Maastricht"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "L25_V011/01_slides/keyframes/seg_00008.jpg",
+      "keyframe_time_sec": 872.0,
+      "review_note": "Visible slide spells Masstricht; reference normalizes the treaty name."
+    },
+    {
+      "id": "L25_V011_q10",
+      "video": "L25_V011",
+      "question": "Thầy đề nghị cách ôn tập nào sau khi học ba tổ chức quốc tế?",
+      "type": "speech",
+      "gold_spans": [
+        [
+          847,
+          891.6
+        ]
+      ],
+      "answer": "So sánh để nhận ra điểm khác nhau và tương đồng.",
+      "evidence": "nên tiến hành so sánh để nhận ra điểm khác nhau giữa ba tổ chức quốc tế này",
+      "key_terms": [
+        "so sánh",
+        "khác nhau"
+      ],
+      "evidence_source": "speech",
+      "checked_keyframe": "L25_V011/01_slides/keyframes/seg_00008.jpg",
+      "keyframe_time_sec": 872.0
+    },
+    {
+      "id": "L25_V011_q11",
+      "video": "L25_V011",
+      "question": "Thầy giới thiệu tổ chức nào có quan hệ mật thiết và Việt Nam là thành viên?",
+      "type": "speech",
+      "gold_spans": [
+        [
+          295.2,
+          325
+        ]
+      ],
+      "answer": "ASEAN.",
+      "evidence": "Việt Nam là một trong những thành viên ... Hiệp hội các quốc gia ở Đông Nam Á ... ASEAN",
+      "key_terms": [
+        "ASEAN",
+        "Việt Nam"
+      ],
+      "evidence_source": "speech",
+      "checked_keyframe": "L25_V011/01_slides/keyframes/seg_00006.jpg",
+      "keyframe_time_sec": 320.2
+    },
+    {
+      "id": "L25_V011_q12",
+      "video": "L25_V011",
+      "question": "Năm 2026 ASEAN có GDP và dân số chính xác là bao nhiêu?",
+      "type": "unanswerable",
+      "gold_spans": [],
+      "answer": "Bài không cung cấp số liệu năm 2026.",
+      "evidence": "Bài ôn lịch sử các tổ chức quốc tế, không cập nhật GDP/dân số 2026.",
+      "key_terms": [],
+      "evidence_source": "none",
+      "checked_keyframe": "L25_V011/01_slides/keyframes/seg_00008.jpg",
+      "keyframe_time_sec": 872.0
+    },
+    {
+      "id": "L25_V037_q01",
+      "video": "L25_V037",
+      "question": "Trang tiêu đề cho biết chuyên đề cách mạng bao trùm giai đoạn nào?",
+      "type": "slide",
+      "gold_spans": [
+        [
+          22.52,
+          26.52
+        ]
+      ],
+      "answer": "1930–1945.",
+      "evidence": "CÁC CAO TRÀO CÁCH MẠNG ... (1930–1945)",
+      "key_terms": [
+        "1930",
+        "1945"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "L25_V037/01_slides/keyframes/seg_00002.jpg",
+      "keyframe_time_sec": 24.52
+    },
+    {
+      "id": "L25_V037_q02",
+      "video": "L25_V037",
+      "question": "Slide ghi phong trào 1930–1931 đạt đỉnh cao vào tháng nào?",
+      "type": "numeric",
+      "gold_spans": [
+        [
+          296.2,
+          300.2
+        ]
+      ],
+      "answer": "Tháng 9 năm 1930.",
+      "evidence": "Tháng 9/1930: Phong trào đạt đến đỉnh cao với hình thức vũ trang",
+      "key_terms": [
+        "9",
+        "1930"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "L25_V037/01_slides/keyframes/seg_00006.jpg",
+      "keyframe_time_sec": 298.2
+    },
+    {
+      "id": "L25_V037_q03",
+      "video": "L25_V037",
+      "question": "Chính quyền được lập ở cấp xã trong cao trào 1930–1931 gọi là gì?",
+      "type": "term",
+      "gold_spans": [
+        [
+          296.2,
+          300.2
+        ]
+      ],
+      "answer": "Xô viết.",
+      "evidence": "Các cấp ủy Đảng tiến hành lập Xô Viết",
+      "key_terms": [
+        "Xô Viết"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "L25_V037/01_slides/keyframes/seg_00006.jpg",
+      "keyframe_time_sec": 298.2
+    },
+    {
+      "id": "L25_V037_q04",
+      "video": "L25_V037",
+      "question": "Cuộc khủng hoảng kinh tế thế giới nêu ở hoàn cảnh lịch sử kéo dài năm nào?",
+      "type": "numeric",
+      "gold_spans": [
+        [
+          185,
+          187.9
+        ]
+      ],
+      "answer": "1929–1933.",
+      "evidence": "Khủng hoảng kinh tế thế giới 1929-1933",
+      "key_terms": [
+        "1929",
+        "1933"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "L25_V037/01_slides/keyframes/seg_00005.jpg",
+      "keyframe_time_sec": 187.0
+    },
+    {
+      "id": "L25_V037_q05",
+      "video": "L25_V037",
+      "question": "Sau tổn thất, Đảng phục hồi tổ chức và cơ sở quần chúng trong giai đoạn nào?",
+      "type": "speech",
+      "gold_spans": [
+        [
+          162,
+          188
+        ]
+      ],
+      "answer": "1932–1935.",
+      "evidence": "Từ năm 1932 đến năm 1935 ... phục hồi tổ chức đảng và các cơ sở quân chúng",
+      "key_terms": [
+        "1932",
+        "1935",
+        "phục hồi"
+      ],
+      "evidence_source": "speech",
+      "checked_keyframe": "L25_V037/01_slides/keyframes/seg_00005.jpg",
+      "keyframe_time_sec": 187.0
+    },
+    {
+      "id": "L25_V037_q06",
+      "video": "L25_V037",
+      "question": "Cao trào 1930–1931 hình thành liên minh nào?",
+      "type": "both",
+      "gold_spans": [
+        [
+          273.2,
+          328.2
+        ]
+      ],
+      "answer": "Liên minh công nông.",
+      "evidence": "đã hình thành nên liên minh công nông; slide: Hình thành liên minh công-nông",
+      "key_terms": [
+        "liên minh công nông"
+      ],
+      "evidence_source": "either",
+      "checked_keyframe": "L25_V037/01_slides/keyframes/seg_00006.jpg",
+      "keyframe_time_sec": 298.2
+    },
+    {
+      "id": "L25_V037_q07",
+      "video": "L25_V037",
+      "question": "Vì sao thầy gọi cao trào 1930–1931 là cuộc tập dượt đầu tiên?",
+      "type": "speech",
+      "gold_spans": [
+        [
+          273.2,
+          328.2
+        ]
+      ],
+      "answer": "Phong trào rộng khắp cả nước và có nhiều hình thức đấu tranh triệt để.",
+      "evidence": "lần đầu tiên ... quy mô rộng lớn khắp cả nước, với nhiều hình thức",
+      "key_terms": [
+        "khắp cả nước",
+        "nhiều hình thức"
+      ],
+      "evidence_source": "speech",
+      "checked_keyframe": "L25_V037/01_slides/keyframes/seg_00006.jpg",
+      "keyframe_time_sec": 298.2
+    },
+    {
+      "id": "L25_V037_q08",
+      "video": "L25_V037",
+      "question": "Bốn nhánh quanh cao trào 1936–1939 trên sơ đồ là gì?",
+      "type": "visual",
+      "gold_spans": [
+        [
+          656.2,
+          660.2
+        ]
+      ],
+      "answer": "Hoàn cảnh lịch sử, chủ trương của Đảng, diễn biến, ý nghĩa lịch sử.",
+      "evidence": "Nodes: HOÀN CẢNH LỊCH SỬ, CHỦ TRƯƠNG CỦA ĐẢNG, DIỄN BIẾN, Ý NGHĨA LỊCH SỬ",
+      "key_terms": [
+        "DIỄN BIẾN",
+        "Ý NGHĨA"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "L25_V037/01_slides/keyframes/seg_00007.jpg",
+      "keyframe_time_sec": 658.2
+    },
+    {
+      "id": "L25_V037_q09",
+      "video": "L25_V037",
+      "question": "Chủ trương 1936–1939 đấu tranh đòi những quyền nào?",
+      "type": "slide",
+      "gold_spans": [
+        [
+          656.2,
+          660.2
+        ]
+      ],
+      "answer": "Tự do, dân chủ, cơm áo, hòa bình.",
+      "evidence": "Đòi tự do, dân chủ, cơm áo, hòa bình.",
+      "key_terms": [
+        "tự do",
+        "dân chủ",
+        "cơm áo"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "L25_V037/01_slides/keyframes/seg_00007.jpg",
+      "keyframe_time_sec": 658.2
+    },
+    {
+      "id": "L25_V037_q10",
+      "video": "L25_V037",
+      "question": "Chỉ thị của Trung ương khi Nhật đảo chính Pháp có tên gì?",
+      "type": "slide",
+      "gold_spans": [
+        [
+          819.8,
+          823.8
+        ]
+      ],
+      "answer": "Nhật–Pháp bắn nhau và hành động của chúng ta.",
+      "evidence": "Trung ương Đảng ra chỉ thị “Nhật-Pháp bắn nhau và hành động của chúng ta”.",
+      "key_terms": [
+        "Nhật",
+        "Pháp",
+        "bắn nhau"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "L25_V037/01_slides/keyframes/seg_00008.jpg",
+      "keyframe_time_sec": 821.8
+    },
+    {
+      "id": "L25_V037_q11",
+      "video": "L25_V037",
+      "question": "Cuối bài, thầy nhắc cao trào kháng Nhật cứu nước diễn ra tháng năm nào?",
+      "type": "speech",
+      "gold_spans": [
+        [
+          819,
+          851.8
+        ]
+      ],
+      "answer": "Tháng 3 năm 1945.",
+      "evidence": "cao chào kháng nhật ... diễn ra vào tháng 3 năm 1945",
+      "key_terms": [
+        "3",
+        "1945"
+      ],
+      "evidence_source": "speech",
+      "checked_keyframe": "L25_V037/01_slides/keyframes/seg_00008.jpg",
+      "keyframe_time_sec": 821.8
+    },
+    {
+      "id": "L25_V037_q12",
+      "video": "L25_V037",
+      "question": "Hiệp định Genève năm 1954 được bài này phân tích từng điều khoản thế nào?",
+      "type": "unanswerable",
+      "gold_spans": [],
+      "answer": "Không phân tích hiệp định Genève.",
+      "evidence": "Phạm vi chuyên đề là các cao trào 1930–1945.",
+      "key_terms": [],
+      "evidence_source": "none",
+      "checked_keyframe": "L25_V037/01_slides/keyframes/seg_00008.jpg",
+      "keyframe_time_sec": 821.8
+    },
+    {
+      "id": "tHE1mC_n0-E_q01",
+      "video": "tHE1mC_n0-E",
+      "question": "Thầy giới thiệu mình thuộc hệ thống giáo dục nào?",
+      "type": "speech",
+      "gold_spans": [
+        [
+          46.24,
+          57.44
+        ]
+      ],
+      "answer": "Hệ thống giáo dục Học Mãi.",
+      "evidence": "Thầy là Nguyễn Thành Nam ... thuộc hệ thống giáo dục học mãi",
+      "key_terms": [
+        "học mãi"
+      ],
+      "evidence_source": "speech",
+      "checked_keyframe": "tHE1mC_n0-E/01_slides/keyframes/seg_00002.jpg",
+      "keyframe_time_sec": 49.6
+    },
+    {
+      "id": "tHE1mC_n0-E_q02",
+      "video": "tHE1mC_n0-E",
+      "question": "Đại lượng đặc trưng cho độ bền vững của hạt nhân là gì?",
+      "type": "both",
+      "gold_spans": [
+        [
+          625,
+          660
+        ],
+        [
+          675.96,
+          679.96
+        ]
+      ],
+      "answer": "Năng lượng liên kết riêng.",
+      "evidence": "độ bền vững của hạt nhân là năng lượng liên kết riêng",
+      "key_terms": [
+        "năng lượng liên kết riêng"
+      ],
+      "evidence_source": "either",
+      "checked_keyframe": "tHE1mC_n0-E/01_slides/keyframes/seg_00042.jpg",
+      "keyframe_time_sec": 677.96
+    },
+    {
+      "id": "tHE1mC_n0-E_q03",
+      "video": "tHE1mC_n0-E",
+      "question": "Nhiệt hóa hơi riêng tính từ Q và m bằng công thức nào?",
+      "type": "numeric",
+      "gold_spans": [
+        [
+          675.96,
+          679.96
+        ]
+      ],
+      "answer": "L = Q/m.",
+      "evidence": "Câu 10: đáp án A, Q/m.",
+      "key_terms": [
+        "Q",
+        "m"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "tHE1mC_n0-E/01_slides/keyframes/seg_00042.jpg",
+      "keyframe_time_sec": 677.96
+    },
+    {
+      "id": "tHE1mC_n0-E_q04",
+      "video": "tHE1mC_n0-E",
+      "question": "Đồng chuyển từ rắn sang lỏng để đúc gọi là quá trình gì?",
+      "type": "term",
+      "gold_spans": [
+        [
+          660.96,
+          683.44
+        ]
+      ],
+      "answer": "Nóng chảy.",
+      "evidence": "chuyển từ thể rắn thành thể lỏng ... nóng chảy",
+      "key_terms": [
+        "nóng chảy"
+      ],
+      "evidence_source": "either",
+      "checked_keyframe": "tHE1mC_n0-E/01_slides/keyframes/seg_00042.jpg",
+      "keyframe_time_sec": 677.96
+    },
+    {
+      "id": "tHE1mC_n0-E_q05",
+      "video": "tHE1mC_n0-E",
+      "question": "Câu 18 cho đơn vị SI của nhiệt nóng chảy riêng là gì?",
+      "type": "slide",
+      "gold_spans": [
+        [
+          914.64,
+          918.64
+        ]
+      ],
+      "answer": "J/kg.",
+      "evidence": "D. J/kg",
+      "key_terms": [
+        "J",
+        "kg"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "tHE1mC_n0-E/01_slides/keyframes/seg_00065.jpg",
+      "keyframe_time_sec": 916.64
+    },
+    {
+      "id": "tHE1mC_n0-E_q06",
+      "video": "tHE1mC_n0-E",
+      "question": "Ở thể lỏng, phân tử dao động quanh vị trí cân bằng loại nào?",
+      "type": "slide",
+      "gold_spans": [
+        [
+          914.64,
+          918.64
+        ]
+      ],
+      "answer": "Vị trí cân bằng không cố định (phương án C).",
+      "evidence": "C. dao động quanh vị trí cân bằng không cố định.",
+      "key_terms": [
+        "không cố định"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "tHE1mC_n0-E/01_slides/keyframes/seg_00065.jpg",
+      "keyframe_time_sec": 916.64
+    },
+    {
+      "id": "tHE1mC_n0-E_q07",
+      "video": "tHE1mC_n0-E",
+      "question": "Khi dòng điện chạy trong dây ở thí nghiệm nam châm đặt trên cân, số chỉ cân tăng hay giảm?",
+      "type": "speech",
+      "gold_spans": [
+        [
+          1260,
+          1305
+        ]
+      ],
+      "answer": "Giảm vì nam châm bị lực từ hút lên.",
+      "evidence": "bị hút lên bởi một lực ... lực từ ... cân ... giá trị ... nhỏ hơn",
+      "key_terms": [
+        "lực từ",
+        "nhỏ hơn"
+      ],
+      "evidence_source": "speech",
+      "checked_keyframe": "tHE1mC_n0-E/01_slides/keyframes/seg_00097.jpg",
+      "keyframe_time_sec": 1280.36
+    },
+    {
+      "id": "tHE1mC_n0-E_q08",
+      "video": "tHE1mC_n0-E",
+      "question": "Trong sơ đồ dữ kiện khung dây, cảm ứng từ đặt theo hướng nào so với mặt phẳng dây?",
+      "type": "visual",
+      "gold_spans": [
+        [
+          1819.64,
+          1823.64
+        ]
+      ],
+      "answer": "Vuông góc với mặt phẳng khung dây.",
+      "evidence": "cảm ứng từ B vuông góc với mặt phẳng khung dây",
+      "key_terms": [
+        "vuông góc",
+        "khung dây"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "tHE1mC_n0-E/01_slides/keyframes/seg_00134.jpg",
+      "keyframe_time_sec": 1821.64
+    },
+    {
+      "id": "tHE1mC_n0-E_q09",
+      "video": "tHE1mC_n0-E",
+      "question": "Ở bài khung dây, B tăng từ bao nhiêu đến bao nhiêu trong 0,750 giây?",
+      "type": "numeric",
+      "gold_spans": [
+        [
+          1819.64,
+          1823.64
+        ]
+      ],
+      "answer": "Từ 0,100 T đến 0,600 T.",
+      "evidence": "Trong 0,750 s ... tăng đều từ 0,100 T đến 0,600 T.",
+      "key_terms": [
+        "0,100",
+        "0,600"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "tHE1mC_n0-E/01_slides/keyframes/seg_00134.jpg",
+      "keyframe_time_sec": 1821.64
+    },
+    {
+      "id": "tHE1mC_n0-E_q10",
+      "video": "tHE1mC_n0-E",
+      "question": "Chu kỳ bán rã của radium trong lớp dạ quang đồng hồ là bao nhiêu?",
+      "type": "numeric",
+      "gold_spans": [
+        [
+          2284.24,
+          2296
+        ]
+      ],
+      "answer": "1600 năm.",
+      "evidence": "Có chu kỳ bán rã 1 .600 năm",
+      "key_terms": [
+        "1.600",
+        "năm"
+      ],
+      "evidence_source": "speech",
+      "checked_keyframe": "tHE1mC_n0-E/01_slides/keyframes/seg_00181.jpg",
+      "keyframe_time_sec": 2290.84
+    },
+    {
+      "id": "tHE1mC_n0-E_q11",
+      "video": "tHE1mC_n0-E",
+      "question": "Đề nêu thu hồi oxy trong trạm vũ trụ từ khí nào do nhà du hành thở ra?",
+      "type": "slide",
+      "gold_spans": [
+        [
+          1819.64,
+          1823.64
+        ]
+      ],
+      "answer": "Carbon dioxide CO2.",
+      "evidence": "thu hồi oxygen O2 từ khí carbon dioxide CO2 do các nhà du hành thở ra",
+      "key_terms": [
+        "CO2"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "tHE1mC_n0-E/01_slides/keyframes/seg_00134.jpg",
+      "keyframe_time_sec": 1821.64
+    },
+    {
+      "id": "tHE1mC_n0-E_q12",
+      "video": "tHE1mC_n0-E",
+      "question": "Bài giảng cho công thức thiết kế máy gia tốc LHC với bán kính cụ thể nào?",
+      "type": "unanswerable",
+      "gold_spans": [],
+      "answer": "Không trình bày thiết kế máy gia tốc LHC.",
+      "evidence": "Nội dung được kiểm tra là chữa đề thi, không phải thiết kế LHC.",
+      "key_terms": [],
+      "evidence_source": "none",
+      "checked_keyframe": "tHE1mC_n0-E/01_slides/keyframes/seg_00181.jpg",
+      "keyframe_time_sec": 2290.84
+    },
+    {
+      "id": "v2YTz8ToEag_q01",
+      "video": "v2YTz8ToEag",
+      "question": "Trong tình huống hai vợ chồng, người vợ vừa được thưởng bao nhiêu tiền?",
+      "type": "speech",
+      "gold_spans": [
+        [
+          387.98,
+          395.1
+        ]
+      ],
+      "answer": "100 triệu đồng.",
+      "evidence": "em vừa ... thưởng 100 triệu đồng",
+      "key_terms": [
+        "100 triệu"
+      ],
+      "evidence_source": "speech",
+      "checked_keyframe": "v2YTz8ToEag/01_slides/keyframes/seg_00005.jpg",
+      "keyframe_time_sec": 389.052519
+    },
+    {
+      "id": "v2YTz8ToEag_q02",
+      "video": "v2YTz8ToEag",
+      "question": "Người chồng lo điều gì khi đầu tư chứng khoán?",
+      "type": "speech",
+      "gold_spans": [
+        [
+          417.13,
+          433.28
+        ]
+      ],
+      "answer": "Rủi ro, có thể mất hết tiền.",
+      "evidence": "anh thấy rủi ro lắm ... Có thể mất hết",
+      "key_terms": [
+        "mất hết"
+      ],
+      "evidence_source": "speech",
+      "checked_keyframe": "v2YTz8ToEag/01_slides/keyframes/seg_00009.jpg",
+      "keyframe_time_sec": 432.352829
+    },
+    {
+      "id": "v2YTz8ToEag_q03",
+      "video": "v2YTz8ToEag",
+      "question": "Kinh tế vi mô tập trung vào hai tác nhân nào?",
+      "type": "both",
+      "gold_spans": [
+        [
+          790.32,
+          845.32
+        ]
+      ],
+      "answer": "Người tiêu dùng và doanh nghiệp.",
+      "evidence": "2 cái tác nhân chính ... và doanh nghiệp; slide: người tiêu dùng và hãng sản xuất kinh doanh",
+      "key_terms": [
+        "doanh nghiệp"
+      ],
+      "evidence_source": "either",
+      "checked_keyframe": "v2YTz8ToEag/01_slides/keyframes/seg_00016.jpg",
+      "keyframe_time_sec": 815.323414
+    },
+    {
+      "id": "v2YTz8ToEag_q04",
+      "video": "v2YTz8ToEag",
+      "question": "Sơ đồ khái niệm kinh tế học liệt kê bốn tác nhân nào?",
+      "type": "slide",
+      "gold_spans": [
+        [
+          813.32,
+          817.32
+        ]
+      ],
+      "answer": "Người tiêu dùng, doanh nghiệp, chính phủ, yếu tố nước ngoài.",
+      "evidence": "Người tiêu dùng; Doanh nghiệp; Chính phủ; Yếu tố nước ngoài.",
+      "key_terms": [
+        "Chính phủ",
+        "nước ngoài"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "v2YTz8ToEag/01_slides/keyframes/seg_00016.jpg",
+      "keyframe_time_sec": 815.323414
+    },
+    {
+      "id": "v2YTz8ToEag_q05",
+      "video": "v2YTz8ToEag",
+      "question": "Chi phi co hoi la gi theo dong dinh nghia tren slide?",
+      "type": "term",
+      "gold_spans": [
+        [
+          1153.45,
+          1157.45
+        ]
+      ],
+      "answer": "Giá trị phương án tốt nhất bị bỏ qua khi lựa chọn kinh tế.",
+      "evidence": "Giá trị của phương án tốt nhất bị bỏ qua khi thực hiện sự lựa chọn kinh tế.",
+      "key_terms": [
+        "phương án tốt nhất",
+        "bị bỏ qua"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "v2YTz8ToEag/01_slides/keyframes/seg_00024.jpg",
+      "keyframe_time_sec": 1155.452702
+    },
+    {
+      "id": "v2YTz8ToEag_q06",
+      "video": "v2YTz8ToEag",
+      "question": "Chi phí cơ hội giúp quyết định đầu tư theo mức chấp nhận rủi ro như thế nào?",
+      "type": "speech",
+      "gold_spans": [
+        [
+          1466.12,
+          1516
+        ]
+      ],
+      "answer": "Phải chấp nhận đánh đổi; lựa chọn phụ thuộc mức chấp nhận rủi ro của mỗi người.",
+      "evidence": "phân tích ... chúng ta phải chấp nhận sự đánh đổi ... tùy thuộc ... đối tượng chấp nhận rủi ro",
+      "key_terms": [
+        "đánh đổi",
+        "chấp nhận rủi ro"
+      ],
+      "evidence_source": "speech",
+      "checked_keyframe": "v2YTz8ToEag/01_slides/keyframes/seg_00024.jpg",
+      "keyframe_time_sec": 1155.452702
+    },
+    {
+      "id": "v2YTz8ToEag_q07",
+      "video": "v2YTz8ToEag",
+      "question": "PPF viết đầy đủ bằng tiếng Anh là gì?",
+      "type": "term",
+      "gold_spans": [
+        [
+          1640,
+          1680
+        ]
+      ],
+      "answer": "Production Possibility Frontier.",
+      "evidence": "Tiếng Anh là Production Possibility Frontier; slide caption ends PPF (ASR says PPS).",
+      "key_terms": [
+        "Production Possibility Frontier"
+      ],
+      "evidence_source": "either",
+      "checked_keyframe": "v2YTz8ToEag/01_slides/keyframes/seg_00026.jpg",
+      "keyframe_time_sec": 1696.400566
+    },
+    {
+      "id": "v2YTz8ToEag_q08",
+      "video": "v2YTz8ToEag",
+      "question": "Điểm G nằm bên trong hay bên ngoài đường PPF?",
+      "type": "visual",
+      "gold_spans": [
+        [
+          1694.4,
+          1698.4
+        ]
+      ],
+      "answer": "G nằm trong đường PPF.",
+      "evidence": "G is drawn inside the frontier in the inspected diagram.",
+      "key_terms": [
+        "G",
+        "PPF"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "v2YTz8ToEag/01_slides/keyframes/seg_00026.jpg",
+      "keyframe_time_sec": 1696.400566
+    },
+    {
+      "id": "v2YTz8ToEag_q09",
+      "video": "v2YTz8ToEag",
+      "question": "Tọa độ điểm B trên đồ thị PPF đầu tiên là bao nhiêu?",
+      "type": "numeric",
+      "gold_spans": [
+        [
+          1694.4,
+          1698.4
+        ]
+      ],
+      "answer": "X = 11, Y = 27.",
+      "evidence": "Dashed projections from B meet X=11 and Y=27.",
+      "key_terms": [
+        "11",
+        "27"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "v2YTz8ToEag/01_slides/keyframes/seg_00026.jpg",
+      "keyframe_time_sec": 1696.400566
+    },
+    {
+      "id": "v2YTz8ToEag_q10",
+      "video": "v2YTz8ToEag",
+      "question": "Giá trị chi phí cơ hội được xác định bằng đại lượng nào của đường PPF?",
+      "type": "both",
+      "gold_spans": [
+        [
+          1897.54,
+          1952.3
+        ]
+      ],
+      "answer": "Giá trị tuyệt đối độ dốc của PPF.",
+      "evidence": "giá trị tuyệt đối ... dốc của đường PPF; slide: |ΔY/ΔX| = |độ dốc đường PPF|",
+      "key_terms": [
+        "PPF",
+        "dốc"
+      ],
+      "evidence_source": "either",
+      "checked_keyframe": "v2YTz8ToEag/01_slides/keyframes/seg_00029.jpg",
+      "keyframe_time_sec": 1922.541407
+    },
+    {
+      "id": "v2YTz8ToEag_q11",
+      "video": "v2YTz8ToEag",
+      "question": "Ba vấn đề cơ bản được đánh dấu chọn ở câu trắc nghiệm là gì?",
+      "type": "slide",
+      "gold_spans": [
+        [
+          2466.08,
+          2470.08
+        ]
+      ],
+      "answer": "Sản xuất như thế nào, cho ai, cái gì.",
+      "evidence": "Checked boxes: 2. Sản xuất như thế nào? 3. Sản xuất cho ai? 4. Sản xuất cái gì?",
+      "key_terms": [
+        "như thế nào",
+        "cho ai",
+        "cái gì"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "v2YTz8ToEag/01_slides/keyframes/seg_00038.jpg",
+      "keyframe_time_sec": 2468.079409
+    },
+    {
+      "id": "v2YTz8ToEag_q12",
+      "video": "v2YTz8ToEag",
+      "question": "Giá cổ phiếu nào sẽ tăng ngày mai và nên mua mã nào?",
+      "type": "unanswerable",
+      "gold_spans": [],
+      "answer": "Bài không dự báo giá hay khuyến nghị mã cổ phiếu.",
+      "evidence": "Bài giải thích lựa chọn, rủi ro và chi phí cơ hội.",
+      "key_terms": [],
+      "evidence_source": "none",
+      "checked_keyframe": "v2YTz8ToEag/01_slides/keyframes/seg_00038.jpg",
+      "keyframe_time_sec": 2468.079409
+    },
+    {
+      "id": "y1CvB950VlU_q01",
+      "video": "y1CvB950VlU",
+      "question": "Để viết chuỗi nhiều dòng trong Python, ví dụ dùng kiểu dấu nháy nào?",
+      "type": "code",
+      "gold_spans": [
+        [
+          110.27,
+          114.27
+        ]
+      ],
+      "answer": "Ba dấu nháy kép hoặc ba dấu nháy đơn.",
+      "evidence": "The editor shows triple double quotes around a3 and triple single quotes around a4.",
+      "key_terms": [
+        "a3",
+        "a4"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "y1CvB950VlU/01_slides/keyframes/seg_00005.jpg",
+      "keyframe_time_sec": 112.266667
+    },
+    {
+      "id": "y1CvB950VlU_q02",
+      "video": "y1CvB950VlU",
+      "question": "Thầy đưa loại nội dung nào vào ví dụ chuỗi nhiều dòng a4?",
+      "type": "speech",
+      "gold_spans": [
+        [
+          87.27,
+          126.97
+        ]
+      ],
+      "answer": "Một câu thơ.",
+      "evidence": "có thể là chèn 1 câu thơ vào ... mình tự chèn 1 câu thơ",
+      "key_terms": [
+        "câu thơ"
+      ],
+      "evidence_source": "speech",
+      "checked_keyframe": "y1CvB950VlU/01_slides/keyframes/seg_00005.jpg",
+      "keyframe_time_sec": 112.266667
+    },
+    {
+      "id": "y1CvB950VlU_q03",
+      "video": "y1CvB950VlU",
+      "question": "Hàm len dùng để kiểm tra gì ở một chuỗi?",
+      "type": "term",
+      "gold_spans": [
+        [
+          205,
+          250
+        ]
+      ],
+      "answer": "Độ dài, số ký tự của chuỗi.",
+      "evidence": "string ... kiểm tra cái chiều dài ... Độ dài ... bao nhiêu ký tự",
+      "key_terms": [
+        "ký tự"
+      ],
+      "evidence_source": "speech",
+      "checked_keyframe": "y1CvB950VlU/01_slides/keyframes/seg_00016.jpg",
+      "keyframe_time_sec": 255.233333
+    },
+    {
+      "id": "y1CvB950VlU_q04",
+      "video": "y1CvB950VlU",
+      "question": "Thêm ba dấu cách làm độ dài ví dụ tăng từ 13 lên mấy?",
+      "type": "numeric",
+      "gold_spans": [
+        [
+          205,
+          250
+        ]
+      ],
+      "answer": "16.",
+      "evidence": "13 ... 3 dấu cách ... lên 16",
+      "key_terms": [
+        "13",
+        "16"
+      ],
+      "evidence_source": "speech",
+      "checked_keyframe": "y1CvB950VlU/01_slides/keyframes/seg_00016.jpg",
+      "keyframe_time_sec": 255.233333
+    },
+    {
+      "id": "y1CvB950VlU_q05",
+      "video": "y1CvB950VlU",
+      "question": "len có đếm cả khoảng trắng trong chuỗi không?",
+      "type": "both",
+      "gold_spans": [
+        [
+          250.13,
+          256.1
+        ]
+      ],
+      "answer": "Có.",
+      "evidence": "còn ... trắng nó vẫn đếm bình thường; editor shows spaced a2 and output 16.",
+      "key_terms": [
+        "đếm",
+        "bình thường"
+      ],
+      "evidence_source": "either",
+      "checked_keyframe": "y1CvB950VlU/01_slides/keyframes/seg_00016.jpg",
+      "keyframe_time_sec": 255.233333
+    },
+    {
+      "id": "y1CvB950VlU_q06",
+      "video": "y1CvB950VlU",
+      "question": "Trong vòng lặp for i in a2, lệnh nào in từng ký tự?",
+      "type": "code",
+      "gold_spans": [
+        [
+          341.73,
+          345.73
+        ]
+      ],
+      "answer": "print(i), thụt vào trong thân vòng lặp.",
+      "evidence": "for i in a2:\n    print(i)",
+      "key_terms": [
+        "for",
+        "i",
+        "print"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "y1CvB950VlU/01_slides/keyframes/seg_00020.jpg",
+      "keyframe_time_sec": 343.733333
+    },
+    {
+      "id": "y1CvB950VlU_q07",
+      "video": "y1CvB950VlU",
+      "question": "Thầy nhắc in biến i hay in cả a2 trong vòng lặp duyệt chuỗi?",
+      "type": "speech",
+      "gold_spans": [
+        [
+          332.13,
+          346.23
+        ]
+      ],
+      "answer": "In i, không phải in cả a2.",
+      "evidence": "print Y ... không phải print A2 ... phần tử Y trong A2",
+      "key_terms": [
+        "print",
+        "A2"
+      ],
+      "evidence_source": "speech",
+      "checked_keyframe": "y1CvB950VlU/01_slides/keyframes/seg_00020.jpg",
+      "keyframe_time_sec": 343.733333
+    },
+    {
+      "id": "y1CvB950VlU_q08",
+      "video": "y1CvB950VlU",
+      "question": "Phép cộng hai chuỗi trong ví dụ a = a1 + a2 làm gì?",
+      "type": "code",
+      "gold_spans": [
+        [
+          492.97,
+          496.5
+        ]
+      ],
+      "answer": "Nối hai chuỗi.",
+      "evidence": "a=a1+a2; the console shows the contents joined.",
+      "key_terms": [
+        "a1",
+        "a2"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "y1CvB950VlU/01_slides/keyframes/seg_00027.jpg",
+      "keyframe_time_sec": 494.966667
+    },
+    {
+      "id": "y1CvB950VlU_q09",
+      "video": "y1CvB950VlU",
+      "question": "Ví dụ nhân dấu trừ với 40 in bao nhiêu dấu trừ?",
+      "type": "numeric",
+      "gold_spans": [
+        [
+          575.97,
+          581.43
+        ]
+      ],
+      "answer": "40 dấu trừ.",
+      "evidence": "dấu trừ nhân ... 40 ... xuất 40 cái dấu trừ",
+      "key_terms": [
+        "40",
+        "dấu trừ"
+      ],
+      "evidence_source": "speech",
+      "checked_keyframe": "y1CvB950VlU/01_slides/keyframes/seg_00032.jpg",
+      "keyframe_time_sec": 577.9
+    },
+    {
+      "id": "y1CvB950VlU_q10",
+      "video": "y1CvB950VlU",
+      "question": "Muốn kiểm tra chữ “Ga” có trong a2 thì dùng toán tử nào?",
+      "type": "code",
+      "gold_spans": [
+        [
+          620.23,
+          638.43
+        ]
+      ],
+      "answer": "in, ví dụ \"Ga\" in a2.",
+      "evidence": "kiểm tra ... có nằm trong cái A2 không ... G, A ... in; editor shows print(\"Ga\"...).",
+      "key_terms": [
+        "in"
+      ],
+      "evidence_source": "either",
+      "checked_keyframe": "y1CvB950VlU/01_slides/keyframes/seg_00037.jpg",
+      "keyframe_time_sec": 636.466667
+    },
+    {
+      "id": "y1CvB950VlU_q11",
+      "video": "y1CvB950VlU",
+      "question": "Kết quả True màu xanh được hiển thị ở vùng nào của IDE?",
+      "type": "visual",
+      "gold_spans": [
+        [
+          702.57,
+          705.57
+        ]
+      ],
+      "answer": "Cửa sổ Run/console phía dưới.",
+      "evidence": "The lower Run panel shows True in blue.",
+      "key_terms": [
+        "True"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "y1CvB950VlU/01_slides/keyframes/seg_00043.jpg",
+      "keyframe_time_sec": 703.566667
+    },
+    {
+      "id": "y1CvB950VlU_q12",
+      "video": "y1CvB950VlU",
+      "question": "Bài này triển khai thuật toán sắp xếp merge sort với độ phức tạp nào?",
+      "type": "unanswerable",
+      "gold_spans": [],
+      "answer": "Không triển khai merge sort.",
+      "evidence": "Bài học là chuỗi, len, vòng lặp, nối chuỗi và kiểm tra thành viên.",
+      "key_terms": [],
+      "evidence_source": "none",
+      "checked_keyframe": "y1CvB950VlU/01_slides/keyframes/seg_00049.jpg",
+      "keyframe_time_sec": 749.266667
+    },
+    {
+      "id": "_eDGTHhyQ7M_q01",
+      "video": "_eDGTHhyQ7M",
+      "question": "Các kim loại kiềm có cấu hình electron lớp ngoài cùng dạng nào?",
+      "type": "term",
+      "gold_spans": [
+        [
+          612.38,
+          615.75
+        ]
+      ],
+      "answer": "ns1.",
+      "evidence": "Cấu hình electron ns¹ (slide heading); nhóm IA có số oxi hóa +1.",
+      "key_terms": [
+        "ns¹"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "_eDGTHhyQ7M/01_slides/keyframes/seg_00006.jpg",
+      "keyframe_time_sec": 614.380433
+    },
+    {
+      "id": "_eDGTHhyQ7M_q02",
+      "video": "_eDGTHhyQ7M",
+      "question": "Slide yêu cầu bảo quản kim loại kiềm bằng cách nào?",
+      "type": "slide",
+      "gold_spans": [
+        [
+          612.38,
+          615.75
+        ]
+      ],
+      "answer": "Ngâm trong dầu hỏa hoặc chất lỏng không phản ứng.",
+      "evidence": "Các kim loại nhóm IA ... bảo quản trong dầu hoả, trong chất lỏng không phản ứng với kim loại.",
+      "key_terms": [
+        "dầu",
+        "hoả"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "_eDGTHhyQ7M/01_slides/keyframes/seg_00006.jpg",
+      "keyframe_time_sec": 614.380433
+    },
+    {
+      "id": "_eDGTHhyQ7M_q03",
+      "video": "_eDGTHhyQ7M",
+      "question": "Tại sao thầy nói các kim loại kiềm đều phản ứng với nước ở điều kiện thường?",
+      "type": "speech",
+      "gold_spans": [
+        [
+          589.38,
+          615.75
+        ]
+      ],
+      "answer": "Thế khử chuẩn của chúng âm hơn thế của nước.",
+      "evidence": "đều âm hơn thế điện cực chuẩn của nước ... đều phản ứng với nước ở điều kiện thường",
+      "key_terms": [
+        "thế",
+        "nước",
+        "điều kiện thường"
+      ],
+      "evidence_source": "speech",
+      "checked_keyframe": "_eDGTHhyQ7M/01_slides/keyframes/seg_00006.jpg",
+      "keyframe_time_sec": 614.380433
+    },
+    {
+      "id": "_eDGTHhyQ7M_q04",
+      "video": "_eDGTHhyQ7M",
+      "question": "Nước muối sinh lý trên slide có nồng độ NaCl bao nhiêu?",
+      "type": "numeric",
+      "gold_spans": [
+        [
+          1081.65,
+          1085.65
+        ]
+      ],
+      "answer": "0,9%.",
+      "evidence": "Nước muối sinh lý (Dung dịch NaCl 0,9%)",
+      "key_terms": [
+        "NaCl",
+        "0,9"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "_eDGTHhyQ7M/01_slides/keyframes/seg_00009.jpg",
+      "keyframe_time_sec": 1083.649233
+    },
+    {
+      "id": "_eDGTHhyQ7M_q05",
+      "video": "_eDGTHhyQ7M",
+      "question": "Ở sơ đồ điện phân NaCl, khí nào thoát ra ở anode?",
+      "type": "visual",
+      "gold_spans": [
+        [
+          1081.65,
+          1085.65
+        ]
+      ],
+      "answer": "Chlorine Cl2.",
+      "evidence": "Anode (+): 2Cl− → Cl2 + 2e; Cl2 arrow above anode.",
+      "key_terms": [
+        "Anode",
+        "Cl2"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "_eDGTHhyQ7M/01_slides/keyframes/seg_00009.jpg",
+      "keyframe_time_sec": 1083.649233
+    },
+    {
+      "id": "_eDGTHhyQ7M_q06",
+      "video": "_eDGTHhyQ7M",
+      "question": "Trong dãy Li, Na, Al, Ca, K, Rb có bao nhiêu kim loại kiềm?",
+      "type": "numeric",
+      "gold_spans": [
+        [
+          1603.9,
+          1607.9
+        ]
+      ],
+      "answer": "4: Li, Na, K, Rb.",
+      "evidence": "Dãy Li, Na, Al, Ca, K, Rb; Li, Na, K, Rb thuộc nhóm IA, nên có 4. (The slide lists the elements; this answer requires counting.)",
+      "key_terms": [
+        "Li",
+        "Na",
+        "K",
+        "Rb"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "_eDGTHhyQ7M/01_slides/keyframes/seg_00012.jpg",
+      "keyframe_time_sec": 1605.9043,
+      "review_note": "ASR says “chọn câu C” although C is 3; gold uses the visibly listed elements and periodic-table membership, not that uncertain ASR choice."
+    },
+    {
+      "id": "_eDGTHhyQ7M_q07",
+      "video": "_eDGTHhyQ7M",
+      "question": "Mạng tinh thể của kim loại kiềm gọi là gì?",
+      "type": "term",
+      "gold_spans": [
+        [
+          1670,
+          1750
+        ]
+      ],
+      "answer": "Lập phương tâm khối.",
+      "evidence": "lập phương tâm khói ... mạng tinh thể ... lập phương tâm khối",
+      "key_terms": [
+        "lập phương tâm"
+      ],
+      "evidence_source": "speech",
+      "checked_keyframe": "_eDGTHhyQ7M/01_slides/keyframes/seg_00012.jpg",
+      "keyframe_time_sec": 1605.9043
+    },
+    {
+      "id": "_eDGTHhyQ7M_q08",
+      "video": "_eDGTHhyQ7M",
+      "question": "Thầy nêu độ đặc khít của mạng lập phương tâm khối là bao nhiêu?",
+      "type": "numeric",
+      "gold_spans": [
+        [
+          1670,
+          1750
+        ]
+      ],
+      "answer": "68%.",
+      "evidence": "độ đặc khích ... 68 %",
+      "key_terms": [
+        "68"
+      ],
+      "evidence_source": "speech",
+      "checked_keyframe": "_eDGTHhyQ7M/01_slides/keyframes/seg_00012.jpg",
+      "keyframe_time_sec": 1605.9043
+    },
+    {
+      "id": "_eDGTHhyQ7M_q09",
+      "video": "_eDGTHhyQ7M",
+      "question": "Kim loại kiềm có độ cứng thấp vì hai nguyên nhân nào ở câu 6?",
+      "type": "both",
+      "gold_spans": [
+        [
+          1884.01,
+          1909.91
+        ]
+      ],
+      "answer": "Mạng lập phương tâm khối kém đặc khít và lực liên kết kim loại yếu.",
+      "evidence": "ý số 2 không phải ... Lực liên kết kim loại yếu ... chọn ý 1 và 3; slide circles A: (1) và (3).",
+      "key_terms": [
+        "1",
+        "3"
+      ],
+      "evidence_source": "either",
+      "checked_keyframe": "_eDGTHhyQ7M/01_slides/keyframes/seg_00015.jpg",
+      "keyframe_time_sec": 1909.0071
+    },
+    {
+      "id": "_eDGTHhyQ7M_q10",
+      "video": "_eDGTHhyQ7M",
+      "question": "Trong câu Solvay, bảng học sinh ghi X và T là những chất nào?",
+      "type": "slide",
+      "gold_spans": [
+        [
+          2351.12,
+          2355.12
+        ]
+      ],
+      "answer": "X = NaHCO3; T = CO2.",
+      "evidence": "Table: X NaHCO3; T CO2",
+      "key_terms": [
+        "NaHCO3",
+        "CO2"
+      ],
+      "evidence_source": "ocr",
+      "checked_keyframe": "_eDGTHhyQ7M/01_slides/keyframes/seg_00018.jpg",
+      "keyframe_time_sec": 2353.117433
+    },
+    {
+      "id": "_eDGTHhyQ7M_q11",
+      "video": "_eDGTHhyQ7M",
+      "question": "Thầy sửa hai chất Y và Z trong bảng Solvay thành gì?",
+      "type": "speech",
+      "gold_spans": [
+        [
+          2210,
+          2330
+        ]
+      ],
+      "answer": "Y = NH4Cl, Z = NH3.",
+      "evidence": "Y này phải là NH4Cl Z này phải là NH3",
+      "key_terms": [
+        "NH4Cl",
+        "NH3"
+      ],
+      "evidence_source": "speech",
+      "checked_keyframe": "_eDGTHhyQ7M/01_slides/keyframes/seg_00018.jpg",
+      "keyframe_time_sec": 2353.117433
+    },
+    {
+      "id": "_eDGTHhyQ7M_q12",
+      "video": "_eDGTHhyQ7M",
+      "question": "Bài hướng dẫn quy trình điện phân nhôm công nghiệp và nhiệt độ vận hành nào?",
+      "type": "unanswerable",
+      "gold_spans": [],
+      "answer": "Không hướng dẫn điện phân nhôm.",
+      "evidence": "Bài tập trung vào nhóm IA, NaCl và quy trình Solvay.",
+      "key_terms": [],
+      "evidence_source": "none",
+      "checked_keyframe": "_eDGTHhyQ7M/01_slides/keyframes/seg_00018.jpg",
+      "keyframe_time_sec": 2353.117433
+    }
+  ]
+}
