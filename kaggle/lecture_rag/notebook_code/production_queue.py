@@ -121,7 +121,8 @@ def run_production_queue():
                     embedding_model=EMBEDDING_MODEL, revision=EMBEDDING_REVISION,
                     device=EMBEDDING_DEVICE, dedupe_previous=OCR_DEDUPE_PREVIOUS,
                     include_generated_descriptions=INCLUDE_GENERATED_DESCRIPTIONS,
-                    generated_semantic_only=GENERATED_SEMANTIC_ONLY)
+                    generated_semantic_only=GENERATED_SEMANTIC_ONLY,
+                    visual_state_timing=VISUAL_STATE_TIMING)
                 validated = validate_video_output(OUTPUT_ROOT / video_id, video_id)
                 write_json(OUTPUT_ROOT / video_id / 'completed.json', {
                     **validated, 'recipe': PRODUCTION_RECIPE, 'retries': progress.rows[video_id]['retries'],

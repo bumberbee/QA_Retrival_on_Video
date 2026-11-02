@@ -16,5 +16,6 @@
   "speech_chunk_tokens": 180,
   "speech_maximum_seconds": 50.0,
   "include_generated_descriptions": false,
-  "generated_semantic_only": false
+  "generated_semantic_only": false,
+  "visual_state_timing": true
 }

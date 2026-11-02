@@ -34,6 +34,7 @@ MANUAL_BOUNDARIES_SEC = None  # Nếu sửa tay: [0.0, ..., đúng duration củ
 MERGE_REVEALS = True  # Gộp slide hiện dần (animation thêm dòng/hình) thành một đoạn
 EXPORT_STATE_ONSETS = True
 MERGE_SAME_CONTENT = True
+MERGE_SAME_CONTENT_VIDEO_OPTIONS = {'L25_V008': False}
 # Board/editor heuristics remain off in this generic stage notebook; see STAGE01.md for scoped options.
 REVEAL_THRESHOLDS = {}  # Ví dụ {'retained_threshold': 0.9}; mặc định trong reveal_decision
 USE_SLIDE_CLASSIFIER = False  # ResNet-34 Lecture2Notes: chặn gộp qua cảnh giảng viên (p_slide < 0.2)
@@ -49,7 +50,8 @@ output_dir, manifest, intervals = run_slide_detection(
     merge_reveals=MERGE_REVEALS, reveal_thresholds=REVEAL_THRESHOLDS,
     slide_classifier=load_slide_classifier() if USE_SLIDE_CLASSIFIER else None,
     merge_ocr=MERGE_OCR,
-    export_state_onsets=EXPORT_STATE_ONSETS, merge_same_content=MERGE_SAME_CONTENT,
+    export_state_onsets=EXPORT_STATE_ONSETS,
+    merge_same_content=MERGE_SAME_CONTENT_VIDEO_OPTIONS.get(VIDEO_ID, MERGE_SAME_CONTENT),
 )
 print('Video:', video_path)
 print('Duration:', manifest['source']['duration_sec'])
@@ -140,8 +142,8 @@ INITIAL_PROMPT mặc định để trống sau khi quan sát glossary lọt vào
         "deps": '"faster-whisper>=1.1,<2" "huggingface-hub>=0.25,<1"',
         "config": """STAGE_01_DIR = None
 VIDEO_PATH = None
-ASR_MODEL = 'dropbox-dash/faster-whisper-large-v3-turbo'
-ASR_REVISION = '0a363e9161cbc7ed1431c9597a8ceaf0c4f78fcf'
+ASR_MODEL = 'Systran/faster-whisper-medium'
+ASR_REVISION = '08e178d48790749d25932bbc082711ddcfdfbc4f'
 ASR_MODE = 'windowed'  # Cửa sổ có overlap; 'batched' là tùy chọn cần đánh giá chất lượng
 ASR_BATCH_SIZE = 1  # Chỉ dùng khi ASR_MODE='batched'; FP16 trên CUDA, int8 trên CPU.
 LANGUAGE = 'vi'
@@ -250,6 +252,7 @@ SPEECH_CHUNK_TOKENS = 180
 SPEECH_MAXIMUM_SECONDS = 50.0
 INCLUDE_GENERATED_DESCRIPTIONS = False  # Chỉ bật cho ablation; JSON hợp lệ vẫn có thể sai nội dung
 GENERATED_SEMANTIC_ONLY = False  # Bật cùng mô tả tự động để chỉ dùng nhánh semantic
+VISUAL_STATE_TIMING = True
 """,
         "run": """stage04_dir, _ = find_stage(4, STAGE_04_DIR, VIDEO_ID)
 output_dir, manifest, chunks = run_indexing(
@@ -260,6 +263,7 @@ output_dir, manifest, chunks = run_indexing(
     speech_chunk_tokens=SPEECH_CHUNK_TOKENS, speech_maximum_seconds=SPEECH_MAXIMUM_SECONDS,
     include_generated_descriptions=INCLUDE_GENERATED_DESCRIPTIONS,
     generated_semantic_only=GENERATED_SEMANTIC_ONLY,
+    visual_state_timing=VISUAL_STATE_TIMING,
 )
 print('Số chunk:', len(chunks), '| Chiều vector:', manifest['parameters']['dimensions'])
 """,

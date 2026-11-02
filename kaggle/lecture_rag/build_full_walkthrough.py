@@ -72,6 +72,7 @@ EMBEDDING_MODEL = 'intfloat/multilingual-e5-small'
 EMBEDDING_REVISION = '614241f622f53c4eeff9890bdc4f31cfecc418b3'
 EMBEDDING_DEVICE = 'cuda:0' if OCR_ENGINE == 'easyocr' else 'cuda:1'
 INCLUDE_GENERATED_DESCRIPTIONS, GENERATED_SEMANTIC_ONLY = False, False
+VISUAL_STATE_TIMING = True
 # 7 · câu hỏi thử (None = hỏi cả bài; số = đang xem ở giây đó)
 QUESTIONS = [
     ('Xác suất của một biến cố được tính như thế nào?', None),
@@ -330,7 +331,8 @@ STAGE05 = """heading('6 · Bước 05 · Chỉ mục tìm kiếm')
 stage05, manifest05, chunks = timed('05 chỉ mục', run_indexing, stage04, OUTPUT_ROOT, VIDEO_ID,
     embedding_model=EMBEDDING_MODEL, revision=EMBEDDING_REVISION,
     device=EMBEDDING_DEVICE,
-    include_generated_descriptions=INCLUDE_GENERATED_DESCRIPTIONS, generated_semantic_only=GENERATED_SEMANTIC_ONLY)
+    include_generated_descriptions=INCLUDE_GENERATED_DESCRIPTIONS, generated_semantic_only=GENERATED_SEMANTIC_ONLY,
+    visual_state_timing=VISUAL_STATE_TIMING)
 from collections import Counter
 table([{'nguồn': k, 'số đoạn': v} for k, v in Counter(c['source_type'] for c in chunks).items()])
 params(manifest05['parameters'], ['embedding_model', 'chunk_tokens', 'overlap_tokens', 'speech_chunk_tokens',

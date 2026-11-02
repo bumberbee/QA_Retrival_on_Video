@@ -104,6 +104,7 @@ def production_config():
         "speech_chunk_tokens": 180, "speech_maximum_seconds": 50.0,
         "include_generated_descriptions": values["INCLUDE_GENERATED_DESCRIPTIONS"],
         "generated_semantic_only": values["GENERATED_SEMANTIC_ONLY"],
+        "visual_state_timing": values.get("VISUAL_STATE_TIMING", True),
     }
 
 
@@ -129,13 +130,29 @@ class ModelAdapter:
 
     max_seq_length = 512
 
-    def __init__(self, encoder):
+    def __init__(self, encoder, chunk_references=()):
         from tokenizers import Tokenizer
         self.encoder = encoder
         # Chunk splitting must not inherit the query encoder's 512-token truncation.
         tokenizer = Tokenizer.from_str(encoder.tokenizer.to_str())
         tokenizer.no_truncation()
         self.tokenizer = TokenizerAdapter(tokenizer)
+        self.chunk_vectors = {}
+        if chunk_references:
+            import numpy as np
+            import hashlib
+            for folder in reversed(chunk_references):
+                folder = Path(folder)
+                manifest = read_json(folder / "manifest.json")
+                for name in ("chunks.jsonl", "embeddings.npy"):
+                    if hashlib.sha256((folder / name).read_bytes()).hexdigest() != manifest["files"][name]:
+                        raise ValueError("Chunk reference checksum mismatch")
+                chunks = [json.loads(line) for line in (folder / "chunks.jsonl").read_text(encoding="utf-8").splitlines()]
+                vectors = np.load(folder / "embeddings.npy", allow_pickle=False)
+                if len(vectors) != len(chunks) or vectors.ndim != 2 or not np.isfinite(vectors).all():
+                    raise ValueError("Chunk reference vector count/finiteness mismatch")
+                for chunk, vector in zip(chunks, vectors):
+                    self.chunk_vectors[(chunk["chunk_id"], chunk["embedding_text"])] = vector.copy()
 
     def _first_module(self):
         return types.SimpleNamespace(auto_model=types.SimpleNamespace(
@@ -146,6 +163,17 @@ class ModelAdapter:
         # embedding_text already contains exactly one production passage prefix.
         return np.concatenate([self.encoder.encode_many(texts[i:i + batch_size], prefix="")
                                for i in range(0, len(texts), batch_size)])
+
+
+    def encode_chunks(self, chunks, batch_size=32, **kwargs):
+        """Preserve occurrence-specific rounding, so timing-only ablations keep ranks."""
+        import numpy as np
+        keys = [(c["chunk_id"], c["embedding_text"]) for c in chunks]
+        missing = [i for i, key in enumerate(keys) if key not in self.chunk_vectors]
+        vectors = self.encode([chunks[i]["embedding_text"] for i in missing], batch_size=batch_size) if missing else []
+        generated = dict(zip(missing, vectors))
+        return np.stack([self.chunk_vectors[key] if key in self.chunk_vectors else generated[i]
+                         for i, key in enumerate(keys)])
 
 
 def encode_batches(encoder, texts, prefix, batch_size=32):

@@ -58,15 +58,9 @@ FINE_HZ = 8.0  # Tần số giữ frame nhỏ để tinh chỉnh ranh giới, kh
 MERGE_REVEALS = True
 EXPORT_STATE_ONSETS = True
 MERGE_SAME_CONTENT = True
-# Only these audited layouts use board/editor heuristics (STAGE01.md).
+# Retrieval ablation: keep editor safety and the first definition observation (ABLATION_20261102.md).
 STAGE01_VIDEO_OPTIONS = {
-    'hVU5Mw19V_c': {
-        'board_options': {'roi': (0.0, 0.08, 1.0, 0.96), 'window_samples': 5,
-                          'check_every_sec': 5.0, 'min_state_sec': 15.0,
-                          'snapshot_sec': 120.0, 'minimum_pixels': 24},
-        'keyframe_options': {'roi': (0.0, 0.08, 1.0, 0.96), 'mode': 'board', 'complementary': True},
-        'merge_reveals': False,
-    },
+    'L25_V008': {'merge_same_content': False},
     'y1CvB950VlU': {
         'reveal_thresholds': {'replacement_safe': True, 'directional_threshold': 0.94,
                               'deletion_minimum_pixels': 12, 'deletion_fraction': 0.20},
@@ -136,8 +130,8 @@ REUSE_NEAR_DUPLICATES = True
 HYBRID_PIPELINED = True
 
 # 03 · ASR: experiment-pinned CT2 turbo; FP16 is selected on CUDA by load_asr_model.
-ASR_MODEL = 'dropbox-dash/faster-whisper-large-v3-turbo'
-ASR_REVISION = '0a363e9161cbc7ed1431c9597a8ceaf0c4f78fcf'
+ASR_MODEL = 'Systran/faster-whisper-medium'
+ASR_REVISION = '08e178d48790749d25932bbc082711ddcfdfbc4f'
 # GPU 1: Qwen ~9.1 GB + turbo ~2.2 GB + shared E5. One ASR window and OCR image at a time.
 ASR_DEVICE_INDEX = 0 if OCR_ENGINE == 'easyocr' else 1
 ASR_MODE = 'windowed'
@@ -159,6 +153,7 @@ FAILURE_GUARD = True
 SPEECH_AD_FILTER = 'school_signatures'  # Explicit SIU/Asian School opening/closing phrases; keeps mixed speech.
 INCLUDE_GENERATED_DESCRIPTIONS = False
 GENERATED_SEMANTIC_ONLY = False  # Generated descriptions receive only the semantic RRF branch.
+VISUAL_STATE_TIMING = True
 
 # 05 · chỉ lập chỉ mục dòng OCR chưa có ở slide liền trước (L25: 32% dòng lặp lại). Tắt cho tới khi
 # đo hỏi đáp (eval_retrieval.py) trên lần chạy lại 10 video.

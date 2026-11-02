@@ -82,7 +82,8 @@ def make_evidence_chunks(segments, fallback_spans, tokenizer, *,
                          chunk_tokens=350, overlap_tokens=40, model_limit=512,
                          video_id="L25_V001", speech_chunk_tokens=180,
                          speech_maximum_seconds=50.0, include_generated_descriptions=False,
-                         dedupe_previous=False, passage_prefix="passage: ", generated_semantic_only=False):
+                         dedupe_previous=False, passage_prefix="passage: ", generated_semantic_only=False,
+                         visual_state_timing=True):
     """passage_prefix: "passage: " for E5, "" for bge-m3. dedupe_previous: index only the OCR lines not already on the previous slide (stage 04
     ocr_text_new), so a repeated slide does not crowd the search with copies."""
     if not 0 <= overlap_tokens < chunk_tokens <= model_limit - 32:
@@ -99,10 +100,12 @@ def make_evidence_chunks(segments, fallback_spans, tokenizer, *,
             continue
         visual = segment["visual"]
         visual_failed = visual.get("ocr_quality", {}).get("evidence_excluded", False)
-        visual_start = visual.get("representative_content_onset_sec", segment["start_sec"])
+        visual_start = (visual.get("representative_content_onset_sec", segment["start_sec"])
+                        if visual_state_timing else segment["start_sec"])
         if not segment["start_sec"] <= visual_start < segment["end_sec"]:
             raise ValueError("Representative visual onset must be inside its interval")
-        visual_timing = ("visual_state" if "representative_content_onset_sec" in visual else "visual_interval")
+        visual_timing = ("visual_state" if visual_state_timing and
+                         "representative_content_onset_sec" in visual else "visual_interval")
         # Bound the title separately so it cannot consume the encoder budget.
         title_tokens = tokenizer.encode("" if visual_failed else visual.get("title_clean", visual.get("title", "")),
                                         add_special_tokens=False)[:64]
@@ -231,7 +234,8 @@ def run_indexing(stage04_dir, output_root, video_id="L25_V001", *,
                  embedding_model="intfloat/multilingual-e5-small", revision="main",
                  chunk_tokens=350, overlap_tokens=40, batch_size=32, device=None,
                  speech_chunk_tokens=180, speech_maximum_seconds=50.0,
-                 include_generated_descriptions=False, dedupe_previous=False, generated_semantic_only=False):
+                 include_generated_descriptions=False, dedupe_previous=False, generated_semantic_only=False,
+                 visual_state_timing=True):
     import numpy as np
     # E5 was trained with "query: " / "passage: " prefixes; bge-m3 uses none.
     query_prefix, passage_prefix = ("query: ", "passage: ") if "e5" in embedding_model.lower() else ("", "")
@@ -252,6 +256,7 @@ def run_indexing(stage04_dir, output_root, video_id="L25_V001", *,
         include_generated_descriptions=include_generated_descriptions, dedupe_previous=dedupe_previous,
         passage_prefix=passage_prefix,
         generated_semantic_only=generated_semantic_only,
+        visual_state_timing=visual_state_timing,
     )
     ad_review = []
     if any("spans_before_ad_filter" in s["speech"] for s in segments):
@@ -262,7 +267,8 @@ def run_indexing(stage04_dir, output_root, video_id="L25_V001", *,
             overlap_tokens=overlap_tokens, model_limit=model_limit, video_id=video_id,
             speech_chunk_tokens=speech_chunk_tokens, speech_maximum_seconds=speech_maximum_seconds,
             include_generated_descriptions=include_generated_descriptions, dedupe_previous=dedupe_previous,
-            passage_prefix=passage_prefix, generated_semantic_only=generated_semantic_only)
+            passage_prefix=passage_prefix, generated_semantic_only=generated_semantic_only,
+            visual_state_timing=visual_state_timing)
         span_words = {span["span_id"]: set(span["word_ids"]) for s in before for span in s["speech"]["spans"]}
         ad_words = {word_id for s in segments for word_id in s["speech"].get("promotional_word_ids", [])}
         for chunk in original:
@@ -281,8 +287,9 @@ def run_indexing(stage04_dir, output_root, video_id="L25_V001", *,
             "partially_filtered_chunks": sum(c["review_status"] == "partially_filtered" for c in ad_review),
             "chunks": ad_review})
     # Counts are checked above: no silent encoder truncation.
-    vectors = model.encode(
-        [chunk["embedding_text"] for chunk in chunks],
+    encode = model.encode_chunks if hasattr(model, "encode_chunks") else model.encode
+    vectors = encode(
+        chunks if hasattr(model, "encode_chunks") else [chunk["embedding_text"] for chunk in chunks],
         batch_size=batch_size, show_progress_bar=True,
         normalize_embeddings=True, convert_to_numpy=True,
     ).astype(np.float32)
@@ -310,6 +317,7 @@ def run_indexing(stage04_dir, output_root, video_id="L25_V001", *,
         "visual_description_policy": "structured_json_only" if include_generated_descriptions
                                      else "human_verified_only",
         "generated_semantic_only": generated_semantic_only,
+        "visual_state_timing": visual_state_timing,
         "speech_chunk_tokens": speech_chunk_tokens,
         "speech_maximum_seconds": speech_maximum_seconds,
         "chunk_tokens": chunk_tokens, "overlap_tokens": overlap_tokens,

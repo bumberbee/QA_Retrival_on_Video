@@ -66,7 +66,22 @@ def compare_bundles(rebuilt, exported):
     return result
 
 
-def prepare_inputs(export, target, video, mp4_root, ffmpeg, asr_export=None):
+def copy_input_file(source, destination):
+    """Share immutable large assets; always copy metadata before any re-signing."""
+    if Path(source).suffix.lower() not in {".json", ".jsonl", ".npy", ".sqlite", ".sqlite3", ".db"}:
+        if Path(destination).exists():
+            if os.path.samefile(source, destination):
+                return str(destination)
+            raise FileExistsError(f"Refuse to overwrite an existing immutable asset: {destination}")
+        try:
+            os.link(source, destination)
+            return str(destination)
+        except OSError:
+            pass
+    return shutil.copy2(source, destination)
+
+
+def prepare_inputs(export, target, video, mp4_root, ffmpeg, asr_export=None, resume=False):
     common, audio = load_notebook("alignment"), load_notebook("transcription")
     provenance = []
     for number, stage in enumerate(("01_slides", "02_visual", "03_audio"), 1):
@@ -80,9 +95,14 @@ def prepare_inputs(export, target, video, mp4_root, ffmpeg, asr_export=None):
                     raise ValueError(f"Export checksum mismatch: {path}")
             elif not (number == 3 and name == "audio/lecture_16k.wav"):
                 raise FileNotFoundError(f"Unexpected missing export asset: {path}")
-        if dest.exists():
+        if dest.exists() and not resume:
             raise FileExistsError(f"Choose a fresh experiment name: {dest}")
-        shutil.copytree(source, dest)
+        if dest.exists():
+            existing = common.load_stage(dest, number, video)
+            if existing["artifact_id"] != manifest["artifact_id"]:
+                raise ValueError(f"Cannot resume different stage input: {dest}")
+        else:
+            shutil.copytree(source, dest, copy_function=copy_input_file)
         if number == 3 and 'audio/lecture_16k.wav' in manifest['files'] and not (dest / "audio/lecture_16k.wav").exists():
             mp4 = mp4_root / (video + ".mp4")
             if common.file_sha256(mp4) != manifest["source"]["sha256"]:
@@ -111,6 +131,53 @@ def prepare_inputs(export, target, video, mp4_root, ffmpeg, asr_export=None):
     return inputs, provenance
 
 
+def rebuild_video(export_root, output, video, config, encoder, *, asr_export_root=None,
+                  mp4_root=Path("D:/thesis-data/mp4-extra"),
+                  ffmpeg=Path("D:/FilmTools/Shotcut/ffmpeg.exe"),
+                  skip_reference_comparison=True, audio_reference=None, chunk_references=()):
+    """Reusable one-video CPU rebuild, with the same manifest checks as the CLI."""
+    started = time.monotonic()
+    target = output / video
+    alignment, indexing = load_notebook("alignment"), load_notebook("indexing")
+    alignment_keys = {"ad_suspect_overlap", "slide_speech", "conservative_ocr", "heading_titles",
+                      "asr_correction", "failure_guard", "speech_ad_filter"}
+    stage04 = target / "04_bundle"
+    if (stage04 / "manifest.json").exists():
+        manifest = alignment.load_stage(stage04, 4, video)
+        inputs = [target / "_inputs" / s for s in ("01_slides", "02_visual", "03_audio")]
+        parents = [alignment.load_stage(p, i + 1, video) for i, p in enumerate(inputs)]
+        for parent in parents:
+            alignment.require_parent(manifest, parent)
+        alignment.require_same_source(manifest, *parents)
+        for key in alignment_keys:
+            if key in manifest["parameters"] and manifest["parameters"][key] != config[key]:
+                raise ValueError(f"Cannot resume stage 04 with changed {key}")
+        restored = [{"resumed_verified_stage04": manifest["artifact_id"]}]
+    else:
+        inputs, restored = prepare_inputs(export_root, target, video, mp4_root, ffmpeg, asr_export_root, resume=True)
+        speech_embed = (lambda texts: encode_batches(encoder, texts, "query: ", config["batch_size"])) if config["speech_relevance"] else None
+        stage04, _, _ = alignment.run_alignment(*inputs, target, video, speech_embed=speech_embed,
+                                               **{k: config[k] for k in alignment_keys})
+    options = {k: v for k, v in config.items() if k not in alignment_keys | {"speech_relevance"}}
+    adapter = types.ModuleType("sentence_transformers")
+    model = ModelAdapter(encoder, chunk_references)
+    adapter.SentenceTransformer = lambda *a, **kw: model
+    with patch.dict(sys.modules, {"sentence_transformers": adapter}):
+        stage05, _, _ = indexing.run_indexing(stage04, target, video, device="cpu", **options)
+    row = {"parity": None if skip_reference_comparison else
+           compare_indexes(stage05, export_root / video / "05_index"),
+           "stage04_comparison": None if skip_reference_comparison else
+           compare_bundles(stage04, export_root / video / "04_bundle"),
+           "restored_assets": restored, "elapsed_seconds": round(time.monotonic() - started, 2)}
+    if audio_reference:
+        from dedupe_audio import dedupe_video_assets
+        row["audio_sharing"] = {"linked_files": len(dedupe_video_assets(target, audio_reference / video)),
+                                "policy": "identical_SHA256_hardlinks"}
+    if "torch" in sys.modules:
+        raise RuntimeError("Unexpected torch import")
+    return row
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--export-root", type=Path, required=True)
@@ -134,10 +201,7 @@ def main():
     if (config["embedding_model"], config["revision"]) != (backend.E5_REPO, backend.E5_REVISION):
         parser.error("This harness only supports the pinned production E5 model/revision.")
     encoder = backend.OnnxEncoder()
-    model = ModelAdapter(encoder)
-    alignment, indexing = load_notebook("alignment"), load_notebook("indexing")
-    adapter = types.ModuleType("sentence_transformers")
-    adapter.SentenceTransformer = lambda *a, **kw: model
+    alignment = load_notebook("alignment")
     report = {"config": config, "export_root": str(args.export_root.resolve()),
               "execution": "CPU ONNX; offline HF cache; isolated storage; no torch",
               "code_sha256": {str(p.relative_to(ROOT)): alignment.file_sha256(p)
@@ -147,33 +211,17 @@ def main():
     reviewed = read_json(ROOT / "eval/phase3_gpu_review.json")
     write_json(output / "gpu_retry_review.json", [item for item in reviewed if item["video_id"] in args.videos])
     retry_segments = []
-    alignment_keys = {"ad_suspect_overlap", "slide_speech", "conservative_ocr", "heading_titles",
-                      "asr_correction", "failure_guard", "speech_ad_filter"}
     for video in args.videos:
-        started = time.monotonic()
-        target = output / video
-        inputs, restored = prepare_inputs(args.export_root, target, video, args.mp4_root, args.ffmpeg, args.asr_export_root)
-        speech_embed = (lambda texts: encode_batches(encoder, texts, "query: ", config["batch_size"])) if config["speech_relevance"] else None
-        stage04, _, _ = alignment.run_alignment(*inputs, target, video, speech_embed=speech_embed,
-                                               **{k: config[k] for k in alignment_keys})
-        retry_segments.extend(read_json(stage04 / "gpu_retry_segments.json"))
+        row = rebuild_video(args.export_root, output, video, config, encoder,
+                            asr_export_root=args.asr_export_root, mp4_root=args.mp4_root,
+                            ffmpeg=args.ffmpeg,
+                            skip_reference_comparison=args.skip_reference_comparison,
+                            audio_reference=args.audio_reference)
+        retry_segments.extend(read_json(output / video / "04_bundle/gpu_retry_segments.json"))
         write_json(output / "gpu_retry_segments.json", retry_segments)
-        options = {k: v for k, v in config.items()
-                   if k not in alignment_keys | {"speech_relevance"}}
-        with patch.dict(sys.modules, {"sentence_transformers": adapter}):
-            stage05, _, _ = indexing.run_indexing(stage04, target, video, device="cpu", **options)
-        parity = (None if args.skip_reference_comparison else
-                  compare_indexes(stage05, args.export_root / video / "05_index"))
-        report["videos"][video] = {"parity": parity, "restored_assets": restored,
-                                   "stage04_comparison": None if args.skip_reference_comparison else
-                                   compare_bundles(stage04, args.export_root / video / "04_bundle"),
-                                   "elapsed_seconds": round(time.monotonic() - started, 2)}
-        if args.audio_reference:
-            from dedupe_audio import dedupe_video_assets
-            linked = dedupe_video_assets(target, args.audio_reference / video)
-            report["videos"][video]["audio_sharing"] = {"linked_files": len(linked), "policy": "identical_SHA256_hardlinks"}
+        report["videos"][video] = row
         write_json(output / "rebuild_report.json", report)
-        print(video, "REBUILT", "parity=" + str(parity['pass']) if parity else "variant", flush=True)
+        print(video, "REBUILT", flush=True)
     if "torch" in sys.modules:
         raise RuntimeError("Unexpected torch import")
 

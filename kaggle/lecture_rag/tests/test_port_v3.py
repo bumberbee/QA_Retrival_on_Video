@@ -171,8 +171,8 @@ class ProductionConfigTests(unittest.TestCase):
         for source in (fast.CONFIG, walk.CONFIG, single.config()):
             with self.subTest(source=source[:80]):
                 cfg = config_values(source)
-                self.assertEqual(cfg["ASR_MODEL"], "dropbox-dash/faster-whisper-large-v3-turbo")
-                self.assertEqual(cfg["ASR_REVISION"], "0a363e9161cbc7ed1431c9597a8ceaf0c4f78fcf")
+                self.assertEqual(cfg["ASR_MODEL"], "Systran/faster-whisper-medium")
+                self.assertEqual(cfg["ASR_REVISION"], "08e178d48790749d25932bbc082711ddcfdfbc4f")
                 self.assertEqual(cfg["QWEN_OCR_REVISION"], "ebb281ec70b05090aa6165b016eac8ec08e71b17")
                 self.assertEqual(cfg["QWEN_OCR_MODEL"], "Qwen/Qwen3-VL-4B-Instruct")
                 self.assertEqual((cfg["QWEN_MIN_PIXELS"], cfg["QWEN_MAX_PIXELS"]), (262144, 1310720))
@@ -190,7 +190,7 @@ class ProductionConfigTests(unittest.TestCase):
         self.assertTrue(stage01["MERGE_SAME_CONTENT"])
         self.assertFalse(stage01["REVEAL_THRESHOLDS"])
 
-    def test_detector_wiring_scopes_board_and_editor_to_the_audited_videos(self):
+    def test_detector_wiring_preserves_editor_safety_and_first_definition(self):
         cfg = config_values(fast.CONFIG)
         cfg.update(time=time, find_video_file=lambda video: Path(video + ".mp4"),
                    ad_scorer=None, content_scorer=None,
@@ -200,19 +200,20 @@ class ProductionConfigTests(unittest.TestCase):
             detect(video)
             options = cfg["run_slide_detection"].call_args.kwargs
             self.assertTrue(options["export_state_onsets"])
-            self.assertTrue(options["merge_same_content"])
+            self.assertEqual(options["merge_same_content"], video != "L25_V008")
             self.assertEqual(options["scan"], "single_pass")
             if video == "hVU5Mw19V_c":
-                self.assertFalse(options["merge_reveals"])
-                self.assertEqual(options["board_options"]["minimum_pixels"], 24)
-                self.assertEqual(options["board_options"]["roi"], options["keyframe_options"]["roi"])
+                self.assertTrue(options["merge_reveals"])
+                self.assertNotIn("board_options", options)
+                self.assertNotIn("keyframe_options", options)
             elif video == "y1CvB950VlU":
                 self.assertTrue(options["reveal_thresholds"]["replacement_safe"])
                 self.assertNotIn("board_options", options)
             else:
                 for key in ("board_options", "keyframe_options", "reveal_thresholds"):
                     self.assertNotIn(key, options)
-        self.assertEqual(set(cfg["STAGE01_VIDEO_OPTIONS"]), {"hVU5Mw19V_c", "y1CvB950VlU"})
+        self.assertEqual(set(cfg["STAGE01_VIDEO_OPTIONS"]), {"L25_V008", "y1CvB950VlU"})
+        self.assertFalse(cfg["STAGE01_VIDEO_OPTIONS"]["L25_V008"]["merge_same_content"])
 
 
 class VisualProvenanceTests(unittest.TestCase):
