@@ -1,5 +1,5 @@
-﻿"""Build docs/progress-report.html: progress report for the supervisor, same school template and
-styles as the defense deck (make_thesis_slides.py), one step per slide with real outputs.
+﻿"""Build docs/progress-report.html: progress report for the supervisor, using the school template,
+styles and helpers of docs/deck_template.py, one step per slide with real outputs.
 
     python docs/make_progress_slides.py <template media dir> <runs dir>
 <template media dir>: ppt/media of the unzipped "Template Powerpoint v1.pptx";
@@ -11,7 +11,7 @@ from PIL import Image
 
 HERE = Path(__file__).resolve().parent
 MEDIA, RUNS = Path(sys.argv[1]), Path(sys.argv[2])
-source = (HERE / "make_thesis_slides.py").read_text(encoding="utf-8")
+source = (HERE / "deck_template.py").read_text(encoding="utf-8")
 head, tail = source.split("\nS = []\n", 1)[0], source.split("\nCSS = f'''", 1)[1]
 ns = {"__name__": "progress"}
 sys.argv = [sys.argv[0], str(MEDIA), str(HERE / "progress-report.html")]
