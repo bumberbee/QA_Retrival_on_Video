@@ -66,11 +66,12 @@ def compare_bundles(rebuilt, exported):
     return result
 
 
-def prepare_inputs(export, target, video, mp4_root, ffmpeg):
+def prepare_inputs(export, target, video, mp4_root, ffmpeg, asr_export=None):
     common, audio = load_notebook("alignment"), load_notebook("transcription")
     provenance = []
     for number, stage in enumerate(("01_slides", "02_visual", "03_audio"), 1):
-        source, dest = export / video / stage, target / "_inputs" / stage
+        stage_export = Path(asr_export) if number == 3 and asr_export is not None else export
+        source, dest = stage_export / video / stage, target / "_inputs" / stage
         manifest = common.load_stage(source, number, video, verify=False)
         for name, expected in manifest["files"].items():
             path = common.relative_asset(source, name)
@@ -82,7 +83,7 @@ def prepare_inputs(export, target, video, mp4_root, ffmpeg):
         if dest.exists():
             raise FileExistsError(f"Choose a fresh experiment name: {dest}")
         shutil.copytree(source, dest)
-        if number == 3 and not (dest / "audio/lecture_16k.wav").exists():
+        if number == 3 and 'audio/lecture_16k.wav' in manifest['files'] and not (dest / "audio/lecture_16k.wav").exists():
             mp4 = mp4_root / (video + ".mp4")
             if common.file_sha256(mp4) != manifest["source"]["sha256"]:
                 raise ValueError(f"MP4 source mismatch: {mp4}")
@@ -98,12 +99,24 @@ def prepare_inputs(export, target, video, mp4_root, ffmpeg):
                                "restored_sha256": new, "byte_equal": old == new,
                                "note": "Real MP4 audio normalized by existing normalize_audio; copied manifest re-signed."})
         common.load_stage(dest, number, video)
-    return [target / "_inputs" / s for s in ("01_slides", "02_visual", "03_audio")], provenance
+    inputs = [target / "_inputs" / s for s in ("01_slides", "02_visual", "03_audio")]
+    parents = [common.load_stage(p, i + 1, video) for i, p in enumerate(inputs)]
+    common.require_same_source(*parents)
+    common.require_parent(parents[1], parents[0])
+    if '1' in parents[2]['parents']:
+        common.require_parent(parents[2], parents[0])
+    provenance.append({'stage_artifact_ids': {str(p['stage']): p['artifact_id'] for p in parents},
+                       'source_sha256': parents[0]['source']['sha256'],
+                       'asr_export': str(Path(asr_export or export).resolve())})
+    return inputs, provenance
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--export-root", type=Path, required=True)
+    parser.add_argument("--asr-export-root", type=Path, help="Isolated stage-03 variant; stages 01/02 stay identical")
+    parser.add_argument("--output-root", type=Path, help="Experiment storage root, e.g. D:/thesis-data/run-20261102/eval")
+    parser.add_argument("--skip-reference-comparison", action="store_true", help="Rebuilding a new ASR variant rather than testing parity")
     parser.add_argument("--videos", nargs="+", default=VIDEOS, choices=VIDEOS)
     parser.add_argument("--name", required=True)
     parser.add_argument("--config", type=Path, help="JSON overrides of production_config")
@@ -111,7 +124,7 @@ def main():
     parser.add_argument("--mp4-root", type=Path, default=Path("D:/thesis-data/mp4-extra"))
     parser.add_argument("--ffmpeg", type=Path, default=Path(shutil.which("ffmpeg") or "D:/FilmTools/Shotcut/ffmpeg.exe"))
     args = parser.parse_args()
-    output, config = experiment_dir(args.name), production_config()
+    output, config = experiment_dir(args.name, args.output_root), production_config()
     if args.config:
         overrides = read_json(args.config)
         if set(overrides) - set(config):
@@ -139,7 +152,7 @@ def main():
     for video in args.videos:
         started = time.monotonic()
         target = output / video
-        inputs, restored = prepare_inputs(args.export_root, target, video, args.mp4_root, args.ffmpeg)
+        inputs, restored = prepare_inputs(args.export_root, target, video, args.mp4_root, args.ffmpeg, args.asr_export_root)
         speech_embed = (lambda texts: encode_batches(encoder, texts, "query: ", config["batch_size"])) if config["speech_relevance"] else None
         stage04, _, _ = alignment.run_alignment(*inputs, target, video, speech_embed=speech_embed,
                                                **{k: config[k] for k in alignment_keys})
@@ -149,16 +162,18 @@ def main():
                    if k not in alignment_keys | {"speech_relevance"}}
         with patch.dict(sys.modules, {"sentence_transformers": adapter}):
             stage05, _, _ = indexing.run_indexing(stage04, target, video, device="cpu", **options)
-        parity = compare_indexes(stage05, args.export_root / video / "05_index")
+        parity = (None if args.skip_reference_comparison else
+                  compare_indexes(stage05, args.export_root / video / "05_index"))
         report["videos"][video] = {"parity": parity, "restored_assets": restored,
-                                   "stage04_comparison": compare_bundles(stage04, args.export_root / video / "04_bundle"),
+                                   "stage04_comparison": None if args.skip_reference_comparison else
+                                   compare_bundles(stage04, args.export_root / video / "04_bundle"),
                                    "elapsed_seconds": round(time.monotonic() - started, 2)}
         if args.audio_reference:
             from dedupe_audio import dedupe_video_assets
             linked = dedupe_video_assets(target, args.audio_reference / video)
             report["videos"][video]["audio_sharing"] = {"linked_files": len(linked), "policy": "identical_SHA256_hardlinks"}
         write_json(output / "rebuild_report.json", report)
-        print(video, "PARITY", parity["pass"], "min cosine", parity["minimum_cosine"], flush=True)
+        print(video, "REBUILT", "parity=" + str(parity['pass']) if parity else "variant", flush=True)
     if "torch" in sys.modules:
         raise RuntimeError("Unexpected torch import")
 

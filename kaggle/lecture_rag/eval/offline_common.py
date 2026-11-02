@@ -36,10 +36,11 @@ def write_json(path, value):
                     encoding="utf-8")
 
 
-def experiment_dir(name):
-    path = (EXPERIMENTS / name).resolve()
-    if not path.is_relative_to(EXPERIMENTS.resolve()) or path == EXPERIMENTS.resolve():
-        raise ValueError("Experiment name must stay inside runs/exp.")
+def experiment_dir(name, output_root=None):
+    base = Path(output_root).resolve() if output_root is not None else EXPERIMENTS.resolve()
+    path = (base / name).resolve()
+    if not path.is_relative_to(base) or path == base:
+        raise ValueError("Experiment name must stay inside its output root.")
     path.mkdir(parents=True, exist_ok=True)
     return path
 

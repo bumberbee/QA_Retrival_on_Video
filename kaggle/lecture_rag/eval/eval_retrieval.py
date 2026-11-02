@@ -333,6 +333,7 @@ def main():
     parser.add_argument("--videos", nargs="+", default=VIDEOS, choices=VIDEOS)
     parser.add_argument("--questions", type=Path, default=ROOT / "eval/questions_dev.json")
     parser.add_argument("--name", required=True)
+    parser.add_argument("--output-root", type=Path, help="Root for evaluation reports")
     parser.add_argument("--features", nargs="*", choices=("ranked_context", "neighbors", "vietnamese_lexical",
                                                         "phrases", "dedup", "diversity", "no_boost"),
                         default=None, help="Omit for app defaults; empty list reproduces Phase 1.")
@@ -342,7 +343,7 @@ def main():
     data = read_json(args.questions)
     validate_questions(data)
     questions = [q for q in data["questions"] if q["video"] in args.videos]
-    output = experiment_dir(args.name)
+    output = experiment_dir(args.name, args.output_root)
     folders = {v: args.index_dir or args.index_root / v / "05_index" for v in args.videos}
     backend = load_backend()
     options = backend.retrieval_options(args.features)

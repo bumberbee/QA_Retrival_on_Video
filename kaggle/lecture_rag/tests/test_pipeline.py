@@ -993,11 +993,15 @@ class MediaAndPipelineTests(unittest.TestCase):
         self.assertTrue((hybrid02 / hybrid_records[0]["regions"][0]["image_path"]).exists())
         qwen_calls = []
 
-        def qwen_read(images, language):
+        def qwen_read(images, language, *, on_answer=None):
             qwen_calls.append(len(images))
-            return [{"text": "ĐỊNH LUẬT BẢO TOÀN\nΔm = Zm_p\n[Hình] Đồ thị năng lượng liên kết.",
+            answers = [{"text": "ĐỊNH LUẬT BẢO TOÀN\nΔm = Zm_p\n[Hình] Đồ thị năng lượng liên kết.",
                      "ocr_quality": {"status": "available", "reasons": [], "evidence_excluded": False}}
                     for _ in images]
+            if on_answer:
+                for n, answer in enumerate(answers):
+                    on_answer(n, answer)
+            return answers
         with mock.patch.object(visual, "load_qwen_ocr", return_value=qwen_read):
             qwen02, qwen_manifest, qwen_records = visual.run_visual_extraction(
                 self.stage01, output / "qwen", ocr_engine="qwen")

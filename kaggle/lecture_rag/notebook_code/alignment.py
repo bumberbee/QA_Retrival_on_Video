@@ -226,7 +226,7 @@ def review_ad_speech(segments, threshold, min_pairs=20):
 def run_alignment(stage01_dir, stage02_dir, stage03_dir, output_root,
                   video_id="L25_V001", ad_suspect_overlap=None, speech_embed=None, slide_speech=None,
                   conservative_ocr=False, heading_titles=False, asr_correction="legacy",
-                  failure_guard=False, speech_ad_filter=False):
+                  failure_guard=False, speech_ad_filter=False, retry_path_root=None):
     """ad_suspect_overlap: None (off) or a threshold for review_ad_speech().
     speech_embed: None (off) or embed(texts) -> unit vectors (E5): every segment gets
     speech_topic = the lowest topic_z of the speech windows it overlaps (speech_relevance();
@@ -235,6 +235,10 @@ def run_alignment(stage01_dir, stage02_dir, stage03_dir, output_root,
     speech_embed and the stage-01 content_scores.json; a segment mostly inside off-lecture time
     gets ad_flagged (kept and read, left out of the index by stage 05)."""
     paths = [Path(stage01_dir), Path(stage02_dir), Path(stage03_dir)]
+    # Video-relative in production; automatically retains _inputs/ in the CPU harness.
+    retry_root = Path(retry_path_root or output_root).resolve()
+    retry_paths = [(path.resolve().relative_to(retry_root)).as_posix()
+                   if path.resolve().is_relative_to(retry_root) else path.name for path in paths[1:]]
     parents = [load_stage(path, index + 1, video_id) for index, path in enumerate(paths)]
     require_parent(parents[1], parents[0])
     independent_asr = "1" not in parents[2]["parents"]
@@ -323,13 +327,13 @@ def run_alignment(stage01_dir, stage02_dir, stage03_dir, output_root,
                                    "start_sec": segment["start_sec"], "end_sec": segment["end_sec"],
                                    "source": "ocr", "reasons": quality["reasons"],
                                    "status": quality["status"], "loops": quality.get("loops", []),
-                                   "raw_response_path": "_inputs/02_visual/visual.json"})
+                                   "raw_response_path": retry_paths[0] + "/visual.json"})
         owned_ids = set(segment["speech"]["word_ids"])
         for run in asr_loops:
             if owned_ids.intersection(run["word_ids"]):
                 retry_segments.append({"video_id": video_id, "segment_id": segment["segment_id"],
                                        "source": "asr", "reasons": ["asr_repetition_loop"],
-                                       **run, "raw_response_path": "_inputs/03_audio/transcript.json"})
+                                       **run, "raw_response_path": retry_paths[1] + "/transcript.json"})
         if failure_guard:
             owned = [word_by_id[word_id] for word_id in segment["speech"]["word_ids"]]
             segment["speech"]["text_raw"] = words_to_text([{**w, "text": w.get("text_asr", w["text"])} for w in owned])

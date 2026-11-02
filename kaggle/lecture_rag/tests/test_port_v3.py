@@ -156,6 +156,14 @@ class OCRValidationTests(unittest.TestCase):
         self.assertEqual(model.generate.call_args.kwargs["repetition_penalty"], 1.10)
         self.assertTrue(result["validated"])
         self.assertEqual(result["text"], "valid literal")
+        processor.decode.side_effect = None
+        processor.decode.return_value = 'stress literal'
+        callback = Mock()
+        stress = read([Image.new('RGB', (100, 100))], force_tokens=2048, on_answer=callback)[0]
+        self.assertEqual(model.generate.call_args.kwargs['min_new_tokens'], 2048)
+        self.assertEqual(model.generate.call_args.kwargs['max_new_tokens'], 2048)
+        self.assertFalse(stress['validation_enabled'])
+        callback.assert_called_once_with(0, stress)
 
 
 class ProductionConfigTests(unittest.TestCase):
@@ -226,7 +234,11 @@ class VisualProvenanceTests(unittest.TestCase):
             visual.finish_stage(stage01, 1, "V", source, {})
             failure = visual.qwen_ocr_with_retry(lambda *args: {
                 "text": "Looks fluent but is truncated", "token_ids": [10], "eos_token_id": 2})
-            reader = Mock(return_value=[failure])
+            def answer(images, language, *, on_answer=None):
+                if on_answer:
+                    on_answer(0, failure)
+                return [failure]
+            reader = Mock(side_effect=answer)
             with patch.object(visual, "load_qwen_ocr", return_value=reader):
                 stage02, manifest, records = visual.run_visual_extraction(
                     stage01, root, "V", ocr_engine="qwen", ocr_device="cpu")
@@ -249,6 +261,16 @@ class VisualProvenanceTests(unittest.TestCase):
             self.assertIn("ocr_missing_eos", segments[0]["visual"]["ocr_quality"]["reasons"])
             retries = visual.read_json(stage04 / "gpu_retry_segments.json")
             self.assertEqual(retries[0]["status"], "failed")
+            self.assertEqual(retries[0]['raw_response_path'], '02_visual/visual.json')
+            import shutil
+            for stage in ('01_slides', '02_visual', '03_audio'):
+                shutil.copytree(root / stage, root / '_inputs' / stage)
+            offline04, _, _ = alignment.run_alignment(
+                root / '_inputs/01_slides', root / '_inputs/02_visual', root / '_inputs/03_audio',
+                root, 'V', conservative_ocr=True, failure_guard=True)
+            offline_retry = visual.read_json(offline04 / 'gpu_retry_segments.json')[0]
+            self.assertEqual(offline_retry['raw_response_path'], '_inputs/02_visual/visual.json')
+            self.assertTrue((root / offline_retry['raw_response_path']).is_file())
             with self.assertRaisesRegex(ValueError, "Không có bằng chứng"):
                 indexing.make_evidence_chunks(segments, [], CharacterTokenizer(), video_id="V")
 

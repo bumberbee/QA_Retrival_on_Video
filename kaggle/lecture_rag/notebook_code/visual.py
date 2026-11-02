@@ -821,7 +821,7 @@ def load_qwen_ocr(devices=("cuda:0", "cuda:1"), max_new_tokens=1536, *,
         model_id, revision=revision, torch_dtype=torch.float16, device_map=device,
         attn_implementation="sdpa").eval() for device in devices]
 
-    def read_one(model, image, language):
+    def read_one(model, image, language, force_tokens=None):
         def generate(prompt, limit, penalty):
             messages = [{"role": "user", "content": [{"type": "image", "image": image},
                                                       {"type": "text", "text": prompt}]}]
@@ -830,25 +830,29 @@ def load_qwen_ocr(devices=("cuda:0", "cuda:1"), max_new_tokens=1536, *,
             started = time.monotonic()
             with torch.inference_mode():
                 out = model.generate(**inputs, max_new_tokens=limit, do_sample=False,
+                                     **({'min_new_tokens': force_tokens} if force_tokens else {}),
                                      repetition_penalty=penalty)
             tokens = out[0, inputs["input_ids"].shape[1]:].tolist()
             return {"text": processor.decode(tokens, skip_special_tokens=True).strip(),
                     "token_ids": tokens, "eos_token_id": model.generation_config.eos_token_id,
                     "seconds": time.monotonic() - started, "image_size": list(image.size),
                     "image_grid_thw": inputs["image_grid_thw"].tolist()}
-        result = qwen_ocr_with_retry(generate, language, validate=validate,
-                                     retry_invalid=retry_invalid, max_new_tokens=max_new_tokens)
+        result = qwen_ocr_with_retry(generate, language, validate=validate and not force_tokens,
+                                     retry_invalid=retry_invalid and not force_tokens,
+                                     max_new_tokens=force_tokens or max_new_tokens)
         result.update(model_id=model_id, revision=revision,
                       resolved_revision=getattr(model.config, "_commit_hash", None))
         return result
 
-    def read_many(images, language="vi"):
+    def read_many(images, language="vi", *, on_answer=None, force_tokens=None):
         answers, errors = [None] * len(images), []
 
         def worker(k):
             try:
                 for n in range(k, len(images), len(models)):
-                    answers[n] = read_one(models[k], images[n], language)
+                    answers[n] = read_one(models[k], images[n], language, force_tokens)
+                    if on_answer is not None:
+                        on_answer(n, answers[n])
                     print(f"Qwen đọc slide {sum(a is not None for a in answers)}/{len(images)}", flush=True)
             except Exception as error:   # re-raised in the caller's thread
                 errors.append(error)
@@ -864,6 +868,12 @@ def load_qwen_ocr(devices=("cuda:0", "cuda:1"), max_new_tokens=1536, *,
 
     read_many.models, read_many.processor = models, processor
     return read_many
+
+
+def shared_qwen_ocr(devices, **options):
+    """Identical production/canary cache key: never load another resident copy."""
+    return shared_model(("qwen_ocr", tuple(devices), fingerprint(options)),
+                        lambda: load_qwen_ocr(devices, **options))
 
 
 def run_visual_extraction(stage01_dir, output_root, video_id="L25_V001", *,
@@ -972,8 +982,7 @@ def run_visual_extraction(stage01_dir, output_root, video_id="L25_V001", *,
         options = dict(model_id=qwen_model, revision=qwen_revision,
                        min_pixels=qwen_min_pixels, max_pixels=qwen_max_pixels,
                        validate=qwen_validate, retry_invalid=qwen_retry_invalid)
-        return shared_model(("qwen_ocr", tuple(hybrid_devices), fingerprint(options)),
-                            lambda: load_qwen_ocr(hybrid_devices, **options))
+        return shared_qwen_ocr(hybrid_devices, **options)
 
     # Per keyframe, before any OCR: content box, OCR gate, near-duplicate source (None for ads).
     decisions, pending, pending_assets = [], [], set()
@@ -1008,9 +1017,24 @@ def run_visual_extraction(stage01_dir, output_root, video_id="L25_V001", *,
     qwen_read = None
     if pending and ocr_engine == "qwen":
         qwen_read = get_qwen_reader()
-        answers = qwen_read([crop for _, crop in pending], describe_language)
-        for (index, _), answer in zip(pending, answers):
+        # Persist raw answers inside the reader's worker, before it starts the next image.
+        # Final extraction may still be interrupted; this answer cache survives that death.
+        missing = []
+        for item in pending:
+            answer_cache = cache_directory / (intervals[item[0]]["image_sha256"] + ".qwen.json")
+            if answer_cache.exists():
+                ahead[item[0]] = read_json(answer_cache)
+            else:
+                missing.append(item)
+
+        def save_answer(n, answer):
+            index = missing[n][0]
+            asset_id = intervals[index]["image_sha256"]
+            write_json(cache_directory / (asset_id + ".qwen.json"), answer)
             ahead[index] = answer
+
+        if missing:
+            qwen_read([crop for _, crop in missing], describe_language, on_answer=save_answer)
     elif pending:
         hybrid_read = shared_model(("hybrid_ocr", tuple(hybrid_devices)),
                                    lambda: load_hybrid_ocr(*hybrid_devices))

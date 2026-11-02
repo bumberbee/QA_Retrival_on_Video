@@ -7,18 +7,20 @@ the videos in its own queue; and installing packages once. Run: python build_fas
 
 from pathlib import Path
 import json
+import ast
+import hashlib
 
 from build_notebooks import CODE, cell
 
 ROOT = Path(__file__).resolve().parent
 NAME = "fast_pipeline_l25"
 MODULES = ["common.py", "detection.py", "adfilter.py", "visual.py", "transcription.py", "textclean.py",
-           "alignment.py", "indexing.py"]
-DEPS = ('"av>=14,<17" "opencv-python-headless>=4.10,<4.12" "Pillow>=10" '
-        '"easyocr>=1.7.2,<2" "faster-whisper>=1.1,<2" "huggingface-hub>=0.25,<1" '
+           "alignment.py", "indexing.py", "production_runtime.py"]
+DEPS = ('"av==15.1.0" "opencv-python-headless>=4.10,<4.12" "Pillow==11.3.0" '
+        '"easyocr>=1.7.2,<2" "faster-whisper==1.2.1" "ctranslate2==4.8.3" "huggingface-hub==0.36.0" '
         '"sentence-transformers>=3.4,<6" "transformers==4.57.1" '
         # OCR kết hợp: Unlimited-OCR (remote code) + Qwen3-VL
-        '"einops" "addict" "easydict" "accelerate>=1"')
+        '"einops" "addict" "easydict" "accelerate==1.11.0"')
 
 INTRO = """# Pipeline nhanh · 01 → 05 trong một phiên
 
@@ -47,6 +49,8 @@ VIDEO_IDS = ['L25_V011', 'L25_V037', 'L25_V008', '_eDGTHhyQ7M', 'tHE1mC_n0-E', '
 # Ngôn ngữ lời giảng (ASR) và prompt OCR / mô tả hình; video không ghi là 'vi'.
 VIDEO_LANGUAGES = {'cs_0001': 'en'}
 OUTPUT_ROOT = Path('/kaggle/working/lecture_rag')
+RESUME_FROM = None  # Optional attached extracted full checkpoint directory.
+CANARY = False
 
 # 01 · slide
 SAMPLE_HZ = 1.0
@@ -171,181 +175,29 @@ STAGE01_CONFIG = CONFIG.split('MERGE_REVEALS = True\n', 1)[1].split('# Lọc qu�
 QWEN_CONFIG = CONFIG.split("OCR_ENGINE = 'qwen'\n", 1)[1].split('HYBRID_DEVICES =', 1)[0]
 ASR_CONFIG = '# 03 · ASR:' + CONFIG.split('# 03 · ASR:', 1)[1].split('# 04 ·', 1)[0]
 
-RUN = """import json, shutil, subprocess, threading, time, traceback
-from concurrent.futures import ThreadPoolExecutor
+RUN = (CODE / "production_queue.py").read_text(encoding="utf-8")
 
-# Đo bộ nhớ GPU: lấy mẫu nvidia-smi mỗi 2 s, giữ đỉnh của từng GPU.
-gpu_peak_mb, _gpu_stop = {}, threading.Event()
-def _sample_gpu():
-    while not _gpu_stop.is_set():
-        try:
-            out = subprocess.run(['nvidia-smi', '--query-gpu=index,memory.used,memory.total',
-                                  '--format=csv,noheader,nounits'], capture_output=True, text=True).stdout
-            for line in out.strip().splitlines():
-                index, used, total = (int(x) for x in line.split(','))
-                gpu_peak_mb[index] = max(gpu_peak_mb.get(index, 0), used)
-                gpu_peak_mb[f'{index}_total'] = total
-        except Exception:
-            pass
-        _gpu_stop.wait(2)
-threading.Thread(target=_sample_gpu, daemon=True).start()
-
-# Mốc bắt đầu/kết thúc từng bước (giây kể từ lúc chạy) để kiểm tra 03 chạy song song với 01.
-spans = []
-def timed(stage, video_id, fn, *args):
-    start = time.monotonic() - pipeline_started
-    try:
-        return fn(*args)
-    finally:
-        spans.append({'stage': stage, 'video_id': video_id, 'start': round(start, 1),
-                      'end': round(time.monotonic() - pipeline_started, 1)})
-
-def find_video_file(video_id):
-    matches = sorted(Path('/kaggle/input').rglob(video_id + '.mp4'))
-    if len(matches) != 1:
-        raise FileNotFoundError(f'Cần đúng một {video_id}.mp4, tìm thấy {matches}')
-    return matches[0]
-
-ad_scorer = None
-if AD_FILTER and AD_FILTER != 'slide_speech':
-    student_path = AD_STUDENT_PATH or (next(iter(sorted(Path('/kaggle/input').rglob('ad_student.npz'))), None)
-                                       if AD_FILTER == 'student' else None)
-    if AD_FILTER == 'student' and student_path is None:
-        raise FileNotFoundError('AD_FILTER="student" cần ad_student.npz: Add Input output của thí nghiệm bộ lọc.')
-    ad_scorer = (load_outlier_scorer(AD_DEVICE, **OUTLIER_OPTIONS) if AD_FILTER == 'outlier'
-                 else load_ad_scorer(AD_FILTER, AD_DEVICE, student_path))
-    print('Lọc quảng cáo:', ad_scorer[1])
-ocr_gate = load_ocr_gate(AD_DEVICE, threshold=OCR_GATE_THRESHOLD, views=OCR_GATE_VIEWS) if OCR_GATE else None
-content_scorer = load_ocr_gate(AD_DEVICE) if AD_FILTER == 'slide_speech' else None
-if AD_FILTER == 'slide_speech' and not SPEECH_RELEVANCE:
-    raise ValueError("AD_FILTER='slide_speech' cần SPEECH_RELEVANCE = True.")
-
-def speech_embed_model():
-    from sentence_transformers import SentenceTransformer
-    model = shared_model(('e5', EMBEDDING_MODEL, EMBEDDING_REVISION, EMBEDDING_DEVICE), lambda: SentenceTransformer(
-        EMBEDDING_MODEL, revision=EMBEDDING_REVISION, device=EMBEDDING_DEVICE))
-    return lambda texts: model.encode(['query: ' + t for t in texts], normalize_embeddings=True,
-                                      batch_size=32, convert_to_numpy=True)
-speech_embed = speech_embed_model() if SPEECH_RELEVANCE else None
-
-def detect(video_id):
-    started = time.monotonic()
-    video = find_video_file(video_id)
-    options = dict(merge_reveals=MERGE_REVEALS, export_state_onsets=EXPORT_STATE_ONSETS,
-                   merge_same_content=MERGE_SAME_CONTENT)
-    options.update(STAGE01_VIDEO_OPTIONS.get(video_id, {}))
-    stage01, manifest, intervals = run_slide_detection(
-        video, OUTPUT_ROOT / video_id, video_id, sample_hz=SAMPLE_HZ,
-        fine_hz=FINE_HZ, scan='single_pass', **options,
-        ad_scorer=ad_scorer, ad_options={'mode': AD_MODE}, content_scorer=content_scorer,
-    )
-    return video, stage01, manifest, time.monotonic() - started
-
-def ocr(video_id, stage01):
-    started = time.monotonic()
-    directory, _, _ = run_visual_extraction(
-        stage01, OUTPUT_ROOT / video_id, video_id, languages=OCR_LANGUAGES,
-        ocr_device='cuda', ocr_scale=OCR_SCALE, ocr_batch_size=OCR_BATCH_SIZE,
-        frame_hsv=FRAME_HSV.get(video_id), ocr_engine=OCR_ENGINE,
-        hybrid_devices=HYBRID_DEVICES, ocr_gate=ocr_gate, hybrid_rescue_area=HYBRID_RESCUE_AREA,
-        hybrid_skip_repeated_decor=HYBRID_SKIP_REPEATED_DECOR, hybrid_min_region_area=HYBRID_MIN_REGION_AREA,
-        reuse_near_duplicates=REUSE_NEAR_DUPLICATES, hybrid_pipelined=HYBRID_PIPELINED,
-        describe_language=VIDEO_LANGUAGES.get(video_id, 'vi'),
-        qwen_model=QWEN_OCR_MODEL, qwen_revision=QWEN_OCR_REVISION,
-        qwen_content_crop=QWEN_CONTENT_CROP, qwen_content_rois=QWEN_CONTENT_ROIS,
-        qwen_min_pixels=QWEN_MIN_PIXELS, qwen_max_pixels=QWEN_MAX_PIXELS,
-        qwen_validate=QWEN_VALIDATE, qwen_retry_invalid=QWEN_RETRY_INVALID,
-    )
-    return directory, time.monotonic() - started
-
-def asr(video_id):
-    # Stage 03 needs only the audio, so it does not wait for stage 01.
-    started = time.monotonic()
-    directory, _, _ = run_transcription(
-        None, find_video_file(video_id), OUTPUT_ROOT / video_id, video_id,
-        model_id=ASR_MODEL, revision=ASR_REVISION, language=VIDEO_LANGUAGES.get(video_id, 'vi'),
-        transcription_mode=ASR_MODE, batch_size=ASR_BATCH_SIZE, device_index=ASR_DEVICE_INDEX,
-    )
-    return directory, time.monotonic() - started
-
-def ocr_after_detect(video_id, detect_job):
-    return ocr(video_id, detect_job.result()[1])
-
-timings = []
-pipeline_started = time.monotonic()
-# Three queues run side by side: 01 on the CPU, 03 (Whisper) and 02 (EasyOCR) on
-# the GPU. Each queue processes the videos in order; 02 of a video waits for its 01.
-with ThreadPoolExecutor(1) as cpu, ThreadPoolExecutor(1) as asr_queue, ThreadPoolExecutor(1) as ocr_queue:
-    asr_jobs = {video_id: asr_queue.submit(timed, '03', video_id, asr, video_id) for video_id in VIDEO_IDS}
-    detect_jobs = {video_id: cpu.submit(timed, '01', video_id, detect, video_id) for video_id in VIDEO_IDS}
-    ocr_jobs = {video_id: ocr_queue.submit(timed, '02', video_id, ocr_after_detect, video_id, detect_jobs[video_id])
-                for video_id in VIDEO_IDS}
-    for video_id in VIDEO_IDS:
-        row = {'video_id': video_id}
-        try:
-            video, stage01, manifest01, row['01_sec'] = detect_jobs[video_id].result()
-            row.update(duration_sec=manifest01['source']['duration_sec'],
-                       visual_states=manifest01['visual_state_count'],
-                       slides=manifest01['interval_count'] - manifest01.get('ad_segment_count', 0),
-                       ad_segments=manifest01.get('ad_segment_count', 0))
-            stage02, row['02_sec'] = ocr_jobs[video_id].result()
-            visual_manifest = json.loads((stage02 / 'manifest.json').read_text(encoding='utf-8'))
-            row['ocr_read'] = visual_manifest.get('ocr_read_count')
-            row['ocr_skipped'] = visual_manifest.get('ocr_skipped_no_content')
-            row['ocr_failed'] = visual_manifest.get('ocr_failed_count', 0)
-            row['02_sec_per_slide'] = round(row['02_sec'] / max(row['ocr_read'] or row['slides'], 1), 1)
-            stage03, row['03_sec'] = asr_jobs[video_id].result()
-            row['ready_at_sec'] = time.monotonic() - pipeline_started
-            started = time.monotonic()
-            stage04, manifest04, _ = run_alignment(
-                stage01, stage02, stage03, OUTPUT_ROOT / video_id, video_id,
-                ad_suspect_overlap=AD_SUSPECT_OVERLAP, speech_embed=speech_embed,
-                slide_speech=SLIDE_SPEECH if AD_FILTER == 'slide_speech' else None,
-                conservative_ocr=CONSERVATIVE_OCR, heading_titles=HEADING_TITLES,
-                asr_correction=ASR_CORRECTION, failure_guard=FAILURE_GUARD,
-                speech_ad_filter=SPEECH_AD_FILTER)
-            row['04_sec'] = time.monotonic() - started
-            started = time.monotonic()
-            run_indexing(stage04, OUTPUT_ROOT / video_id, video_id,
-                         embedding_model=EMBEDDING_MODEL, revision=EMBEDDING_REVISION,
-                         device=EMBEDDING_DEVICE,
-                         dedupe_previous=OCR_DEDUPE_PREVIOUS,
-                         include_generated_descriptions=INCLUDE_GENERATED_DESCRIPTIONS,
-                         generated_semantic_only=GENERATED_SEMANTIC_ONLY)
-            row['05_sec'] = time.monotonic() - started
-        except Exception:
-            traceback.print_exc()
-            row['error'] = 'stage 01' if '01_sec' not in row else 'stage 02-05'
-        timings.append(row)
-        print('PIPELINE', json.dumps(row), flush=True)
-total_sec = time.monotonic() - pipeline_started
-_gpu_stop.set()
-first = {stage: min((s for s in spans if s['stage'] == stage), key=lambda s: s['start'], default=None)
-         for stage in ('01', '03')}
-asr_parallel = bool(first['01'] and first['03'] and first['03']['start'] < first['01']['end'])
-print('GPU_PEAK_MB', json.dumps(gpu_peak_mb))
-print('SPANS', json.dumps(sorted(spans, key=lambda s: s['start'])))
-print('ASR_PARALLEL_WITH_01', asr_parallel)
-write_json(OUTPUT_ROOT / 'fast_pipeline_timings.json',
-           {'total_wall_sec': total_sec, 'videos': timings, 'gpu_peak_mb': gpu_peak_mb,
-            'spans': spans, 'asr_parallel_with_01': asr_parallel})
-print(f'Tổng thời gian: {total_sec:.0f} s cho {len(VIDEO_IDS)} video')
+PREFLIGHT = """session_started = time.monotonic()
+preflight = startup_preflight(VIDEO_IDS, VIDEO_LANGUAGES, OUTPUT_ROOT)
 """
 
-INSPECT = """import pandas as pd
-table = pd.DataFrame(timings).set_index('video_id').round(1)
-display(table)
-# Gói kết quả nhẹ để tải về: bỏ WAV và clip audio (tạo lại được từ video).
-export = Path('/kaggle/working/fast_pipeline_export')
-shutil.rmtree(export, ignore_errors=True)
-shutil.copytree(OUTPUT_ROOT, export, ignore=shutil.ignore_patterns('audio', '*.wav', '_cache'))
-archive = shutil.make_archive('/kaggle/working/fast_pipeline_export', 'zip', export)
-shutil.rmtree(export)
-print('Tải về:', archive)
+INSPECT = """if not CANARY:
+    print('ARCHIVES', json.dumps(package_production_outputs(OUTPUT_ROOT, '/kaggle/working')))
+write_json(OUTPUT_ROOT / 'session.json', {
+    'elapsed_seconds': time.monotonic() - session_started,
+    'finished_utc': datetime.now(timezone.utc).isoformat(), 'devices': 2, 'canary': CANARY})
 """
 
 
-def build():
+def build(target=None, *, canary=False, overrides=None):
+    config = CONFIG + '\n' + '\n'.join(f'{k} = {v!r}' for k, v in (overrides or {}).items())
+    config += f'\nCANARY = {canary!r}\n'
+    recipe = hashlib.sha256((''.join((CODE / n).read_text(encoding='utf-8') for n in MODULES)
+                             + RUN).encode('utf-8')).hexdigest()
+    config += f'CODE_RECIPE_SHA256 = {recipe!r}\n'
+    names = [n.targets[0].id for n in ast.parse(CONFIG).body if isinstance(n, ast.Assign)]
+    names = [n for n in names if n not in {'OUTPUT_ROOT', 'RESUME_FROM', 'CANARY'}]
+    config += f'PRODUCTION_RECIPE = fingerprint({{k: str(globals()[k]) for k in {names + ["CODE_RECIPE_SHA256"]!r}}})\n'
     cells = [
         cell("markdown", INTRO),
         cell("markdown", "## 1. Môi trường\n\nBật **Internet** và GPU **T4**."),
@@ -356,7 +208,9 @@ def build():
               for name in MODULES]
     cells += [
         cell("markdown", "## 3. Cấu hình"),
-        cell("code", CONFIG),
+        cell("code", config),
+        cell("markdown", "## Startup preflight · before model loading"),
+        cell("code", PREFLIGHT),
         cell("markdown", "## 4. Chạy 01 → 05 cho mọi video"),
         cell("code", RUN),
         cell("markdown", "## 5. Thời gian và gói kết quả"),
@@ -369,7 +223,8 @@ def build():
                      "language_info": {"name": "python"}},
         "nbformat": 4, "nbformat_minor": 5,
     }
-    target = ROOT / "notebooks" / f"{NAME}.ipynb"
+    target = Path(target) if target else ROOT / "notebooks" / f"{NAME}.ipynb"
+    target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(notebook, ensure_ascii=False, indent=1) + "\n",
                       encoding="utf-8")
     print(target.name)
