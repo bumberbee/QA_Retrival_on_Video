@@ -9,6 +9,9 @@ import json
 from pathlib import Path
 import re
 import subprocess
+import time
+import sys
+import os
 from datetime import datetime, timezone
 
 from build_fast_pipeline import build
@@ -80,12 +83,12 @@ def status(ref):
     match = re.search(r'has status "([^"]+)"', result)
     if not match:
         raise RuntimeError('Unrecognized kernel status: ' + result)
-    return match[1].upper(), result
+    return match[1].upper().split('.')[-1], result
 
 
-def verify_remote(directory):
+def verify_remote(directory, *, observed=None):
     local = json.loads((directory / 'kernel-metadata.json').read_text(encoding='utf8'))
-    state, raw = status(local['id'])
+    state, raw = status(local['id']) if observed is None else observed
     dest = OUTPUT / 'metadata' / local['id'].split('/')[1]
     cli('kernels', 'pull', local['id'], '-p', dest, '-m')
     remote = json.loads((dest / 'kernel-metadata.json').read_text(encoding='utf8'))
@@ -94,6 +97,44 @@ def verify_remote(directory):
                 'metadata': remote, 'verified_utc': datetime.now(timezone.utc).isoformat()}
     write(dest / 'verification.json', evidence)
     return evidence
+
+
+def monitor(directory, destination=None, interval=300):
+    """Persist five-minute observations; download terminal output without repolling."""
+    if interval < 300:
+        raise ValueError('Kaggle polling interval must be at least 300 seconds')
+    directory = Path(directory)
+    meta = json.loads((directory / 'kernel-metadata.json').read_text(encoding='utf8'))
+    validate_metadata(meta)
+    ledger = OUTPUT / 'gpu-ledger.json'
+    rows = json.loads(ledger.read_text(encoding='utf8'))
+    row = next(r for r in rows if r['ref'] == meta['id'])
+    if row.get('privacy_verified') is not True:
+        raise RuntimeError('STOP: monitor privacy is unverified')
+    due = time.monotonic() + interval
+    while True:
+        while time.monotonic() < due:
+            time.sleep(min(60, max(0, due - time.monotonic())))
+        due = time.monotonic() + interval
+        rows = json.loads(ledger.read_text(encoding='utf8'))
+        row = next(r for r in rows if r['ref'] == meta['id'])
+        try:
+            state, raw = status(meta['id'])
+        except RuntimeError as exc:
+            row.setdefault('monitor_errors', []).append(str(exc)[-500:])
+            write(ledger, rows)
+            continue
+        row.update(status=state, status_cli=raw,
+                   status_observed_utc=datetime.now(timezone.utc).isoformat())
+        write(ledger, rows)
+        print(json.dumps({k: row[k] for k in ('ref', 'status', 'status_observed_utc')}), flush=True)
+        if state in {'COMPLETE', 'ERROR', 'CANCELLED', 'CANCELED'}:
+            evidence = verify_remote(directory, observed=(state, raw))
+            row.update(evidence)
+            write(ledger, rows)
+            if destination is not None:
+                download(directory, destination, verification=evidence)
+            return state
 
 
 def budget_bound(rows, timeout):
@@ -136,19 +177,140 @@ def launch(directory, timeout):
     print(json.dumps(row, ensure_ascii=False))
 
 
-def download(directory):
+def download(directory, destination=None, *, verification=None):
     directory = Path(directory)
     meta = json.loads((directory / 'kernel-metadata.json').read_text(encoding='utf8'))
-    evidence = verify_remote(directory)
+    dest = Path(destination) if destination is not None else OUTPUT / meta['id'].split('/')[1]
+    if not dest.resolve().is_relative_to(OUTPUT.resolve()):
+        raise RuntimeError('Downloads must stay under D:/thesis-data/run-20261102')
+    evidence = verify_remote(directory) if verification is None else verification
+    validate_metadata(evidence['metadata'])
+    if evidence.get('privacy_verified') is not True or evidence['metadata']['id'] != meta['id']:
+        raise RuntimeError('STOP: download privacy is unverified')
     if evidence['status'] not in {'COMPLETE', 'ERROR', 'CANCELLED', 'CANCELED'}:
         raise RuntimeError('Output download requires a terminal kernel')
-    dest = OUTPUT / meta['id'].split('/')[1]
     cli('kernels', 'output', meta['id'], '-p', dest, '--page-size', '200')
     rows = json.loads((OUTPUT / 'gpu-ledger.json').read_text(encoding='utf8'))
     row = next(r for r in rows if r['ref'] == meta['id'])
     row.update(evidence, downloaded_to=str(dest), completed_observed_utc=datetime.now(timezone.utc).isoformat())
     write(OUTPUT / 'gpu-ledger.json', rows)
-    print(json.dumps(row, ensure_ascii=False))
+    print(json.dumps({k: row[k] for k in ('ref', 'version', 'status', 'privacy_verified', 'downloaded_to')},
+                     ensure_ascii=False))
+
+
+def validate_outputs(root, report_path, mp4_root=Path('D:/thesis-data/mp4-extra')):
+    """Run model-free validation against the exact ten local video sources."""
+    root, report_path = Path(root), Path(report_path)
+    if not report_path.resolve().is_relative_to(OUTPUT.resolve()):
+        raise RuntimeError('Validation reports must stay under the task output root')
+    sys.path.insert(0, str(ROOT / 'eval'))
+    from offline_common import VIDEOS, load_notebook
+    runtime = load_notebook('production_runtime')
+    progress = json.loads((root / 'progress.json').read_text(encoding='utf8'))
+    rows = progress['videos']
+    failures = []
+    if len(rows) != len(VIDEOS) or {r['video_id'] for r in rows} != set(VIDEOS):
+        failures.append('Progress must contain exactly ten configured videos')
+    if not json.loads((root / 'preflight.json').read_text(encoding='utf8')).get('passed'):
+        failures.append('Preflight did not pass')
+    results = []
+    for video in VIDEOS:
+        try:
+            row = next(r for r in rows if r['video_id'] == video)
+            if row['status'] != 'completed' or row.get('error') or any(
+                    s.get('error') for s in row.get('stage_timings', {}).values()):
+                raise ValueError('Video has an incomplete/error progress row')
+            result = runtime.validate_video_output(root / video, video)
+            if runtime.file_sha256(Path(mp4_root) / (video + '.mp4')) != result['source_sha256']:
+                raise ValueError('Exact local MP4 source hash differs')
+            manifest = runtime.load_stage(root / video / '01_slides', 1, video)
+            duration = manifest['source']['duration_sec']
+            transcript = runtime.read_json(root / video / '03_audio/transcript.json')
+            words = transcript.get('words', [])
+            intervals = runtime.read_json(root / video / '01_slides/intervals.json')
+            visuals = runtime.read_json(root / video / '02_visual/visual.json')
+            segments = runtime.read_json(root / video / runtime.STAGE_NAMES[4] / 'segments.json')
+            for stage, name, count in ((2, 'record_count', len(visuals)),
+                                       (3, 'word_count', len(words)),
+                                       (4, 'segment_count', len(segments))):
+                directory = root / video / runtime.STAGE_NAMES[stage]
+                if runtime.read_json(directory / 'manifest.json').get(name) != count:
+                    raise ValueError(f'Stage {stage} {name} differs from assets')
+            if len(intervals) != len(visuals):
+                raise ValueError('Slide/visual record count differs')
+            if sum(v.get('ocr_status') == 'failed' for v in visuals) != result['ocr_failed']:
+                raise ValueError('OCR failure count differs from assets')
+            for segment in segments:
+                if not 0 <= segment['start_sec'] < segment['end_sec'] <= duration + .03:
+                    raise ValueError('Aligned segment timestamp out of bounds')
+            for word in words:
+                start, end = word.get('start_sec', word.get('start')), word.get('end_sec', word.get('end'))
+                if start is None or end is None or not 0 <= start <= end <= duration + .03:
+                    raise ValueError('ASR word timestamp out of bounds')
+            result.update(words=len(words), intervals=len(intervals), segments=len(segments),
+                          visual_records=len(visuals), stage_timings=row['stage_timings'],
+                          retries=row.get('retries', 0), progress_ocr_failed=row.get('ocr_failed', 0))
+            results.append(result)
+        except Exception as exc:
+            failures.append(f'{video}: {type(exc).__name__}: {exc}')
+    report = {'passed': not failures, 'videos': results, 'failures': failures,
+              'total_wall_sec': progress.get('total_wall_sec')}
+    write(report_path, report)
+    print(json.dumps({'passed': report['passed'], 'validated': len(results), 'failures': failures}), flush=True)
+    if failures:
+        raise RuntimeError('Production output validation failed; see report on D:')
+    return report
+
+
+def evaluate_when_downloaded(ref):
+    """Wait on local state only; validate before six isolated CPU evaluation jobs."""
+    state_path = OUTPUT / 'cpu-evaluation-state.json'
+    write(state_path, {'status': 'waiting_for_download', 'ref': ref})
+    while True:
+        rows = json.loads((OUTPUT / 'gpu-ledger.json').read_text(encoding='utf8'))
+        row = next(r for r in rows if r['ref'] == ref)
+        if row.get('downloaded_to'):
+            if row.get('privacy_verified') is not True:
+                raise RuntimeError('STOP: downloaded kernel privacy is unverified')
+            root = Path(row['downloaded_to']) / 'lecture_rag'
+            break
+        time.sleep(30)
+    try:
+        write(state_path, {'status': 'validating', 'root': str(root)})
+        validate_outputs(root, OUTPUT / 'validation.json')
+        out = OUTPUT / 'eval'
+        out.mkdir(parents=True, exist_ok=True)
+        steps = []
+        for name in ('turbo', 'medium'):
+            args = ['--export-root', str(root), '--output-root', str(out), '--name', name,
+                    '--skip-reference-comparison']
+            if name == 'medium':
+                args += ['--asr-export-root', 'D:/thesis-data/run-20261020/export']
+            steps.append((name + '-rebuild', 'rebuild_offline.py', args))
+        for name in ('turbo', 'medium'):
+            for kind, script in (('dev', 'eval_retrieval.py'), ('legacy', 'legacy_offline.py')):
+                steps.append((name + '-' + kind, script,
+                              ['--index-root', str(out / name), '--output-root', str(out),
+                               '--name', name + '-' + kind]))
+        steps.append(('paired', 'paired_comparison.py', [str(out)]))
+        done = []
+        environment = dict(os.environ, HF_HUB_OFFLINE='1', TRANSFORMERS_OFFLINE='1',
+                           PYTHONDONTWRITEBYTECODE='1', TEMP=str(OUTPUT / 'temp'))
+        for label, script, args in steps:
+            write(state_path, {'status': 'running', 'step': label, 'completed_steps': done})
+            with (out / (label + '.log')).open('w', encoding='utf8') as log:
+                result = subprocess.run([sys.executable, str(ROOT / 'eval' / script), *args],
+                                        stdout=log, stderr=subprocess.STDOUT, env=environment,
+                                        timeout=7200)
+            if result.returncode:
+                raise RuntimeError(f'CPU evaluation step {label} failed; see its log on D:')
+            done.append(label)
+            print('CPU completed: ' + label, flush=True)
+        write(state_path, {'status': 'complete', 'completed_steps': done,
+                           'completed_utc': datetime.now(timezone.utc).isoformat()})
+    except Exception as exc:
+        write(state_path, {'status': 'failed', 'error': str(exc)})
+        raise
 
 
 def main():
@@ -159,20 +321,37 @@ def main():
     p.add_argument('--layout', choices=('dual', 'single-qwen'), default='dual')
     p.add_argument('--resume-from')
     p.add_argument('--checkpoint-kernel')
-    for action in ('launch', 'verify', 'download'):
+    p = sub.add_parser('validate')
+    p.add_argument('root', type=Path)
+    p.add_argument('--report', type=Path, default=OUTPUT / 'validation.json')
+    p.add_argument('--mp4-root', type=Path, default=Path('D:/thesis-data/mp4-extra'))
+    p = sub.add_parser('evaluate')
+    p.add_argument('ref')
+    for action in ('launch', 'verify', 'download', 'monitor'):
         p = sub.add_parser(action)
         p.add_argument('directory', type=Path)
         if action == 'launch':
             p.add_argument('--timeout', type=int, required=True)
+        elif action == 'download':
+            p.add_argument('--destination', type=Path)
+        elif action == 'monitor':
+            p.add_argument('--destination', type=Path)
+            p.add_argument('--interval', type=int, default=300)
     args = parser.parse_args()
     if args.action == 'build':
         build_bundle(args.kind, args.layout, args.resume_from, args.checkpoint_kernel)
+    elif args.action == 'validate':
+        validate_outputs(args.root, args.report, args.mp4_root)
+    elif args.action == 'evaluate':
+        evaluate_when_downloaded(args.ref)
     elif args.action == 'launch':
         launch(args.directory, args.timeout)
     elif args.action == 'verify':
         print(json.dumps(verify_remote(args.directory)))
+    elif args.action == 'monitor':
+        monitor(args.directory, args.destination, args.interval)
     else:
-        download(args.directory)
+        download(args.directory, args.destination)
 
 
 if __name__ == '__main__':
