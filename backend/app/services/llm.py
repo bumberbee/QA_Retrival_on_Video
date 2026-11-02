@@ -10,6 +10,7 @@ Both receive the exact same prompt, so a local run exercises the same code path
 as the hosted one; only the transport differs.
 """
 
+import http.client
 import json
 import os
 import urllib.error
@@ -102,9 +103,11 @@ def _ollama(prompt: str, max_tokens: int | None = None, temperature: float = 0.2
             f"Không kết nối được Ollama tại {base} (model {model}): {error.reason}. "
             "Kiểm tra 'ollama serve' đang chạy, hoặc đặt LLM_PROVIDER=gemini trong .env."
         ) from error
-    except (TimeoutError, json.JSONDecodeError) as error:
+    except (OSError, http.client.HTTPException, UnicodeError, json.JSONDecodeError) as error:
         raise LLMUnavailable(f"Ollama không trả về kết quả hợp lệ: {error}") from error
 
+    if not isinstance(data, dict) or not isinstance(data.get("message"), dict):
+        raise LLMUnavailable("Ollama không trả về kết quả hợp lệ.")
     text = ((data.get("message") or {}).get("content") or "").strip()
     if not text:
         raise LLMUnavailable("Ollama trả về câu trả lời rỗng.")
@@ -118,7 +121,8 @@ EVIDENCE_INSTRUCTION = (
     "- Chỉ trả lời dựa trên bằng chứng. Nếu bằng chứng không chứa câu trả lời, nói rõ "
     "\"Bài giảng không đề cập đến nội dung này\" và gợi ý phần gần nhất mà bài có giảng.\n"
     "- Với công thức và con số, ưu tiên đọc trên ảnh slide; khi OCR và ảnh khác nhau, theo ảnh.\n"
-    "- Trích dẫn mốc thời gian [mm:ss] của slide hoặc lời giảng dùng để trả lời.\n"
+    "- Trích dẫn mốc thời gian [mm:ss] ghi ngay trên đoạn bằng chứng dùng để trả lời. "
+    "Mỗi đoạn lời giảng có mốc riêng, có thể khác khoảng thời gian của slide.\n"
     "- Chỉ nói \"không đề cập\" khi bằng chứng thật sự không có câu trả lời; đã có thì trả lời "
     "thẳng, không vừa nói không đề cập vừa trả lời.\n"
     "- Trả lời đúng điều được hỏi, 1–3 câu, rõ ràng, bằng tiếng Việt."
@@ -139,24 +143,36 @@ def _ollama_stream(prompt: str):
     request = urllib.request.Request(f"{base}/api/chat", data=json.dumps(payload).encode("utf-8"),
                                      headers={"Content-Type": "application/json"})
     try:
-        response = urllib.request.urlopen(request, timeout=float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "1800")))
+        with urllib.request.urlopen(request, timeout=float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "1800"))) as response:
+            has_text = False
+            for line in response:
+                if not line.strip():
+                    continue
+                data = json.loads(line.decode("utf-8"))
+                if not isinstance(data, dict):
+                    raise LLMUnavailable("Ollama trả về dòng JSON không hợp lệ.")
+                if data.get("error"):
+                    raise LLMUnavailable(f"Ollama lỗi: {data['error']}")
+                message = data.get("message", {})
+                if (not isinstance(message, dict) or not isinstance(message.get("content", ""), str)
+                        or ("done" in data and not isinstance(data["done"], bool))):
+                    raise LLMUnavailable("Ollama trả về dòng JSON không hợp lệ.")
+                piece = message.get("content", "")
+                if piece:
+                    has_text = True
+                    yield piece
+                if data.get("done") is True:
+                    if not has_text:
+                        raise LLMUnavailable("Ollama trả về câu trả lời rỗng.")
+                    return
     except urllib.error.URLError as error:
         raise LLMUnavailable(
             f"Không kết nối được Ollama tại {base} (model {model}): {error.reason}. "
             "Kiểm tra 'ollama serve' đang chạy, hoặc đặt LLM_PROVIDER=gemini trong .env."
         ) from error
-    with response:
-        for line in response:
-            if not line.strip():
-                continue
-            data = json.loads(line.decode("utf-8"))
-            if data.get("error"):
-                raise LLMUnavailable(f"Ollama lỗi: {data['error']}")
-            piece = (data.get("message") or {}).get("content") or ""
-            if piece:
-                yield piece
-            if data.get("done"):
-                break
+    except (OSError, http.client.HTTPException, UnicodeError, json.JSONDecodeError) as error:
+        raise LLMUnavailable(f"Ollama stream không trả về kết quả hợp lệ: {error}") from error
+    raise LLMUnavailable("Ollama stream kết thúc trước tín hiệu done.")
 
 
 def _history_block(history: list | None, summary: str = "", answer_chars: int = 600) -> str:
@@ -249,7 +265,13 @@ REWRITE_INSTRUCTION = (
 def _complete(prompt: str, max_tokens: int, temperature: float, timeout: float) -> str:
     if provider() == "ollama":
         return _ollama(prompt, max_tokens=max_tokens, temperature=temperature, timeout=timeout)
-    return gemini.complete(prompt)
+    # The installed SDK supports both generation limits and per-request timeouts.
+    gemini._ensure_configured()
+    model = gemini.genai.GenerativeModel(gemini._MODEL_NAME)
+    response = model.generate_content(prompt, generation_config={"max_output_tokens": max_tokens,
+                                                                "temperature": temperature},
+                                      request_options={"timeout": timeout})
+    return response.text or "Xin lỗi, tui không tạo được câu trả lời."
 
 
 def _clip(turn: dict, chars: int) -> str:

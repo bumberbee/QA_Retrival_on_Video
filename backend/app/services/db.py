@@ -30,7 +30,10 @@ def pool():
 
             _pool = ConnectionPool(
                 os.environ["SUPABASE_DB_URL"], min_size=1, max_size=int(os.getenv("DB_POOL_SIZE", "5")),
-                kwargs={"row_factory": dict_row, "autocommit": True, "prepare_threshold": None},
+                kwargs={"row_factory": dict_row, "autocommit": True, "prepare_threshold": None,
+                        "connect_timeout": max(1, int(os.getenv("DB_CONNECT_TIMEOUT_SECONDS", "10"))),
+                        "options": f"-c statement_timeout={max(1, int(os.getenv('DB_STATEMENT_TIMEOUT_MS', '30000')))}"},
+                timeout=float(os.getenv("DB_POOL_TIMEOUT_SECONDS", "10")),
                 open=True,
             )
         return _pool
@@ -38,7 +41,7 @@ def pool():
 
 @contextmanager
 def connection():
-    with pool().connection() as conn:
+    with pool().connection(timeout=float(os.getenv("DB_POOL_TIMEOUT_SECONDS", "10"))) as conn:
         yield conn
 
 

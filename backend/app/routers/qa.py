@@ -1,4 +1,5 @@
 import json
+import logging
 import threading
 import time
 
@@ -11,6 +12,7 @@ from ..models import AnswerSource, AskRequest, AskResponse
 from ..services import llm, retrieval, sessions
 
 router = APIRouter(prefix="/api/qa", tags=["qa"])
+logger = logging.getLogger(__name__)
 
 
 SUMMARY_EVERY = 4      # turns between two updates of the running summary
@@ -86,10 +88,16 @@ def memory(plan: dict) -> dict:
     return {"history": plan["history"], "summary": plan["summary"], "rewritten": plan["rewritten"]}
 
 
+def validate_video_ids(req: AskRequest) -> None:
+    for video_id in [req.video_id, *(req.video_ids or [])]:
+        storage.validate_video_id(video_id)
+
+
 @router.post("", response_model=AskResponse)
 def ask_question(req: AskRequest, x_client_id: str | None = Header(default=None)):
     # Videos imported from the extraction pipeline have a stage-05 index: answer from the
     # retrieved slide evidence (OCR + speech + slide images). Others: the whole transcript.
+    validate_video_ids(req)
     use_index = retrieval.has_index(req.video_id)
     transcript = None if use_index else storage.load_transcript(req.video_id)
     if not use_index and not transcript:
@@ -137,6 +145,7 @@ def ask_question(req: AskRequest, x_client_id: str | None = Header(default=None)
 def ask_question_stream(req: AskRequest, x_client_id: str | None = Header(default=None)):
     """The evidence answer as NDJSON lines: {"type": "sources"}, then {"type": "delta"} pieces,
     then {"type": "done"} or {"type": "error"}. Videos without an index use POST /api/qa."""
+    validate_video_ids(req)
     if not retrieval.has_index(req.video_id):
         raise HTTPException(404, "Video này chưa có chỉ mục, dùng /api/qa")
     plan = prepare(req, x_client_id)
@@ -158,6 +167,10 @@ def ask_question_stream(req: AskRequest, x_client_id: str | None = Header(defaul
                 first = first or time.perf_counter() - started
                 answer.append(piece)
                 yield json.dumps({"type": "delta", "text": piece}, ensure_ascii=False) + "\n"
+            print(f"[qa-stream] {backend['provider']}:{backend['model']} video={req.video_id} "
+                  f"first={first or 0:.1f}s total={time.perf_counter() - started:.1f}s"
+                  + (f" rewritten={plan['rewritten']!r}" if plan["rewritten"] else ""))
+            remember(req, x_client_id, plan, "".join(answer), sources, time.perf_counter() - started)
         except ResourceExhausted:
             yield json.dumps({"type": "error", "detail": "Đã hết quota Gemini API miễn phí cho hôm nay."},
                              ensure_ascii=False) + "\n"
@@ -165,10 +178,11 @@ def ask_question_stream(req: AskRequest, x_client_id: str | None = Header(defaul
         except (llm.LLMUnavailable, GoogleAPICallError, RuntimeError) as e:
             yield json.dumps({"type": "error", "detail": str(e)}, ensure_ascii=False) + "\n"
             return
-        print(f"[qa-stream] {backend['provider']}:{backend['model']} video={req.video_id} "
-              f"first={first or 0:.1f}s total={time.perf_counter() - started:.1f}s"
-              + (f" rewritten={plan['rewritten']!r}" if plan["rewritten"] else ""))
-        remember(req, x_client_id, plan, "".join(answer), sources, time.perf_counter() - started)
+        except Exception:
+            logger.exception("Q&A stream failed")
+            yield json.dumps({"type": "error", "detail": "Không thể hoàn tất câu trả lời. Vui lòng thử lại."},
+                             ensure_ascii=False) + "\n"
+            return
         yield json.dumps({"type": "done"}) + "\n"
 
     return StreamingResponse(lines(), media_type="application/x-ndjson")
