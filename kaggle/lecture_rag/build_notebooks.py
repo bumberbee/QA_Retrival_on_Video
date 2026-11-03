@@ -34,7 +34,7 @@ MANUAL_BOUNDARIES_SEC = None  # Nếu sửa tay: [0.0, ..., đúng duration củ
 MERGE_REVEALS = True  # Gộp slide hiện dần (animation thêm dòng/hình) thành một đoạn
 EXPORT_STATE_ONSETS = True
 MERGE_SAME_CONTENT = True
-MERGE_SAME_CONTENT_VIDEO_OPTIONS = {'L25_V008': False}
+MERGE_SAME_CONTENT_VIDEO_OPTIONS = {}  # Ví dụ {'VIDEO_ID': False}; không chỉnh theo bộ câu hỏi chấm
 # Board/editor heuristics remain off in this generic stage notebook; see STAGE01.md for scoped options.
 REVEAL_THRESHOLDS = {}  # Ví dụ {'retained_threshold': 0.9}; mặc định trong reveal_decision
 USE_SLIDE_CLASSIFIER = False  # ResNet-34 Lecture2Notes: chặn gộp qua cảnh giảng viên (p_slide < 0.2)

@@ -200,7 +200,7 @@ class ProductionConfigTests(unittest.TestCase):
             detect(video)
             options = cfg["run_slide_detection"].call_args.kwargs
             self.assertTrue(options["export_state_onsets"])
-            self.assertEqual(options["merge_same_content"], video != "L25_V008")
+            self.assertTrue(options["merge_same_content"])
             self.assertEqual(options["scan"], "single_pass")
             if video == "hVU5Mw19V_c":
                 self.assertTrue(options["merge_reveals"])
@@ -212,8 +212,7 @@ class ProductionConfigTests(unittest.TestCase):
             else:
                 for key in ("board_options", "keyframe_options", "reveal_thresholds"):
                     self.assertNotIn(key, options)
-        self.assertEqual(set(cfg["STAGE01_VIDEO_OPTIONS"]), {"L25_V008", "y1CvB950VlU"})
-        self.assertFalse(cfg["STAGE01_VIDEO_OPTIONS"]["L25_V008"]["merge_same_content"])
+        self.assertEqual(set(cfg["STAGE01_VIDEO_OPTIONS"]), {"y1CvB950VlU"})
 
 
 class VisualProvenanceTests(unittest.TestCase):

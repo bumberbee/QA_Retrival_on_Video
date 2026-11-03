@@ -58,9 +58,9 @@ FINE_HZ = 8.0  # Tần số giữ frame nhỏ để tinh chỉnh ranh giới, kh
 MERGE_REVEALS = True
 EXPORT_STATE_ONSETS = True
 MERGE_SAME_CONTENT = True
-# Retrieval ablation: keep editor safety and the first definition observation (ABLATION_20261102.md).
+# Retrieval ablation: keep editor safety (ABLATION_20261102.md). The L25_V008 merge override was
+# dropped because it was chosen from evaluation-set scores; merging now applies to every video.
 STAGE01_VIDEO_OPTIONS = {
-    'L25_V008': {'merge_same_content': False},
     'y1CvB950VlU': {
         'reveal_thresholds': {'replacement_safe': True, 'directional_threshold': 0.94,
                               'deletion_minimum_pixels': 12, 'deletion_fraction': 0.20},
