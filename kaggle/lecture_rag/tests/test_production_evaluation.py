@@ -166,7 +166,8 @@ def test_production_validation_accepts_assets_and_rejects_changed_local_source(t
             m.write_json(d / 'segments.json', [{'start_sec': 0, 'end_sec': 10}])
             extras = {'segment_count': 1}
         else:
-            Image.new('RGB', (16, 16)).save(d / 'image.png')
+            (d / 'lecture').mkdir()
+            Image.new('RGB', (16, 16)).save(d / 'lecture/image.png')
             (d / 'chunks.jsonl').write_text(json.dumps({'chunk_id': 'c', 'start_sec': 0,
                 'end_sec': 10, 'image_path': 'image.png'}) + '\n')
             vector = np.zeros((1, 384), dtype='float32'); vector[0, 0] = 1

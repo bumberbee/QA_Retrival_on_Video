@@ -127,7 +127,8 @@ def validate_video_output(root, video_id, *, allow_missing_audio=False):
     for c in chunks:
         if not 0 <= c['start_sec'] < c['end_sec'] <= duration + .03:
             raise ValueError(f'chunk timestamp out of bounds: {c["chunk_id"]}')
-        if c.get('image_path') and not relative_asset(root / '05_index', c['image_path']).is_file():
+        # Stage 05 ships its evidence assets under lecture/ (see indexing.copy_stage_assets).
+        if c.get('image_path') and not relative_asset(root / '05_index/lecture', c['image_path']).is_file():
             raise ValueError(f'missing chunk image: {c["image_path"]}')
     intervals = read_json(root / '01_slides/intervals.json')
     verify_intervals(intervals, duration)

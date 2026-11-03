@@ -210,7 +210,9 @@ def test_output_validation_checks_actual_vectors_images_lineage_and_bounds(tmp_p
             m.write_json(directory / 'intervals.json', [{'segment_id':'V:s', 'image_path':'image.png',
                 'start_sec':0, 'end_sec':10, 'long_dynamic_review':True}])
         elif stage == 5:
-            Image.new('RGB', (16, 16)).save(directory / 'image.png')
+            # Production layout: stage-05 assets live under lecture/, not the stage root.
+            (directory / 'lecture').mkdir()
+            Image.new('RGB', (16, 16)).save(directory / 'lecture/image.png')
             m.write_json(directory / 'chunks.jsonl', {'chunk_id':'V:c', 'image_path':'image.png',
                                                     'start_sec':1, 'end_sec':2})
             # The production chunk contract is JSONL, not indented JSON.
@@ -225,6 +227,11 @@ def test_output_validation_checks_actual_vectors_images_lineage_and_bounds(tmp_p
                                       extra={'chunk_count':1} if stage == 5 else None))
     result = m.validate_video_output(tmp_path, 'V')
     assert result['vectors'] == [1,384] and result['long_dynamic_review'] == ['V:s']
+    # An image at the stage root (the old wrong layout) must not satisfy validation.
+    (directory / 'lecture/image.png').rename(directory / 'image.png')
+    with pytest.raises(ValueError, match='missing chunk image|checksum'):
+        m.validate_video_output(tmp_path, 'V')
+    (directory / 'image.png').rename(directory / 'lecture/image.png')
     np.save(directory / 'embeddings.npy', np.zeros((1,384), dtype=np.float32))
     m.finish_stage(directory, 5, 'V', source, {}, [parents[3]], extra={'chunk_count':1})
     with pytest.raises(ValueError, match='normalized'):
