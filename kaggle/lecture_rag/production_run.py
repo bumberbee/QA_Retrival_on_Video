@@ -56,7 +56,8 @@ def validate_metadata(meta):
 
 
 def build_bundle(kind, layout='dual', resume_from=None, checkpoint_kernel=None):
-    suffix = {'full': '', 'canary': '-canary', 'canary-alt': '-canary-alt', 'resume': '-resume'}[kind]
+    suffix = {'full': '', 'canary': '-canary', 'canary-alt': '-canary-alt', 'resume': '-resume',
+              'confirm': '-confirm'}[kind]
     slug = 'lecture-rag-fast-10' + suffix + '-20261102'
     directory = ROOT / 'runs' / ('20261102-fast-10' if kind == 'full' else '20261102-fast-10' + suffix)
     overrides = {} if layout == 'dual' else {'HYBRID_DEVICES': ('cuda:0',)}
@@ -137,8 +138,17 @@ def monitor(directory, destination=None, interval=300):
             return state
 
 
+def charged_hours(row):
+    # A finished kernel is charged its measured allocation; anything else keeps the full timeout.
+    actual = row.get('actual_allocated_t4_hours')
+    if row.get('status') in {'COMPLETE', 'ERROR', 'CANCELLED'} and isinstance(actual, (int, float)) \
+            and 0 < actual <= row['timeout_seconds'] * 2 / 3600:
+        return actual
+    return row['timeout_seconds'] * 2 / 3600
+
+
 def budget_bound(rows, timeout):
-    used = sum(r['timeout_seconds'] * 2 / 3600 for r in rows if r.get('submitted'))
+    used = sum(charged_hours(r) for r in rows if r.get('submitted'))
     bound = used + timeout * 2 / 3600
     if timeout <= 0 or bound > 8 + 1e-9:
         raise RuntimeError(f'Task GPU budget exceeded: conservative bound {bound:.6f} T4-hours')
@@ -317,7 +327,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='action', required=True)
     p = sub.add_parser('build')
-    p.add_argument('kind', choices=('full', 'canary', 'canary-alt', 'resume'))
+    p.add_argument('kind', choices=('full', 'canary', 'canary-alt', 'resume', 'confirm'))
     p.add_argument('--layout', choices=('dual', 'single-qwen'), default='dual')
     p.add_argument('--resume-from')
     p.add_argument('--checkpoint-kernel')

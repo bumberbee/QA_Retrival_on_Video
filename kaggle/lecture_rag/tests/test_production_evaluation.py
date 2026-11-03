@@ -85,6 +85,11 @@ def test_private_metadata_and_budget_hard_gates():
     assert budget_bound(rows,12000)==8
     with pytest.raises(RuntimeError,match='budget exceeded'):
         budget_bound(rows,12001)
+    # Finished kernels are charged their measured allocation, unfinished ones the full timeout.
+    done={'submitted':True,'timeout_seconds':12000,'status':'COMPLETE','actual_allocated_t4_hours':3.0}
+    assert budget_bound([done],7200)==7
+    assert budget_bound([{**done,'status':'RUNNING'}],1200)==pytest.approx(6.666667+0.666667)
+    assert budget_bound([{**done,'actual_allocated_t4_hours':99}],1200)==pytest.approx(6.666667+0.666667)
 
 
 def test_cli_status_accepts_enum_prefixed_terminal_state():
