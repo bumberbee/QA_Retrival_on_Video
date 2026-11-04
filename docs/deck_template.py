@@ -14,7 +14,12 @@ SECTIONS = ["Giới thiệu & xác định vấn đề", "Mục tiêu nghiên c�
 
 
 def img(name, width, fmt="PNG", quality=85):
-    image = Image.open(MEDIA / name)
+    path = MEDIA / name
+    image = Image.open(path)
+    # Recovered deck assets are already sized and encoded; preserve their exact bytes.
+    mode = "RGBA" if fmt == "PNG" else "RGB"
+    if image.format == fmt and image.mode == mode and image.width <= width and image.height <= width * 4:
+        return f"data:image/{fmt.lower()};base64," + base64.b64encode(path.read_bytes()).decode()
     image = image.convert("RGBA" if fmt == "PNG" else "RGB")
     image.thumbnail((width, width * 4))
     buffer = io.BytesIO()
