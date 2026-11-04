@@ -413,6 +413,49 @@ class NotebookAndContractTests(unittest.TestCase):
 
 
 class TimingAndRetrievalTests(unittest.TestCase):
+    def test_symbol_only_speech_is_dropped_but_numbers_and_ocr_survive(self):
+        indexing = load_code("indexing")
+        for junk in ("%", " % ! -- ", "♪♫"):
+            segment = {
+                "segment_id": "s", "sequence": 0, "start_sec": 0, "end_sec": 10,
+                "speech": {"spans": [{"span_id": "junk", "start_sec": 0,
+                                      "end_sec": 1, "text": junk},
+                                     {"span_id": "math", "start_sec": 2,
+                                      "end_sec": 3, "text": "12 - 3 = 9"},
+                                     {"span_id": "letter", "start_sec": 4,
+                                      "end_sec": 5, "text": "ừ"}],
+                           "fallback_span_ids": ["coarse"]},
+                "visual": {"title": "Lecture", "occurrence_id": "s:visual",
+                           "image_path": "s.jpg", "keyframe_time_sec": 2,
+                           "ocr_text": "%", "visual_description": "", "regions": []},
+            }
+            fallback = [{"span_id": "coarse", "start_sec": 6, "end_sec": 7,
+                         "text": junk, "timing_precision": "segment"}]
+            chunks = indexing.make_evidence_chunks(
+                [segment], fallback, CharacterTokenizer(), speech_maximum_seconds=1,
+            )
+            self.assertEqual([(c["source_type"], c["text"]) for c in chunks],
+                             [("speech", "12 - 3 = 9"), ("speech", "ừ"), ("ocr", "%")])
+            self.assertEqual([c["chunk_id"] for c in chunks],
+                             ["s:u0001:p000", "s:u0002:p000", "s:u0004:p000"])
+
+    def test_symbol_only_split_speech_parts_are_dropped(self):
+        indexing = load_code("indexing")
+        segment = {
+            "segment_id": "s", "sequence": 0, "start_sec": 0, "end_sec": 10,
+            "speech": {"spans": [{"span_id": "spoken", "start_sec": 0,
+                                  "end_sec": 1, "text": "A" + "%" * 50}],
+                       "fallback_span_ids": []},
+            "visual": {"title": "", "occurrence_id": "s:visual",
+                       "image_path": "s.jpg", "keyframe_time_sec": 2,
+                       "ocr_text": "", "visual_description": "", "regions": []},
+        }
+        chunks = indexing.make_evidence_chunks(
+            [segment], [], CharacterTokenizer(), chunk_tokens=20, overlap_tokens=0,
+        )
+        self.assertEqual(len(chunks), 1)
+        self.assertTrue(chunks[0]["text"].startswith("A"))
+
     def test_malformed_vision_output_cannot_enter_search_evidence(self):
         visual, indexing = load_code("visual"), load_code("indexing")
         for malformed in ('{"description": "unfinished', '!' * 900):

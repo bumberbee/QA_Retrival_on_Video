@@ -180,9 +180,15 @@ def make_evidence_chunks(segments, fallback_spans, tokenizer, *,
                         "retrieval_policy": "semantic_only" if generated_semantic_only else "hybrid"} if generated else {}),
                 })
         for unit_index, unit in enumerate(units):
+            # Whisper can emit only symbols on music/silence. Keep unit numbering stable
+            # for surviving evidence, and apply this guard only to speech (never OCR).
+            if unit["source_type"] == "speech" and not any(c.isalnum() for c in unit["text"]):
+                continue
             split = split_layout_tokens if unit.get("layout_preserved") else split_text_tokens
             parts = split(unit["text"], tokenizer, budget, min(overlap_tokens, budget - 1))
             for part_index, text in enumerate(parts):
+                if unit["source_type"] == "speech" and not any(c.isalnum() for c in text):
+                    continue
                 embedding_text = header + text
                 count = len(tokenizer.encode(embedding_text, add_special_tokens=True))
                 if count > model_limit:
