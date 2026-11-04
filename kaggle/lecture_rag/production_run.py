@@ -23,9 +23,9 @@ DATASETS = [OWNER + '/' + slug for slug in
             ('l25a-lecture-videos-media', 'vn-lecture-test12', 'slidespeech-train100')]
 
 
-def cli(*args):
+def cli(*args, timeout=300):
     result = subprocess.run(['kaggle', *map(str, args)], capture_output=True, text=True,
-                            encoding='utf8', errors='replace', timeout=300)
+                            encoding='utf8', errors='replace', timeout=timeout)
     if result.returncode:
         raise RuntimeError((result.stderr + result.stdout)[-3000:])
     # Some CLI errors print a message and return 0; never mistake them for success.
@@ -187,6 +187,44 @@ def launch(directory, timeout):
     print(json.dumps(row, ensure_ascii=False))
 
 
+def stream_kernel_output(ref, dest, chunk=1 << 20):
+    """Download every kernel output file to disk in 1 MiB blocks.
+
+    `kaggle kernels output` buffers each file fully in RAM, which raises MemoryError for the
+    ~3 GB checkpoint on this machine. Same listing call as the CLI, but streamed writes.
+    """
+    import requests
+    from kaggle.api.kaggle_api_extended import KaggleApi, ApiListKernelSessionOutputRequest
+    owner, slug = ref.split('/')
+    api = KaggleApi()
+    api.authenticate()
+    dest = Path(dest)
+    token = None
+    with api.build_kaggle_client() as client:
+        while True:
+            request = ApiListKernelSessionOutputRequest()
+            request.user_name, request.kernel_slug = owner, slug
+            request.page_size = 200
+            if token:
+                request.page_token = token
+            response = client.kernels.kernels_api_client.list_kernel_session_output(request)
+            for item in response.files or []:
+                target = (dest / item.file_name).resolve()
+                if not target.is_relative_to(dest.resolve()):
+                    raise RuntimeError('Kernel output path escapes the destination: ' + item.file_name)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                partial = target.with_name(target.name + '.part')
+                with requests.get(item.url, stream=True, timeout=(30, 300)) as reply:
+                    reply.raise_for_status()
+                    with open(partial, 'wb') as out:
+                        for block in reply.iter_content(chunk):
+                            out.write(block)
+                partial.replace(target)
+            token = response.next_page_token
+            if not token:
+                break
+
+
 def download(directory, destination=None, *, verification=None):
     directory = Path(directory)
     meta = json.loads((directory / 'kernel-metadata.json').read_text(encoding='utf8'))
@@ -199,7 +237,7 @@ def download(directory, destination=None, *, verification=None):
         raise RuntimeError('STOP: download privacy is unverified')
     if evidence['status'] not in {'COMPLETE', 'ERROR', 'CANCELLED', 'CANCELED'}:
         raise RuntimeError('Output download requires a terminal kernel')
-    cli('kernels', 'output', meta['id'], '-p', dest, '--page-size', '200')
+    stream_kernel_output(meta['id'], dest)
     rows = json.loads((OUTPUT / 'gpu-ledger.json').read_text(encoding='utf8'))
     row = next(r for r in rows if r['ref'] == meta['id'])
     row.update(evidence, downloaded_to=str(dest), completed_observed_utc=datetime.now(timezone.utc).isoformat())
