@@ -889,7 +889,8 @@ def run_visual_extraction(stage01_dir, output_root, video_id="L25_V001", *,
                           hybrid_pipelined=False, qwen_content_crop=True, qwen_content_rois=None,
                           qwen_model=QWEN_OCR_MODEL, qwen_revision=QWEN_OCR_REVISION,
                           qwen_min_pixels=256 * 32 * 32, qwen_max_pixels=1280 * 32 * 32,
-                          qwen_validate=True, qwen_retry_invalid=True):
+                          qwen_validate=True, qwen_retry_invalid=True,
+                          gate_decisions=None, skip_ocr=False):
     """ocr_engine: "easyocr" (lines of text with boxes), "hybrid" (Unlimited-OCR for
     text, LaTeX and tables + Qwen3-VL reading every chart/figure region) or "qwen" (Qwen3-VL-4B
     reads the whole slide in one call, one model per GPU of hybrid_devices: on 2 Vietnamese and
@@ -906,6 +907,8 @@ def run_visual_extraction(stage01_dir, output_root, video_id="L25_V001", *,
     hybrid_pipelined: the hybrid reads run before the records are built, Unlimited-OCR reading
     the next slide while Qwen3-VL reads this slide's regions in one batch (pipelined());
     1.31x faster on 3 L25 videos with the same OCR text (speed bench of 12/10)."""
+    # gate_decisions holds gate_keyframe results computed before releasing SigLIP.
+    # Both options are opt-in; notebook defaults and gate math are unchanged.
     from PIL import Image
 
     if ocr_engine not in {"easyocr", "hybrid", "qwen"}:
@@ -928,6 +931,7 @@ def run_visual_extraction(stage01_dir, output_root, video_id="L25_V001", *,
     directory = begin_stage(output_root, 2)
     parameters = {
         "ocr_engine": ocr_engine, "languages": list(languages),
+        **({"skip_ocr": True} if skip_ocr else {}),
         **({"hybrid_ocr_model": HYBRID_OCR_MODEL, "hybrid_vlm_model": HYBRID_VLM_MODEL,
             "hybrid_prompt_sha256": fingerprint(hybrid_crop_prompt(describe_language))} if ocr_engine == "hybrid" else {}),
         **({"qwen_ocr_model": qwen_model, "qwen_revision": qwen_revision,
@@ -999,7 +1003,12 @@ def run_visual_extraction(stage01_dir, output_root, video_id="L25_V001", *,
                 image, interval, frame_hsv, crop_rois.get(interval["segment_id"], crop_rois.get(video_id)))
         else:
             roi = detect_content_roi(image, frame_hsv)
-        gate_skip, gate_scores = gate_keyframe(ocr_gate, image, roi)
+        if skip_ocr:
+            gate_skip, gate_scores = True, {}
+        elif gate_decisions is not None:
+            gate_skip, gate_scores = gate_decisions[interval["segment_id"]]
+        else:
+            gate_skip, gate_scores = gate_keyframe(ocr_gate, image, roi)
         reused_from = None
         if reuse_near_duplicates and not gate_skip:
             thumb = slide_thumb(crop_to_roi(image, roi))
@@ -1082,7 +1091,8 @@ def run_visual_extraction(stage01_dir, output_root, video_id="L25_V001", *,
                     "ocr_blocks": [], "hybrid_regions": [], "raw_hybrid_response": None,
                     "raw_vision_response": "", "resolved_revision": None,
                     "vision": {"content_kind": "unclassified", "title": "", "description": "",
-                               "regions": [], "uncertainties": [], "parse_status": "skipped_no_content"},
+                               "regions": [], "uncertainties": [],
+                               "parse_status": "skipped_requested" if skip_ocr else "skipped_no_content"},
                 }
             elif reused_from is not None:
                 extraction = read_extractions[reused_from]
@@ -1187,7 +1197,8 @@ def run_visual_extraction(stage01_dir, output_root, video_id="L25_V001", *,
             "raw_vision_response": extraction["raw_vision_response"],
             "raw_ocr_response": extraction.get("raw_hybrid_response"),
             "description_status": vision["parse_status"],
-            "ocr_status": ("skipped_no_content" if vision["parse_status"] == "skipped_no_content" else
+            "ocr_status": ("skipped_requested" if skip_ocr else
+                           "skipped_no_content" if vision["parse_status"] == "skipped_no_content" else
                            "failed" if extraction.get("ocr_quality", {}).get("evidence_excluded") else "read"),
             "ocr_gate_score": gate_score,
             **({"ocr_generation": extraction["ocr_generation"], "ocr_quality": extraction["ocr_quality"],

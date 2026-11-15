@@ -1,6 +1,7 @@
 import { useId, useRef, useState } from "react";
 import { Dialog, Icon, Spinner, UploadPanel } from "../../shared/components/UI";
 import { videoTitle } from "../../shared/lib/api";
+import ExtractionProgress from "../extract/ExtractionProgress";
 import "./import-dialog.css";
 
 const PLATFORMS = [
@@ -24,7 +25,7 @@ function identifyPlatform(value) {
 
 export default function ImportDialog({
   open, onClose, mode, onModeChange, onUpload, uploading, filename, error,
-  videoImport, onOpenVideo, t,
+  videoImport, onOpenVideo, fileVideo, extractionStatus, onExtract, t,
 }) {
   const { sourceUrl: url, setSourceUrl: setUrl } = videoImport;
   const [validationError, setValidationError] = useState("");
@@ -94,6 +95,7 @@ export default function ImportDialog({
             <span className="import-success-icon"><Icon name="checkCircle" size={32} /></span>
             <h3>{t.importComplete}</h3>
             <p className="import-video-title">{videoTitle(job.video.filename)}</p>
+            <ExtractionProgress job={extractionStatus(job.video.video_id)} onRetry={() => onExtract(job.video.video_id)} t={t} />
             <button className="button button-primary" onClick={() => onOpenVideo(job.video)}>
               <Icon name="play" size={17} />{t.openVideo}
             </button>
@@ -153,7 +155,14 @@ export default function ImportDialog({
         )}
       </div>
       <div id={`${fieldId}-file-panel`} role="tabpanel" aria-labelledby={`${fieldId}-file-tab`} hidden={selectedMode !== "file"}>
-        <UploadPanel onUpload={onUpload} uploading={uploading} filename={filename} error={error} t={t} />
+        {fileVideo ? (
+          <div className="import-success">
+            <h3>{t.importComplete}</h3>
+            <p className="import-video-title">{videoTitle(fileVideo.filename)}</p>
+            <ExtractionProgress job={extractionStatus(fileVideo.video_id)} onRetry={() => onExtract(fileVideo.video_id)} t={t} />
+            <button className="button button-primary" onClick={() => onOpenVideo(fileVideo)}>{t.openVideo}</button>
+          </div>
+        ) : <UploadPanel onUpload={onUpload} uploading={uploading} filename={filename} error={error} t={t} />}
       </div>
     </Dialog>
   );

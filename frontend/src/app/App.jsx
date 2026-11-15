@@ -3,10 +3,11 @@ import VideoRail from "../features/library/VideoRail";
 import Splitter, { useStoredSize } from "../shared/components/Splitter";
 import { Dialog, HelpDialog, Icon, Spinner } from "../shared/components/UI";
 import ImportDialog from "../features/import/ImportDialog";
-import { request, videoTitle } from "../shared/lib/api";
+import { request, videoReady, videoTitle } from "../shared/lib/api";
 import { useMediaQuery, usePreference } from "../shared/lib/hooks";
 import { STRINGS } from "../shared/lib/strings";
 import { useVideoImport } from "../features/import/useVideoImport";
+import { useExtraction } from "../features/extract/useExtraction";
 
 const Workspace = lazy(() => import("../features/chat/Workspace"));
 
@@ -34,9 +35,11 @@ export default function App() {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const [uploadFilename, setUploadFilename] = useState("");
+  const [uploadedVideo, setUploadedVideo] = useState(null);
   const uploadRequest = useRef(null);
   const desktop = useMediaQuery("(min-width: 1100px)");
   const t = STRINGS[lang];
+  const { status: extractionStatus, start: startExtraction } = useExtraction(videoList, () => refreshLibrary());
   const videoImport = useVideoImport({
     onComplete: (video) => {
       setVideoList((videos) => [video, ...(videos || []).filter((item) => item.video_id !== video.video_id)]);
@@ -82,21 +85,21 @@ export default function App() {
   const sortedVideos = useMemo(
     () =>
       videoList
-        ? [...videoList].sort(
+        ? videoList.map((video) => ({ ...video, extraction: extractionStatus(video.video_id) })).sort(
             (a, b) =>
               (Date.parse(b.uploaded_at) || 0) -
               (Date.parse(a.uploaded_at) || 0),
           )
         : null,
-    [videoList],
+    [videoList, extractionStatus],
   );
   useEffect(() => {
     if (!selectedVideo && sortedVideos?.length)
-      setSelectedVideo(sortedVideos.find((video) => video.has_transcript) || sortedVideos[0]);
+      setSelectedVideo(sortedVideos.find(videoReady) || sortedVideos[0]);
   }, [selectedVideo, sortedVideos]);
   const currentVideo = selectedVideo
-    ? videoList?.find((item) => item.video_id === selectedVideo.video_id) ||
-      selectedVideo
+    ? sortedVideos?.find((item) => item.video_id === selectedVideo.video_id) ||
+      { ...selectedVideo, extraction: extractionStatus(selectedVideo.video_id) }
     : null;
 
   function refreshLibrary() {
@@ -139,6 +142,7 @@ export default function App() {
   function openUpload(mode = "link") {
     setUploadError("");
     if (!addingVideo) {
+      setUploadedVideo(null);
       setImportMode(mode === "file" ? "file" : "link");
       if (mode === "file") videoImport.clearImport();
     }
@@ -162,6 +166,7 @@ export default function App() {
     setUploading(true);
     setUploadError("");
     setUploadFilename(file.name);
+    setUploadedVideo(null);
     const form = new FormData();
     form.append("file", file);
     try {
@@ -175,7 +180,7 @@ export default function App() {
         ...(videos || []).filter((item) => item.video_id !== video.video_id),
       ]);
       selectVideo(video);
-      setUploadOpen(false);
+      setUploadedVideo(video);
       refreshLibrary();
     } catch (error) {
       if (!controller.signal.aborted) {
@@ -206,6 +211,7 @@ export default function App() {
         return next.length === 1 && next[0] === current ? [] : next;
       }),
     onClearChecked: () => setCheckedIds([]),
+    onExtract: startExtraction,
     onUpload: () => openUpload(),
     onRefresh: refreshLibrary,
     addingVideo,
@@ -269,6 +275,8 @@ export default function App() {
             <Workspace
               key={currentVideo.video_id}
               video={currentVideo}
+              ready={videoReady(currentVideo) && checkedIds.every((id) => videoReady(sortedVideos?.find((video) => video.video_id === id)))}
+              onExtract={() => startExtraction(currentVideo.video_id)}
               initialQuestion={workspaceStart.prompt}
               initialChatOpen={workspaceStart.focusChat}
               initialTime={startTime}
@@ -319,12 +327,15 @@ export default function App() {
         open={uploadOpen}
         onClose={() => setUploadOpen(false)}
         mode={importMode}
-        onModeChange={(mode) => { setImportMode(mode); setUploadError(""); }}
+        onModeChange={(mode) => { setImportMode(mode); setUploadError(""); setUploadedVideo(null); }}
         onUpload={uploadFile}
         uploading={uploading}
         filename={uploadFilename}
         error={uploadError}
         videoImport={videoImport}
+        fileVideo={uploadedVideo}
+        extractionStatus={extractionStatus}
+        onExtract={startExtraction}
         onOpenVideo={(video) => { selectVideo(video); setUploadOpen(false); videoImport.clearImport(); }}
         t={t}
       />

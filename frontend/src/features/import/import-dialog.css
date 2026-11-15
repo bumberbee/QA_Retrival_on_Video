@@ -130,6 +130,8 @@
 .import-progress progress::-webkit-progress-bar { background: var(--line); }
 .import-progress progress::-webkit-progress-value { background: var(--accent); }
 .import-progress p { color: var(--muted); font-size: 12px; line-height: 1.7; }
+.extraction-progress { width: 100%; }
+.rail-extract { margin: 0 12px 10px; color: var(--accent-ink); font-size: 12px; }
 .import-success { display: grid; justify-items: center; gap: 14px; padding: 15px 0 4px; text-align: center; }
 .import-success-icon { color: var(--accent-ink); }
 .import-success h3 { font-size: 19px; }

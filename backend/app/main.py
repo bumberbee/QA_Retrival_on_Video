@@ -1,4 +1,5 @@
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -13,8 +14,21 @@ from app.features.conversations import router as conversations
 from app.features.ask import router as qa
 from app.features.videos import router as videos  # noqa: E402
 from app.features.ask import llm  # noqa: E402
+from app.features.extract import jobs as extraction, router as extract  # noqa: E402
+from app.shared.frontend import mount_frontend  # noqa: E402
 
-app = FastAPI(title="Video Q&A API")
+
+@asynccontextmanager
+async def lifespan(app):
+    if extraction.enabled() and not storage.cloud():
+        extraction.get_queue()
+    try:
+        yield
+    finally:
+        extraction.shutdown()
+
+
+app = FastAPI(title="Video Q&A API", lifespan=lifespan)
 
 app.add_middleware(videos.UploadLimitMiddleware)
 app.add_middleware(
@@ -32,6 +46,7 @@ app.add_middleware(
 app.include_router(videos.router)
 app.include_router(qa.router)
 app.include_router(conversations.router)
+app.include_router(extract.router)
 
 
 @app.exception_handler(storage.InvalidVideoId)
@@ -47,4 +62,8 @@ async def cloud_write_unsupported(request: Request, error: storage.CloudWriteUns
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", **llm.describe()}
+    return {"status": "ok", "extraction_enabled": extraction.enabled(), **llm.describe()}
+
+
+if frontend_dir := os.getenv("SERVE_FRONTEND_DIR"):
+    mount_frontend(app, frontend_dir)

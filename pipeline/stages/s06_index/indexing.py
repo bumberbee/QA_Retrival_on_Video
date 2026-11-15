@@ -83,7 +83,7 @@ def make_evidence_chunks(segments, fallback_spans, tokenizer, *,
                          video_id="L25_V001", speech_chunk_tokens=180,
                          speech_maximum_seconds=50.0, include_generated_descriptions=False,
                          dedupe_previous=False, passage_prefix="passage: ", generated_semantic_only=False,
-                         visual_state_timing=True):
+                         visual_state_timing=True, allow_empty=False):
     """passage_prefix: "passage: " for E5, "" for bge-m3. dedupe_previous: index only the OCR lines not already on the previous slide (stage 04
     ocr_text_new), so a repeated slide does not crowd the search with copies."""
     if not 0 <= overlap_tokens < chunk_tokens <= model_limit - 32:
@@ -205,7 +205,7 @@ def make_evidence_chunks(segments, fallback_spans, tokenizer, *,
                     "keyframe_time_sec": visual["keyframe_time_sec"],
                     "occurrence_id": visual["occurrence_id"],
                 })
-    if not chunks:
+    if not chunks and not allow_empty:
         raise ValueError("Không có bằng chứng để lập chỉ mục; kiểm tra OCR/ASR.")
     if len({chunk["chunk_id"] for chunk in chunks}) != len(chunks):
         raise ValueError("Trùng chunk_id.")
@@ -241,7 +241,7 @@ def run_indexing(stage04_dir, output_root, video_id="L25_V001", *,
                  chunk_tokens=350, overlap_tokens=40, batch_size=32, device=None,
                  speech_chunk_tokens=180, speech_maximum_seconds=50.0,
                  include_generated_descriptions=False, dedupe_previous=False, generated_semantic_only=False,
-                 visual_state_timing=True):
+                 visual_state_timing=True, allow_empty=False):
     import numpy as np
     # E5 was trained with "query: " / "passage: " prefixes; bge-m3 uses none.
     query_prefix, passage_prefix = ("query: ", "passage: ") if "e5" in embedding_model.lower() else ("", "")
@@ -262,7 +262,7 @@ def run_indexing(stage04_dir, output_root, video_id="L25_V001", *,
         include_generated_descriptions=include_generated_descriptions, dedupe_previous=dedupe_previous,
         passage_prefix=passage_prefix,
         generated_semantic_only=generated_semantic_only,
-        visual_state_timing=visual_state_timing,
+        visual_state_timing=visual_state_timing, allow_empty=allow_empty,
     )
     ad_review = []
     if any("spans_before_ad_filter" in s["speech"] for s in segments):
@@ -274,7 +274,7 @@ def run_indexing(stage04_dir, output_root, video_id="L25_V001", *,
             speech_chunk_tokens=speech_chunk_tokens, speech_maximum_seconds=speech_maximum_seconds,
             include_generated_descriptions=include_generated_descriptions, dedupe_previous=dedupe_previous,
             passage_prefix=passage_prefix, generated_semantic_only=generated_semantic_only,
-            visual_state_timing=visual_state_timing)
+            visual_state_timing=visual_state_timing, allow_empty=allow_empty)
         span_words = {span["span_id"]: set(span["word_ids"]) for s in before for span in s["speech"]["spans"]}
         ad_words = {word_id for s in segments for word_id in s["speech"].get("promotional_word_ids", [])}
         for chunk in original:
@@ -294,7 +294,7 @@ def run_indexing(stage04_dir, output_root, video_id="L25_V001", *,
             "chunks": ad_review})
     # Counts are checked above: no silent encoder truncation.
     encode = model.encode_chunks if hasattr(model, "encode_chunks") else model.encode
-    vectors = encode(
+    vectors = np.empty((0, model.get_sentence_embedding_dimension()), dtype=np.float32) if not chunks else encode(
         chunks if hasattr(model, "encode_chunks") else [chunk["embedding_text"] for chunk in chunks],
         batch_size=batch_size, show_progress_bar=True,
         normalize_embeddings=True, convert_to_numpy=True,
@@ -317,6 +317,7 @@ def run_indexing(stage04_dir, output_root, video_id="L25_V001", *,
     resolved_revision = getattr(auto_model.config, "_commit_hash", None)
     parameters = {
         "embedding_model": embedding_model, "revision": revision,
+        **({"allow_empty": True} if allow_empty else {}),
         "resolved_revision": resolved_revision,
         "query_prefix": query_prefix, "passage_prefix": passage_prefix,
         "normalize_embeddings": True, "model_limit": model_limit,

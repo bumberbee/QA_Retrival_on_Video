@@ -153,6 +153,8 @@ def _ollama(prompt: str, max_tokens: int | None = None, temperature: float = 0.2
             "num_predict": max_tokens or int(os.getenv("OLLAMA_MAX_TOKENS", "512")),
         },
     }
+    if keep_alive := os.getenv("OLLAMA_KEEP_ALIVE"):
+        payload["keep_alive"] = keep_alive
     request = urllib.request.Request(
         f"{base}/api/chat",
         data=json.dumps(payload).encode("utf-8"),
@@ -207,6 +209,8 @@ def _ollama_stream(prompt: str, *, timings: dict | None = None):
         "options": {"temperature": 0.2, "num_ctx": int(os.getenv("OLLAMA_NUM_CTX", "8192")),
                     "num_predict": int(os.getenv("OLLAMA_MAX_TOKENS", "512"))},
     }
+    if keep_alive := os.getenv("OLLAMA_KEEP_ALIVE"):
+        payload["keep_alive"] = keep_alive
     request = urllib.request.Request(f"{base}/api/chat", data=json.dumps(payload).encode("utf-8"),
                                      headers={"Content-Type": "application/json"})
     started = time.perf_counter()

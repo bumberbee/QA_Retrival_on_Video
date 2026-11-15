@@ -1,5 +1,6 @@
 import { memo, useDeferredValue, useEffect, useMemo, useState } from "react";
-import { formatDuration, getSlides, slideUrl, videoTitle } from "../../shared/lib/api";
+import { formatDuration, getSlides, slideUrl, videoReady, videoTitle } from "../../shared/lib/api";
+import { extractionLabel } from "../extract/labels";
 import { useVisible } from "../../shared/lib/hooks";
 import { Icon, Spinner } from "../../shared/components/UI";
 
@@ -12,7 +13,7 @@ function normalize(value) {
     .replace(/[_-]+/g, " ");
 }
 
-const RailCard = memo(function RailCard({ video, active, checked, onSelect, onToggle, t }) {
+const RailCard = memo(function RailCard({ video, active, checked, onSelect, onToggle, onExtract, t }) {
   const [ref, visible] = useVisible();
   const [thumbnail, setThumbnail] = useState(null);
   useEffect(() => {
@@ -25,7 +26,7 @@ const RailCard = memo(function RailCard({ video, active, checked, onSelect, onTo
       alive = false;
     };
   }, [video.video_id, video.has_slides, visible]);
-  const ready = video.has_transcript;
+  const ready = videoReady(video);
   const duration = formatDuration(video.duration_seconds);
   return (
     <div
@@ -44,7 +45,10 @@ const RailCard = memo(function RailCard({ video, active, checked, onSelect, onTo
       </span>
       <span className="rail-card-body">
         <span className="rail-card-title">{videoTitle(video.filename)}</span>
-        <span className="rail-card-status">{ready ? t.ready : t.transcriptMissing}</span>
+        <span className="rail-card-status">
+          {video.extraction ? extractionLabel(video.extraction, t) : ready ? t.ready : t.transcriptMissing}
+          {["extracting", "importing"].includes(video.extraction?.status) && typeof video.extraction.progress === "number" && ` · ${Math.round(video.extraction.progress * 100)}%`}
+        </span>
       </span>
       </button>
       <label className="rail-check" title={ready ? t.askAcrossHint : t.transcriptMissing}>
@@ -56,6 +60,9 @@ const RailCard = memo(function RailCard({ video, active, checked, onSelect, onTo
           aria-label={`${t.askAcrossHint}: ${videoTitle(video.filename)}`}
         />
       </label>
+      {["failed", "not_started"].includes(video.extraction?.status) && (
+        <button className="rail-extract" onClick={() => onExtract(video.video_id)} title={video.extraction.error}>{t.extractRetry}</button>
+      )}
     </div>
   );
 });
@@ -68,6 +75,7 @@ export default function VideoRail({
   onSelect,
   checkedIds = [],
   onToggle,
+  onExtract,
   onClearChecked,
   onUpload,
   onRefresh,
@@ -87,13 +95,13 @@ export default function VideoRail({
   const list = useMemo(() => {
     const needle = normalize(query.trim());
     return (videos || [])
-      .filter((video) => (showAll || video.has_transcript) && normalize(video.filename).includes(needle))
+      .filter((video) => (showAll || videoReady(video)) && normalize(video.filename).includes(needle))
       .sort((a, b) => {
         const difference = (Date.parse(b.uploaded_at) || 0) - (Date.parse(a.uploaded_at) || 0);
         return newestFirst ? difference : -difference;
       });
   }, [videos, query, showAll, newestFirst]);
-  const readyCount = (videos || []).filter((video) => video.has_transcript).length;
+  const readyCount = (videos || []).filter(videoReady).length;
 
   return (
     <div className="rail">
@@ -174,6 +182,7 @@ export default function VideoRail({
               checked={checkedIds.length ? checkedIds.includes(video.video_id) : video.video_id === selectedId}
               onSelect={onSelect}
               onToggle={onToggle}
+              onExtract={onExtract}
               t={t}
             />
           ))

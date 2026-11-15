@@ -93,7 +93,7 @@ class ProductionProgress:
                 self.flush()
 
 
-def validate_video_output(root, video_id, *, allow_missing_audio=False):
+def validate_video_output(root, video_id, *, allow_missing_audio=False, allow_empty_index=False):
     """Full manifest lineage, source, vector, image and evidence-time contract."""
     import numpy as np
     root = Path(root)
@@ -117,7 +117,7 @@ def validate_video_output(root, video_id, *, allow_missing_audio=False):
     chunks = [json.loads(line) for line in (root / '05_index/chunks.jsonl').read_text(
         encoding='utf-8').splitlines() if line]
     vectors = np.load(root / '05_index/embeddings.npy', allow_pickle=False)
-    if not chunks or vectors.shape != (len(chunks), 384):
+    if (not chunks and not allow_empty_index) or vectors.shape != (len(chunks), 384):
         raise ValueError(f'chunk/vector shape mismatch: {len(chunks)}, {vectors.shape}')
     if manifests[-1].get('chunk_count') != len(chunks):
         raise ValueError('manifest chunk_count mismatch')

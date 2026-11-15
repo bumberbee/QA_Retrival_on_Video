@@ -31,7 +31,7 @@ def ocr(video_id, stage01):
     started = time.monotonic()
     directory, _, _ = run_visual_extraction(
         stage01, OUTPUT_ROOT / video_id, video_id, languages=OCR_LANGUAGES,
-        ocr_device='cuda', ocr_scale=OCR_SCALE, ocr_batch_size=OCR_BATCH_SIZE,
+        ocr_device=globals().get('OCR_DEVICE', 'cuda'), ocr_scale=OCR_SCALE, ocr_batch_size=OCR_BATCH_SIZE,
         frame_hsv=FRAME_HSV.get(video_id), ocr_engine=OCR_ENGINE,
         hybrid_devices=HYBRID_DEVICES, ocr_gate=ocr_gate, hybrid_rescue_area=HYBRID_RESCUE_AREA,
         hybrid_skip_repeated_decor=HYBRID_SKIP_REPEATED_DECOR, hybrid_min_region_area=HYBRID_MIN_REGION_AREA,
@@ -51,6 +51,7 @@ def asr(video_id):
         None, find_video_file(video_id), OUTPUT_ROOT / video_id, video_id,
         model_id=ASR_MODEL, revision=ASR_REVISION, language=VIDEO_LANGUAGES.get(video_id, 'vi'),
         transcription_mode=ASR_MODE, batch_size=ASR_BATCH_SIZE, device_index=ASR_DEVICE_INDEX,
+        device=globals().get('ASR_DEVICE', 'auto'),
     )
     return directory, time.monotonic() - started
 
