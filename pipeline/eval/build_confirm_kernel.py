@@ -17,7 +17,7 @@ def build(destination):
              ("offline_common.py", "eval_retrieval.py", "legacy_offline.py", "confirm_kaggle.py", "questions_dev.json")]
     files += [ROOT / "shared/source_paths.py"]
     files += [module_path(name) for name in ("common.py", "indexing.py")]
-    files += [REPO / "backend/app/features/search/retrieval.py"]
+    files += [REPO / "backend/app/features/search" / name for name in ("retrieval.py", "rerank.py")]
     payload = {str(p.relative_to(REPO)).replace("\\", "/"): p.read_text(encoding="utf-8") for p in files}
     payload["pipeline/eval/questions_legacy.json"] = (
         LEGACY_GOLD / "qa/questions.json").read_text(encoding="utf-8")

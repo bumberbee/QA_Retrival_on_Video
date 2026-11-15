@@ -12,6 +12,7 @@ keyframe image, so the answer model can also read numbers from the slide image i
 from __future__ import annotations
 
 import json
+import os
 import re
 import sqlite3
 import threading
@@ -22,12 +23,15 @@ from functools import lru_cache
 from pathlib import Path
 
 from app.shared import storage
+from .rerank import rerank
 
 INDEX_DIR_NAME = "index"
 E5_REPO = "intfloat/multilingual-e5-small"
 E5_REVISION = "614241f622f53c4eeff9890bdc4f31cfecc418b3"
 SEMANTIC_WEIGHT, LEXICAL_WEIGHT, RRF_K = 1.0, 0.5, 60
 CANDIDATES, MAX_SLIDES, MAX_IMAGES = 20, 3, 2
+RERANK = os.environ.get("LECTURE_RERANK", "off").strip().lower() in {"1", "true", "on", "yes"}
+RERANK_CANDIDATES = 30
 # Legacy boost retained for ablation; disabled after query-time OCR grouping (eval/PHASE2.md).
 SOURCE_BOOST = {"ocr": 1.05, "region": 1.05}
 # Independent query-time ablations; no index files are changed.
@@ -371,9 +375,13 @@ def context_candidates(index, sid, ranked, similarities, options, sources=None, 
 
 def search(video_id: str, question: str, current_time: float | None = None, encoder=None,
            sources: frozenset | None = None, prefer_segments: frozenset = frozenset(),
-           options: RetrievalOptions | None = None) -> dict:
+           options: RetrievalOptions | None = None, *, rerank_scorer=None) -> dict:
     """Ranked chunks fused per slide -> {'slides': [...], 'best_semantic': float, 'temporal': bool}.
-    sources limits search and evidence to some chunk types ("speech", "ocr", "region") for ablations."""
+    sources limits search and evidence to some chunk types ("speech", "ocr", "region") for ablations.
+    LECTURE_RERANK=on reranks the top 30 RRF candidates before selecting slides.
+    Scored pools add best_rerank and chunk-level scores; unavailable models raise.
+    rerank_scorer injects a logit scorer without loading a model.
+    """
     import numpy as np
 
     index = load_index(video_id)
@@ -425,6 +433,12 @@ def search(video_id: str, question: str, current_time: float | None = None, enco
                                    if groups[c["chunk_id"]] == groups[cid]):
             scores[cid] *= FOLLOW_UP_BOOST
     ranked = sorted(scores, key=lambda cid: -scores[cid])
+    reranked = {}
+    if RERANK:
+        candidates = [index.chunks[by_id[cid]] for cid in ranked[:RERANK_CANDIDATES]]
+        rescored = rerank(question, candidates, scorer=rerank_scorer)
+        reranked = {c["chunk_id"]: c for c in rescored}
+        ranked = list(reranked)
     order: list[str] = []
     if temporal:
         if current:
@@ -456,6 +470,10 @@ def search(video_id: str, question: str, current_time: float | None = None, enco
         best = max((float(similarities[by_id[c["chunk_id"]]]) for c in chunks), default=0.0)   # -1 = source left out
         fused = max((scores.get(c["chunk_id"], 0.0) for c in chunks), default=0.0)
         matched, evidence = context_candidates(index, sid, ranked, similarities, options, sources, question)
+        for chunk in evidence:
+            scored = reranked.get(chunk["chunk_id"])
+            if scored is not None:
+                chunk.update(rerank_score=scored["rerank_score"], rerank_rank=scored["rerank_rank"])
         if options.dedup:
             for chunk in evidence:
                 chunk["occurrences"] = [{"chunk_id": c["chunk_id"], "segment_id": c["segment_id"],
@@ -474,7 +492,8 @@ def search(video_id: str, question: str, current_time: float | None = None, enco
                        "evidence_candidates": evidence})
     return {"slides": slides, "temporal": temporal,
             "question": question, "retrieval_options": asdict(options),
-            "best_semantic": round(float(similarities.max()), 4) if len(similarities) else 0.0}
+            "best_semantic": round(float(similarities.max()), 4) if len(similarities) else 0.0,
+            **({"best_rerank": next(iter(reranked.values()))["rerank_score"]} if reranked else {})}
 
 
 def video_title(video_id: str) -> str:
@@ -498,9 +517,12 @@ def search_many(video_ids: list, question: str, current_video: str | None = None
     slides = (pinned + rest)[:max_slides]
     for slide in slides:
         slide["video_title"] = video_title(slide["video_id"])
-    return {"slides": slides, "temporal": bool(pinned),
-            "best_semantic": max(r["best_semantic"] for r in results), "videos": len(results),
-            "question": question, "retrieval_options": asdict(options or RetrievalOptions())}
+    found = {"slides": slides, "temporal": bool(pinned),
+             "best_semantic": max(r["best_semantic"] for r in results), "videos": len(results),
+             "question": question, "retrieval_options": asdict(options or RetrievalOptions())}
+    if any("best_rerank" in r for r in results):
+        found["best_rerank"] = max(r["best_rerank"] for r in results if "best_rerank" in r)
+    return found
 
 
 def clock(seconds: float) -> str:

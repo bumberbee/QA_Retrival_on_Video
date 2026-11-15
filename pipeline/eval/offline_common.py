@@ -65,7 +65,8 @@ def load_backend():
         return sys.modules[name + ".features.search.retrieval"]
     for package in (name, name + ".features", name + ".features.search", name + ".shared"):
         module = types.ModuleType(package)
-        module.__path__ = []
+        suffix = package.removeprefix(name).strip(".").split(".") if package != name else []
+        module.__path__ = [str(REPO / "backend" / "app" / Path(*suffix))]
         sys.modules[package] = module
     storage = types.ModuleType(name + ".shared.storage")
     storage.DATA_DIR = EXPERIMENTS / "_unused_data"

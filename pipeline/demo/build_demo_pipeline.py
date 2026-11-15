@@ -43,6 +43,10 @@ def backend_sources():
     retrieval = (BACKEND / 'features/search/retrieval.py').read_text(encoding='utf-8')
     # Reuse the ranker, with local storage and a broader demo evidence window.
     retrieval = retrieval.replace('from app.shared import storage', 'storage = DEMO_STORAGE')
+    # The notebook embeds search as a standalone module, so include its local-only dependency.
+    rerank = (BACKEND / 'features/search/rerank.py').read_text(encoding='utf-8')
+    retrieval = retrieval.replace('from .rerank import rerank',
+                                  rerank.replace('from __future__ import annotations', ''))
     # Expose the actual RRF pool, without changing its scores or ordering.
     retrieval = retrieval.replace('return {"slides": slides, "temporal": temporal,', '''return {"candidate_ranks": [
                 {"chunk_id": cid, "segment_id": index.chunks[by_id[cid]]["segment_id"],

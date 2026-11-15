@@ -6,6 +6,7 @@ from time import perf_counter
 
 from .config import load_policy
 from .rules import RulesBackend
+from .reranker import RerankerBackend
 from .semantic import SemanticBackend, semantic_backend
 from .types import BackendResult, Decision, NotConfigured
 
@@ -21,7 +22,8 @@ class UnconfiguredBackend:
 
 
 BACKENDS = {"rules": RulesBackend(), "semantic": SemanticBackend(),
-            **{name: UnconfiguredBackend(name) for name in ("reranker", "nli", "minijev", "jev")}}
+            "reranker": RerankerBackend(POLICY),
+            **{name: UnconfiguredBackend(name) for name in ("nli", "minijev", "jev")}}
 
 
 def confidence(p: float, n: int, kind: str) -> float:
@@ -60,7 +62,8 @@ def decide(name: str, state: dict, *, backend: str | None = None,
 
     Only NotConfigured triggers fallback; programming/configuration errors surface.
     Binary zones apply to P(first label), not to confidence in a negative label.
-    Choice zones apply to the selected label's p. Uniform priors have confidence 0.
+    Choice zones apply to the selected label's p (Q8 reranker uses evidence support).
+    Uniform priors have confidence 0.
     Optional keyword arguments inject policy/registry without changing global state.
     """
     started = perf_counter()
@@ -68,6 +71,8 @@ def decide(name: str, state: dict, *, backend: str | None = None,
     backends = BACKENDS if backends is None else backends
     entry = policy[name]
     selected = backend or entry["backend"]
+    if selected == "reranker" and isinstance(backends.get(selected), RerankerBackend):
+        backends = {**backends, "reranker": RerankerBackend(policy)}
     encode = state.get("encode")
     if encode is None and state.get("encoder") is not None:
         encode = state["encoder"].encode
