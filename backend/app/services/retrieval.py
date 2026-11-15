@@ -508,7 +508,17 @@ def clock(seconds: float) -> str:
     return f"{seconds // 60:02d}:{seconds % 60:02d}"
 
 
-def _legacy_context(found: dict, speech_chars: int = 2500, ocr_chars: int = 1800) -> str:
+def _evidence_source(item: dict, kind: str) -> dict:
+    """Snapshot the cited span, never a deduplicated occurrence or the parent slide span."""
+    chunk_ids = [item["chunk_id"]] if "chunk_id" in item else list(item.get("matched_chunk_ids", []))
+    return {"video_id": item.get("video_id", ""), "t_start": item["start_sec"],
+            "t_end": item["end_sec"], "slide_id": item["segment_id"],
+            "segment_id": item["segment_id"], "chunk_ids": chunk_ids, "kind": kind,
+            "title": item.get("title") or "", "video_title": item.get("video_title", "")}
+
+
+def _legacy_context(found: dict, speech_chars: int = 2500, ocr_chars: int = 1800,
+                    *, evidence_map: dict | None = None, max_chars: int | None = None) -> str:
     """Evidence text for the answer model, slide by slide in time order."""
     blocks = []
     several = len({slide.get("video_id") for slide in found["slides"]}) > 1
@@ -518,19 +528,33 @@ def _legacy_context(found: dict, speech_chars: int = 2500, ocr_chars: int = 1800
         if slide["title"]:
             parts.append(f"Tiêu đề: {slide['title']}")
         if slide["ocr_text"]:
-            parts.append("Chữ trên slide (OCR, có thể sai số/dấu — đối chiếu ảnh nếu có):\n" + slide["ocr_text"][:ocr_chars])
+            note = ("Chữ trên slide (OCR, có thể sai số/dấu):\n" if evidence_map is not None else
+                    "Chữ trên slide (OCR, có thể sai số/dấu — đối chiếu ảnh nếu có):\n")
+            parts.append(note + slide["ocr_text"][:ocr_chars])
         for figure in slide["figures"][:3]:
             parts.append("Hình/bảng/công thức: " + figure[:600])
         if slide["speech_text"]:
             parts.append("Lời giảng:\n" + slide["speech_text"][:speech_chars])
-        blocks.append("\n".join(parts))
+        block = "\n".join(parts)
+        if evidence_map is not None:
+            evidence_id = f"E{len(evidence_map) + 1}"
+            block = f"[{evidence_id}] " + block
+            if max_chars is not None:
+                remaining = max_chars - sum(len(b) for b in blocks) - 2 * len(blocks)
+                # Never send a partial ID/header or map an entirely omitted block.
+                if remaining <= len(block.split("\n", 1)[0]):
+                    break
+                block = block[:remaining]
+            evidence_map[evidence_id] = _evidence_source(slide, "slide")
+        blocks.append(block)
     return "\n\n".join(blocks)
 
 
-def evidence_block(chunk, several=False):
+def evidence_block(chunk, several=False, evidence_id: str | None = None):
     where = f"Video {chunk.get('video_title', chunk.get('video_id', ''))} · " if several else ""
     label = {"speech": "Lời giảng", "ocr": "Chữ trên slide (OCR)", "region": "Hình/bảng/công thức"}[chunk["source_type"]]
-    return (f"[{where}Slide {chunk['segment_id'].split(':')[-1]} · "
+    return ((f"[{evidence_id}] " if evidence_id else "")
+            + f"[{where}Slide {chunk['segment_id'].split(':')[-1]} · "
             f"{clock(chunk['start_sec'])}–{clock(chunk['end_sec'])}] {label}\n"
             + (f"Tiêu đề: {chunk['title']}\n" if chunk.get("title") else "")
             + chunk["text"])
@@ -538,6 +562,25 @@ def evidence_block(chunk, several=False):
 
 def build_context(found: dict, speech_chars: int = 2500, ocr_chars: int = 1800,
                   max_chars: int = MAX_CONTEXT_CHARS, options: RetrievalOptions | None = None) -> str:
+    """Backward-compatible context without evidence IDs."""
+    return _build_context(found, speech_chars, ocr_chars, max_chars, options)
+
+
+def build_context_with_ids(found: dict, speech_chars: int = 2500, ocr_chars: int = 1800,
+                           max_chars: int = MAX_CONTEXT_CHARS,
+                           options: RetrievalOptions | None = None) -> tuple[str, dict]:
+    """Assign request-local immutable IDs in final context order, within the text budget."""
+    if max_chars < 1:
+        raise ValueError("Context budget must be positive.")
+    evidence_map = {}
+    context = _build_context(found, speech_chars, ocr_chars, max_chars, options, evidence_map=evidence_map)
+    found["evidence_map"] = evidence_map
+    found["context_chars"] = len(context)
+    return context, evidence_map
+
+
+def _build_context(found: dict, speech_chars: int, ocr_chars: int, max_chars: int,
+                   options: RetrievalOptions | None, *, evidence_map: dict | None = None) -> str:
     """Ranked evidence first, then bounded speech windows and conditional neighbors.
 
     Slide intervals stay in the response for the UI; each text block cites its own span.
@@ -545,7 +588,8 @@ def build_context(found: dict, speech_chars: int = 2500, ocr_chars: int = 1800,
     """
     options = options or RetrievalOptions(**found.get("retrieval_options", {}))
     if not (options.ranked_context or options.neighbors) or not any("evidence_candidates" in s for s in found["slides"]):
-        return _legacy_context(found, speech_chars, ocr_chars)
+        return _legacy_context(found, speech_chars, ocr_chars, evidence_map=evidence_map,
+                               max_chars=max_chars if evidence_map is not None else None)
     if max_chars < 1:
         raise ValueError("Context budget must be positive.")
     several = len({s.get("video_id") for s in found["slides"]}) > 1
@@ -557,7 +601,9 @@ def build_context(found: dict, speech_chars: int = 2500, ocr_chars: int = 1800,
                                    "video_title": slide.get("video_title", ""), "slide_rank": rank})
     candidates.sort(key=lambda c: (c["priority"], c["slide_rank"]))
     selected, seen, usage = [], set(), {}
-    legacy = "" if options.ranked_context else _legacy_context(found, speech_chars, ocr_chars)[:max_chars]
+    legacy = "" if options.ranked_context else _legacy_context(
+        found, speech_chars, ocr_chars, evidence_map=evidence_map,
+        max_chars=max_chars if evidence_map is not None else None)[:max_chars]
     context = legacy
     for chunk in candidates:
         kind = chunk["source_type"]
@@ -568,7 +614,8 @@ def build_context(found: dict, speech_chars: int = 2500, ocr_chars: int = 1800,
         limit = speech_chars if kind == "speech" else ocr_chars if kind == "ocr" else 1800
         if usage.get(key, 0) + len(chunk["text"]) > limit:
             continue
-        block = evidence_block(chunk, several)
+        provisional_id = f"E{len(evidence_map) + len(selected) + 1}" if evidence_map is not None else None
+        block = evidence_block(chunk, several, provisional_id)
         proposed = context + ("\n\n" if context else "") + block
         if len(proposed) > max_chars:
             continue
@@ -577,7 +624,15 @@ def build_context(found: dict, speech_chars: int = 2500, ocr_chars: int = 1800,
         seen.add(identity)
         usage[key] = usage.get(key, 0) + len(chunk["text"])
     selected.sort(key=lambda c: (c.get("video_title", ""), c.get("video_id", ""), c["start_sec"], c["end_sec"]))
-    context = "\n\n".join(([legacy] if legacy else []) + [evidence_block(c, several) for c in selected])
+    blocks = [legacy] if legacy else []
+    for chunk in selected:
+        evidence_id = None
+        if evidence_map is not None:
+            evidence_id = f"E{len(evidence_map) + 1}"
+            evidence_map[evidence_id] = _evidence_source(chunk, chunk["source_type"])
+            chunk["evidence_id"] = evidence_id
+        blocks.append(evidence_block(chunk, several, evidence_id))
+    context = "\n\n".join(blocks)
     found["context_evidence"] = selected
     found["context_legacy"] = legacy
     found["context_chars"] = len(context)

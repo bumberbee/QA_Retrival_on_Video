@@ -6,13 +6,15 @@
   machine without spending Gemini quota. Slow on CPU.
 * ``gemini`` -- the Gemini API (needs ``GEMINI_API_KEY``).
 
-Both receive the exact same prompt, so a local run exercises the same code path
-as the hosted one; only the transport differs.
+Both share the evidence and citation rules. Image instructions are included only
+when Gemini receives slide images; Ollama receives OCR text and speech.
 """
 
 import http.client
 import json
 import os
+import re
+import time
 import urllib.error
 import urllib.request
 
@@ -22,13 +24,74 @@ from . import gemini
 DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434"
 DEFAULT_OLLAMA_MODEL = "qwen2.5:7b"
 
+# Values from codex-strings.json, kept here so serving needs no external data file.
+REFUSAL = "Mình chưa tìm thấy đủ bằng chứng trong bài giảng để trả lời câu này."
+TEXT_ONLY_NOTE = "Bằng chứng gồm chữ trên slide (OCR, có thể sai số hoặc sai dấu) và lời giảng của giáo viên; bạn không xem được ảnh slide."
+IMAGE_NOTE = "Với công thức và con số, ưu tiên đọc trên ảnh slide; khi OCR và ảnh khác nhau, theo ảnh."
+CITE_RULE = "Trích dẫn bằng mã nguồn trong ngoặc vuông, ví dụ [E2], ngay sau ý dùng đoạn đó; không tự viết mốc thời gian."
+OLLAMA_TIMING_FIELDS = ("load_duration", "prompt_eval_count", "prompt_eval_duration",
+                        "eval_count", "eval_duration")
+
 SYSTEM_INSTRUCTION = (
     "Bạn là trợ lý trả lời câu hỏi về nội dung một video bài giảng, dựa trên "
     "transcript có timestamp dưới đây.\n"
     "Chỉ trả lời dựa trên nội dung transcript; nếu không tìm thấy thông tin liên "
-    "quan hãy nói rõ là transcript không đề cập.\n"
+    f"quan hãy nói rõ: \"{REFUSAL}\"\n"
     "Nếu phù hợp, hãy trích dẫn mốc thời gian [mm:ss] liên quan trong câu trả lời."
 )
+
+
+def _finish_timings(timings: dict | None, started: float, first: float | None,
+                    *, buffered: bool = False, ollama_data: dict | None = None) -> None:
+    """Client times are seconds; Ollama durations retain the server's nanoseconds.
+
+    A buffered API exposes text only with the complete response, so its observed
+    TTFT is marked explicitly rather than presented as token-level latency.
+    """
+    if timings is None:
+        return
+    timings.update(total_seconds=time.perf_counter() - started,
+                   ttft_seconds=first, ttft_is_buffered=buffered)
+    if ollama_data is not None:
+        timings.update({field: ollama_data.get(field) for field in OLLAMA_TIMING_FIELDS})
+
+
+class CitationRenderer:
+    """Render only complete evidence tokens, retaining possible split-token suffixes."""
+
+    def __init__(self, evidence_map: dict):
+        self.evidence_map = evidence_map
+        self.cited_ids: list[str] = []
+        self.invalid_citations: list[str] = []
+        self.pending = ""
+
+    def _replace(self, match) -> str:
+        evidence_id = match.group(1)
+        source = self.evidence_map.get(evidence_id)
+        if source is None:
+            if evidence_id not in self.invalid_citations:
+                self.invalid_citations.append(evidence_id)
+            return ""
+        if evidence_id not in self.cited_ids:
+            self.cited_ids.append(evidence_id)
+        seconds = max(0, int(source["t_start"]))
+        stamp = (f"{seconds // 3600}:{seconds // 60 % 60:02d}:{seconds % 60:02d}"
+                 if seconds >= 3600 else f"{seconds // 60:02d}:{seconds % 60:02d}")
+        return f"[{stamp}]"
+
+    def feed(self, piece: str, *, final: bool = False) -> str:
+        text = self.pending + piece
+        self.pending = ""
+        if not final:
+            suffix = re.search(r"\[(?:E[0-9]*)?$", text)
+            if suffix:
+                self.pending = text[suffix.start():]
+                text = text[:suffix.start()]
+        return re.sub(r"\[(E[0-9]+)\]", self._replace, text)
+
+    def metadata(self) -> dict:
+        return {"cited_sources": [{"id": eid, **self.evidence_map[eid]} for eid in self.cited_ids],
+                "invalid_citations": list(self.invalid_citations)}
 
 
 class LLMUnavailable(RuntimeError):
@@ -73,7 +136,7 @@ def _build_prompt(transcript: Transcript, question: str, current_time: float | N
 
 
 def _ollama(prompt: str, max_tokens: int | None = None, temperature: float = 0.2,
-            timeout: float | None = None) -> str:
+            timeout: float | None = None, *, timings: dict | None = None) -> str:
     base = os.getenv("OLLAMA_BASE_URL", DEFAULT_OLLAMA_URL).rstrip("/")
     model = os.getenv("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL)
     timeout = timeout or float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "1800"))
@@ -95,9 +158,14 @@ def _ollama(prompt: str, max_tokens: int | None = None, temperature: float = 0.2
         data=json.dumps(payload).encode("utf-8"),
         headers={"Content-Type": "application/json"},
     )
+    started = time.perf_counter()
+    first = None
+    data = {}
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             data = json.loads(response.read().decode("utf-8"))
+            if isinstance(data, dict) and isinstance(data.get("message"), dict) and data["message"].get("content"):
+                first = time.perf_counter() - started
     except urllib.error.URLError as error:
         raise LLMUnavailable(
             f"Không kết nối được Ollama tại {base} (model {model}): {error.reason}. "
@@ -105,6 +173,9 @@ def _ollama(prompt: str, max_tokens: int | None = None, temperature: float = 0.2
         ) from error
     except (OSError, http.client.HTTPException, UnicodeError, json.JSONDecodeError) as error:
         raise LLMUnavailable(f"Ollama không trả về kết quả hợp lệ: {error}") from error
+    finally:
+        _finish_timings(timings, started, first, buffered=True,
+                        ollama_data=data if isinstance(data, dict) else {})
 
     if not isinstance(data, dict) or not isinstance(data.get("message"), dict):
         raise LLMUnavailable("Ollama không trả về kết quả hợp lệ.")
@@ -116,20 +187,16 @@ def _ollama(prompt: str, max_tokens: int | None = None, temperature: float = 0.2
 
 EVIDENCE_INSTRUCTION = (
     "Bạn là trợ lý trả lời câu hỏi về một video bài giảng tiếng Việt. Bên dưới là BẰNG CHỨNG lấy "
-    "từ các slide liên quan: chữ trên slide (OCR, có thể sai số hoặc sai dấu), lời giảng của giáo "
-    "viên và ảnh chụp các slide đó.\n"
+    "từ các phần liên quan của bài giảng.\n"
     "- Chỉ trả lời dựa trên bằng chứng. Nếu bằng chứng không chứa câu trả lời, nói rõ "
-    "\"Bài giảng không đề cập đến nội dung này\" và gợi ý phần gần nhất mà bài có giảng.\n"
-    "- Với công thức và con số, ưu tiên đọc trên ảnh slide; khi OCR và ảnh khác nhau, theo ảnh.\n"
-    "- Trích dẫn mốc thời gian [mm:ss] ghi ngay trên đoạn bằng chứng dùng để trả lời. "
-    "Mỗi đoạn lời giảng có mốc riêng, có thể khác khoảng thời gian của slide.\n"
-    "- Chỉ nói \"không đề cập\" khi bằng chứng thật sự không có câu trả lời; đã có thì trả lời "
-    "thẳng, không vừa nói không đề cập vừa trả lời.\n"
+    f"\"{REFUSAL}\" và gợi ý phần gần nhất mà bài có giảng nếu có bằng chứng cho phần đó.\n"
+    f"- {CITE_RULE}\n"
+    "- Khi bằng chứng đã có câu trả lời, trả lời thẳng, không vừa từ chối vừa trả lời.\n"
     "- Trả lời đúng điều được hỏi, 1–3 câu, rõ ràng, bằng tiếng Việt."
 )
 
 
-def _ollama_stream(prompt: str):
+def _ollama_stream(prompt: str, *, timings: dict | None = None):
     """Yields the answer piece by piece (Ollama /api/chat with stream=true, one JSON per line)."""
     base = os.getenv("OLLAMA_BASE_URL", DEFAULT_OLLAMA_URL).rstrip("/")
     model = os.getenv("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL)
@@ -142,6 +209,9 @@ def _ollama_stream(prompt: str):
     }
     request = urllib.request.Request(f"{base}/api/chat", data=json.dumps(payload).encode("utf-8"),
                                      headers={"Content-Type": "application/json"})
+    started = time.perf_counter()
+    first = None
+    final_data = {}
     try:
         with urllib.request.urlopen(request, timeout=float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "1800"))) as response:
             has_text = False
@@ -160,8 +230,11 @@ def _ollama_stream(prompt: str):
                 piece = message.get("content", "")
                 if piece:
                     has_text = True
+                    if first is None:
+                        first = time.perf_counter() - started
                     yield piece
                 if data.get("done") is True:
+                    final_data = data
                     if not has_text:
                         raise LLMUnavailable("Ollama trả về câu trả lời rỗng.")
                     return
@@ -172,6 +245,8 @@ def _ollama_stream(prompt: str):
         ) from error
     except (OSError, http.client.HTTPException, UnicodeError, json.JSONDecodeError) as error:
         raise LLMUnavailable(f"Ollama stream không trả về kết quả hợp lệ: {error}") from error
+    finally:
+        _finish_timings(timings, started, first, ollama_data=final_data)
     raise LLMUnavailable("Ollama stream kết thúc trước tín hiệu done.")
 
 
@@ -191,18 +266,19 @@ def _history_block(history: list | None, summary: str = "", answer_chars: int = 
 
 def _evidence_prompt(question: str, current_time: float | None, found: dict, context: str,
                      previous: str | None = None, history: list | None = None, summary: str = "",
-                     rewritten: str | None = None) -> str:
+                     rewritten: str | None = None, images: bool = False) -> str:
     time_hint = ""
     if current_time is not None:
         time_hint = f"\nNgười dùng đang xem tại {int(current_time // 60):02d}:{int(current_time % 60):02d}."
     weak = ""
     if found.get("best_semantic", 1.0) < 0.85 and not found.get("temporal"):
         # measured on a 20-min lecture: questions it answers score >= 0.89, others 0.81-0.87
-        weak = "\nLưu ý: bằng chứng tìm được khớp yếu với câu hỏi, rất có thể bài giảng không đề cập."
+        weak = "\nLưu ý: bằng chứng tìm được khớp yếu với câu hỏi, có thể chưa đủ để trả lời."
     follow = "" if history else (
         f"Câu hỏi trước đó của người dùng (câu hỏi dưới đây nối tiếp nó): {previous}\n" if previous else "")
     meant = f"(Nghĩa đầy đủ của câu hỏi: {rewritten})\n" if rewritten and rewritten != question else ""
-    return (f"{EVIDENCE_INSTRUCTION}{time_hint}{weak}\n\n{_history_block(history, summary)}"
+    image_note = (f"Bằng chứng có ảnh chụp slide đính kèm.\n- {IMAGE_NOTE}" if images else TEXT_ONLY_NOTE)
+    return (f"{EVIDENCE_INSTRUCTION}\n{image_note}{time_hint}{weak}\n\n{_history_block(history, summary)}"
             f"--- BẰNG CHỨNG ---\n{context}\n--- HẾT ---\n\n{follow}Câu hỏi: {question}\n{meant}")
 
 
@@ -220,30 +296,72 @@ def _slide_images(found: dict) -> list:
 
 
 def answer_with_evidence(question: str, current_time: float | None, found: dict, context: str,
-                         previous: str | None = None, **memory) -> str:
+                         previous: str | None = None, *, timings: dict | None = None, **memory) -> str:
     """Answer from retrieved slide evidence (text + up to 2 slide images for Gemini).
     memory: history (last turns), summary, rewritten (see _evidence_prompt)."""
-    prompt = _evidence_prompt(question, current_time, found, context, previous, **memory)
-    if provider() == "ollama":
-        return _ollama(prompt)
-    return gemini.complete_parts([prompt] + _slide_images(found))
+    name = provider()
+    images = _slide_images(found) if name != "ollama" else []
+    prompt = _evidence_prompt(question, current_time, found, context, previous, images=bool(images), **memory)
+    if name == "ollama":
+        answer = _ollama(prompt, timings=timings)
+    else:
+        answer = _gemini_answer(lambda: gemini.complete_parts([prompt] + images), timings)
+    renderer = CitationRenderer(found.get("evidence_map", {}))
+    answer = renderer.feed(answer, final=True)
+    found.update(renderer.metadata())
+    return answer
 
 
 def stream_with_evidence(question: str, current_time: float | None, found: dict, context: str,
-                         previous: str | None = None, **memory):
+                         previous: str | None = None, *, timings: dict | None = None, **memory):
     """Same answer as answer_with_evidence, yielded piece by piece as the model writes it."""
-    prompt = _evidence_prompt(question, current_time, found, context, previous, **memory)
-    if provider() == "ollama":
-        yield from _ollama_stream(prompt)
-    else:
-        yield from gemini.stream_parts([prompt] + _slide_images(found))
+    name = provider()
+    images = _slide_images(found) if name != "ollama" else []
+    prompt = _evidence_prompt(question, current_time, found, context, previous, images=bool(images), **memory)
+    pieces = (_ollama_stream(prompt, timings=timings) if name == "ollama" else
+              _gemini_stream([prompt] + images, timings))
+    renderer = CitationRenderer(found.get("evidence_map", {}))
+    for piece in pieces:
+        rendered = renderer.feed(piece)
+        if rendered:
+            yield rendered
+    tail = renderer.feed("", final=True)
+    if tail:
+        yield tail
+    found.update(renderer.metadata())
 
 
-def answer_question(transcript: Transcript, question: str, current_time: float | None = None) -> str:
+def _gemini_answer(complete, timings: dict | None) -> str:
+    started = time.perf_counter()
+    first = None
+    try:
+        answer = complete()
+        if answer:
+            first = time.perf_counter() - started
+        return answer
+    finally:
+        _finish_timings(timings, started, first, buffered=True)
+
+
+def _gemini_stream(parts: list, timings: dict | None):
+    started = time.perf_counter()
+    first = None
+    try:
+        for piece in gemini.stream_parts(parts):
+            if piece:
+                if first is None:
+                    first = time.perf_counter() - started
+                yield piece
+    finally:
+        _finish_timings(timings, started, first)
+
+
+def answer_question(transcript: Transcript, question: str, current_time: float | None = None,
+                    *, timings: dict | None = None) -> str:
     prompt = _build_prompt(transcript, question, current_time)
     if provider() == "ollama":
-        return _ollama(prompt)
-    return gemini.complete(prompt)
+        return _ollama(prompt, timings=timings)
+    return _gemini_answer(lambda: gemini.complete(prompt), timings)
 
 
 # ---- multi-turn: rewrite follow-ups (LLM4CS-style few-shot) and summarize older turns ----
