@@ -1,0 +1,94 @@
+# TODO A8: calibrate every accept/reject threshold on dev, then freeze before test.
+Q1:
+  backend: rules
+  kind: binary
+  labels: [valid, invalid]
+  fallback_label: invalid
+  accept: 0.6
+  reject: 0.2
+Q2:
+  backend: rules
+  kind: choice
+  labels: [safe, toxic, injection, toxic_injection]
+  fallback_label: safe
+  accept: 0.6
+  reject: 0.2
+Q3:
+  backend: rules
+  kind: binary
+  labels: [follow_up, standalone]
+  fallback_label: standalone
+  accept: 0.6
+  reject: 0.2
+Q4:
+  backend: rules
+  kind: choice
+  labels: [definition, formula, explanation, comparison, locate_time, summary, out_of_scope, chitchat]
+  fallback_label: explanation
+  accept: 0.6
+  reject: 0.2
+  router:
+    confidence_threshold: 0.5  # TODO A8: calibrate Jev/mini-Jev and rule confidence.
+    semantic_threshold: 0.85
+    margin_threshold: 0.05
+    semantic_top_k: 3
+    heuristic_threshold: 0.5
+    rrf_threshold: 0.01      # TODO A8: raw RRF, not E5 cosine; calibrate on dev.
+Q5:
+  backend: rules
+  kind: choice
+  labels: [ocr, speech, both]
+  fallback_label: both
+  accept: 0.6
+  reject: 0.2
+Q6:
+  backend: minijev
+  kind: binary
+  labels: ["yes", "no"]
+  fallback_label: "no"
+  accept: 0.6
+  reject: 0.2
+  todo: A2/A2b do not define Q6; agree semantics before configuration.
+Q7:
+  backend: rules
+  kind: binary
+  labels: [temporal, not_temporal]
+  fallback_label: not_temporal
+  accept: 0.6
+  reject: 0.2
+Q8:
+  backend: reranker
+  kind: choice
+  labels: [enough, insufficient, irrelevant]
+  fallback_label: insufficient
+  accept: 0.6
+  reject: 0.2
+Q9:
+  backend: reranker
+  kind: binary
+  labels: [keep, drop]
+  fallback_label: drop
+  accept: 0.6
+  reject: 0.2
+Q10:
+  backend: nli
+  kind: choice
+  labels: [supported, contradicted, unrelated]
+  fallback_label: unrelated
+  accept: 0.6
+  reject: 0.2
+Q11:
+  backend: minijev
+  kind: binary
+  labels: ["yes", "no"]
+  fallback_label: "no"
+  accept: 0.6
+  reject: 0.2
+  todo: A2/A2b do not define Q11; agree semantics before configuration.
+Q12:
+  backend: rules
+  kind: binary
+  labels: [numeric_claim, no_numeric_claim]
+  fallback_label: no_numeric_claim
+  accept: 0.6
+  reject: 0.2

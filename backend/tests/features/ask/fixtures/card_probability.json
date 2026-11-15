@@ -1,0 +1,28 @@
+{
+  "source": {
+    "file": "D:/thesis-data/demo-notebook/final2/quality-review.json",
+    "key": "results[5].answer",
+    "matching_copy": "D:/thesis-data/demo-notebook/final2/verification.json#quality_review.results[5].answer",
+    "question": "D:/thesis-data/demo-notebook/final2/verification.json#retrieval_diagnostics[5].context_evidence[11].text (line 2)",
+    "expert_review": "D:/thesis-data/expert-review/expert-review.md#Card problem (lines 140-151)"
+  },
+  "question": "Có 30 tấm thẻ được đánh số liên tiếp từ 1 đến 30. Chọn ngẫu nhiên ra 10 tấm thẻ. Hãy tìm xác suất để trong 10 tấm thẻ được chọn có 5 tấm thẻ mang số lẻ, 5 tấm thẻ mang số chẵn trong đó chỉ có đúng 1 tấm thẻ mang số chia hết cho 10",
+  "model_question": "Giải thích rõ hơn ý đó.",
+  "model_query": "Giải thích rõ hơn kết quả xác suất của Câu 2.",
+  "wrong_explanation": "Trong Câu 2, có 30 tấm thẻ được đánh số từ 1 đến 30. Chúng ta cần tính xác suất để trong 10 tấm thẻ được chọn ngẫu nhiên có 5 tấm thẻ mang số lẻ và 5 tấm thẻ mang số chẵn, trong đó chỉ có đúng 1 tấm thẻ mang số chia hết cho 10.\n\nĐể giải quyết bài toán này, chúng ta sẽ làm theo các bước sau:\n\n- **Bước 1:** Chọn 1 tấm thẻ chia hết cho 10. Có 3 tấm thẻ chia hết cho 10 (10, 20, 30), nên số cách chọn là \\( C_3^1 \\).\n\n- **Bước 2:** Chọn 4 tấm thẻ từ 15 tấm thẻ chẵn không chia hết cho 10. Có 15 tấm thẻ chẵn (không bao gồm 10, 20, 30), nên số cách chọn là \\( C_{15}^4 \\).\n\n- **Bước 3:** Chọn 5 tấm thẻ từ 15 tấm thẻ lẻ. Số cách chọn là \\( C_{15}^5 \\).\n\nTổng số phần tử của biến cố A (n(A)) sẽ bằng tích của số cách chọn ở các bước trên:\n\\[ n(A) = C_3^1 \\times C_{15}^4 \\times C_{15}^5. \\]\n\nKhông gian mẫu \\( n(\\Omega) \\) là số cách chọn 10 tấm thẻ từ 30 tấm thẻ, do đó:\n\\[ n(\\Omega) = C_{30}^{10}. \\]\n\nXác suất của biến cố A (P(A)) sẽ bằng số phần tử của biến cố A chia cho không gian mẫu:\n\\[ P(A) = \\frac{n(A)}{n(\\Omega)} = \\frac{C_3^1 \\times C_{15}^4 \\times C_{15}^5}{C_{30}^{10}}. \\]\n\nTheo tính toán, ta có:\n\\[ n(A) = 3 \\times 1365 \\times 3003 = 12789105, \\]\n\\[ n(\\Omega) = C_{30}^{10} = 30045015. \\]\n\nVậy xác suất cần tìm là:\n\\[ P(A) = \\frac{12789105}{30045015} = \\frac{99}{667}. \\]\n\nMốc trích dẫn: [07:28]",
+  "corrected_explanation": "Trong Câu 2, có 30 tấm thẻ được đánh số từ 1 đến 30. Chúng ta cần tính xác suất để trong 10 tấm thẻ được chọn ngẫu nhiên có 5 tấm thẻ mang số lẻ và 5 tấm thẻ mang số chẵn, trong đó chỉ có đúng 1 tấm thẻ mang số chia hết cho 10.\n\nĐể giải quyết bài toán này, chúng ta sẽ làm theo các bước sau:\n\n- **Bước 1:** Chọn 1 tấm thẻ chia hết cho 10. Có 3 tấm thẻ chia hết cho 10 (10, 20, 30), nên số cách chọn là \\( C_3^1 \\).\n\n- **Bước 2:** Chọn 4 tấm thẻ từ 12 tấm thẻ chẵn không chia hết cho 10. Có 12 tấm thẻ chẵn (không bao gồm 10, 20, 30), nên số cách chọn là \\( C_{12}^4 \\).\n\n- **Bước 3:** Chọn 5 tấm thẻ từ 15 tấm thẻ lẻ. Số cách chọn là \\( C_{15}^5 \\).\n\nTổng số phần tử của biến cố A (n(A)) sẽ bằng tích của số cách chọn ở các bước trên:\n\\[ n(A) = C_3^1 \\times C_{12}^4 \\times C_{15}^5. \\]\n\nKhông gian mẫu \\( n(\\Omega) \\) là số cách chọn 10 tấm thẻ từ 30 tấm thẻ, do đó:\n\\[ n(\\Omega) = C_{30}^{10}. \\]\n\nXác suất của biến cố A (P(A)) sẽ bằng số phần tử của biến cố A chia cho không gian mẫu:\n\\[ P(A) = \\frac{n(A)}{n(\\Omega)} = \\frac{C_3^1 \\times C_{12}^4 \\times C_{15}^5}{C_{30}^{10}}. \\]\n\nTheo tính toán, ta có:\n\\[ n(A) = 3 \\times 495 \\times 3003 = 4459455, \\]\n\\[ n(\\Omega) = C_{30}^{10} = 30045015. \\]\n\nVậy xác suất cần tìm là:\n\\[ P(A) = \\frac{4459455}{30045015} = \\frac{99}{667}. \\]\n\nMốc trích dẫn: [07:28]",
+  "evidence_texts": [
+    "Câu 2.\nCó 30 tấm thẻ được đánh số liên tiếp từ 1 đến 30. Chọn ngẫu nhiên ra 10 tấm thẻ. Hãy tìm xác suất để trong 10 tấm thẻ được chọn có 5 tấm thẻ mang số lẻ, 5 tấm thẻ mang số chẵn trong đó chỉ có đúng 1 tấm thẻ mang số chia hết cho 10\nLời giải\n* Mô tả không gian mẫu: Chọn 10 thẻ trong 30 thẻ. Do đó n(Ω) = C^10_30.\n* Gọi A là biến cố: “10 tấm thẻ được chọn có 5 tấm thẻ mang số lẻ, 5 tấm thẻ mang số chẵn trong đó chỉ có đúng 1 tấm thẻ mang số chia hết cho 10 ”.\nTrong 30 thẻ có 15 thẻ mang số lẻ, 15 thẻ mang số chẵn và trong 15 số chẵn này có 3 thẻ chia hết cho 10 ({10;20;30}).\n► Bước 1: Chọn 1 thẻ mang số chia hết cho 10, có C^1_3 cách.\n► Bước 2: Chọn 4 thẻ mang số chẵn còn lại (bỏ 3 thẻ chia hết cho 10), có C^4_12 cách.\n► Bước 3: Chọn 5 thẻ mang số lẻ, có C^5_15 cách.\nNên n(A) = C^1_3 . C^4_12 . C^5_15.\nVậy P(A) = C^1_3 . C^4_12 . C^5_15 / C^10_30 = 99 / 667."
+  ],
+  "correct_expression": "C(3,1)*C(12,4)*C(15,5)/C(30,10)",
+  "correct_answer": "99/667",
+  "erroneous_expression": "C(3,1)*C(15,4)*C(15,5)/C(30,10)",
+  "erroneous_formula_value": "273/667",
+  "brute_force": {
+    "method": "Enumerated every 30-bit mask with exactly 10 set bits; counted masks with 5 odd cards and exactly 1 card divisible by 10.",
+    "total_hands": 30045015,
+    "favorable_hands": 4459455
+  },
+  "erroneous_product_value": 12297285,
+  "written_wrong_numerator": 12789105
+}

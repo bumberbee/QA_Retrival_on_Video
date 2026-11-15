@@ -6,9 +6,11 @@ so trailing decimal zeroes and percentage precision are preserved. Spans use
 Python string offsets, with an exclusive end. ``check_answer`` never raises for
 malformed answer/evidence input and returns a list of ClaimCheck dataclasses.
 
-Extraction covers plain arithmetic equalities, chains, and a parenthesized
-percentage following an equality. It does not interpret LaTeX, prose reasoning,
-or standalone numbers. Evidence support means the literal numeric operands on
+Extraction covers plain arithmetic equalities, chains, a parenthesized
+percentage following an equality, and numeric chains in LaTeX display blocks
+using fractions, combinations and multiplication. Symbolic probability/count
+labels in those blocks are skipped, without interpreting prose reasoning or
+standalone numbers. Evidence support means the literal numeric operands on
 the LHS occur as numbers in evidence, not that the evidence proves the formula.
 """
 
@@ -55,6 +57,12 @@ _PAREN_PERCENT = re.compile(
     r"\s*\(\s*([+-]?(?:\d+(?:[.,]\d+)?|[.,]\d+)\s*%)\s*\)", re.ASCII,
 )
 _OPERATORS = frozenset({"+", "-", "*", "/", "^", "**", "!", "%"})
+_LATEX_DISPLAY = re.compile(r"\\\[(?P<body>.*?)\\\]", re.DOTALL)
+_LATEX_COMBINATION = re.compile(r"C_(?:\{(\d+)\}|(\d+))\^(?:\{(\d+)\}|(\d+))")
+_LATEX_FRACTION = re.compile(r"\\frac\{([^{}]+)\}\{([^{}]+)\}")
+_LATEX_SYMBOLIC = frozenset({
+    "n(A)", r"n(\Omega)", "P(A)", r"\frac{n(A)}{n(\Omega)}",
+})
 
 
 class _Token(NamedTuple):
@@ -343,7 +351,7 @@ def _parseable(expr: str) -> bool:
         return False
 
 
-def extract_claims(text: str) -> list[tuple[str, str, tuple[int, int]]]:
+def _extract_plain_claims(text: str) -> list[tuple[str, str, tuple[int, int]]]:
     """Extract equalities without interpreting prose; malformed ones are retained.
 
     In a chain each RHS is checked against the original computable LHS. If a
@@ -375,6 +383,78 @@ def extract_claims(text: str) -> list[tuple[str, str, tuple[int, int]]]:
             claims.append((lhs, alternate[1], (right_end, alternate.end())))
             previous_end = alternate.end()
     return claims
+
+
+def _latex_expression(text: str) -> str:
+    """Translate only the numeric notation used in saved display equations."""
+    text = _LATEX_COMBINATION.sub(
+        lambda m: f"C({m[1] or m[2]},{m[3] or m[4]})", text,
+    )
+    text = text.replace(r"\times", "*")
+    return _LATEX_FRACTION.sub(lambda m: f"({m[1]})/({m[2]})", text)
+
+
+def _extract_latex_claims(body: str, offset: int) -> list[tuple[str, str, tuple[int, int]]]:
+    equalities = list(_EQUALITY.finditer(body))
+    if not equalities:
+        return []
+
+    def part(start: int, end: int) -> tuple[str, int, int]:
+        raw = body[start:end]
+        start += len(raw) - len(raw.lstrip())
+        raw = raw.strip()
+        if raw.endswith((".", ",")):
+            raw = raw[:-1].rstrip()  # Sentence punctuation, outside the math.
+        return raw, start, start + len(raw)
+
+    anchor_raw, anchor_start, _ = part(0, equalities[0].start())
+    anchor = _latex_expression(anchor_raw)
+    claims: list[tuple[str, str, tuple[int, int]]] = []
+    for i, equality in enumerate(equalities):
+        if len(claims) >= _MAX_CLAIMS:
+            break
+        end = equalities[i + 1].start() if i + 1 < len(equalities) else len(body)
+        rhs_raw, rhs_start, rhs_end = part(equality.end(), end)
+        rhs = _latex_expression(rhs_raw)
+        symbolic_anchor = re.sub(r"\s+", "", anchor_raw) in _LATEX_SYMBOLIC
+        symbolic_rhs = re.sub(r"\s+", "", rhs_raw) in _LATEX_SYMBOLIC
+        if symbolic_anchor and (symbolic_rhs or _parseable(rhs)):
+            # These are definitions, not numeric claims. Do not resolve symbols
+            # across equations; begin checking at the first arithmetic term.
+            anchor_raw, anchor, anchor_start = rhs_raw, rhs, rhs_start
+            continue
+        left_start = equality.start() if claims else anchor_start
+        claims.append((anchor, rhs, (offset + left_start, offset + rhs_end)))
+        if not _parseable(anchor):
+            anchor_raw, anchor = rhs_raw, rhs
+    return claims
+
+
+def extract_claims(text: str) -> list[tuple[str, str, tuple[int, int]]]:
+    """Extract plain claims and supported LaTeX display chains with source spans.
+
+    LaTeX expressions are translated to allowlisted arithmetic, retaining offsets
+    into the original answer. Only known count/probability labels are skipped;
+    other unsupported expressions remain unparsed. No symbolic algebra is done.
+    Scanning is bounded to 100,000 characters and 200 claims.
+    """
+    if not isinstance(text, str):
+        return []
+    text = text[:_MAX_TEXT_LENGTH]
+    claims: list[tuple[str, str, tuple[int, int]]] = []
+    start = 0
+    for block in _LATEX_DISPLAY.finditer(text):
+        claims.extend((lhs, rhs, (a + start, b + start))
+                      for lhs, rhs, (a, b) in _extract_plain_claims(text[start:block.start()]))
+        if len(claims) >= _MAX_CLAIMS:
+            return claims[:_MAX_CLAIMS]
+        claims.extend(_extract_latex_claims(block["body"], block.start("body")))
+        if len(claims) >= _MAX_CLAIMS:
+            return claims[:_MAX_CLAIMS]
+        start = block.end()
+    claims.extend((lhs, rhs, (a + start, b + start))
+                  for lhs, rhs, (a, b) in _extract_plain_claims(text[start:]))
+    return claims[:_MAX_CLAIMS]
 
 
 def _rounding_tolerance(written: str) -> Fraction:
