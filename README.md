@@ -10,12 +10,24 @@ lời giảng và hỏi AI kèm nguồn.
 Thesis/
 ├─ backend/              FastAPI (cổng 8001): API video, transcript, slide, hỏi AI
 │  ├─ app/               mã nguồn
+│  │  ├─ main.py         FastAPI entry point
+│  │  ├─ features/       ask/, search/, videos/, conversations/
+│  │  └─ shared/         storage, models, database, objects, Supabase, llm/gemini.py
 │  ├─ scripts/           nạp kết quả pipeline vào app (import_fast_pipeline.py, …)
 │  ├─ tests/
+│  │  ├─ features/       ask/, search/, videos/, conversations/
+│  │  ├─ shared/         storage, database, cloud, API security
+│  │  └─ _isolate.py     test environment isolation
 │  └─ data/              dữ liệu app: video, keyframe, transcript (không đưa lên git)
 ├─ frontend/             React + Vite (cổng 5173)
-├─ kaggle/lecture_rag/   pipeline trích xuất 01 → 05, bộ gold, test (xem README trong đó)
+│  └─ src/
+│     ├─ app/            App.jsx, main.jsx, index.css
+│     ├─ features/       chat/, player/, library/, import/
+│     └─ shared/         lib/, components/
+├─ pipeline/             pipeline trích xuất 01 → 05, bộ gold, test (xem README trong đó)
+├─ infra/                schema Supabase và script cài máy Vast.ai
 └─ docs/
+   ├─ tools/                  công cụ sinh báo cáo và hình minh họa
    ├─ pipeline-report.html    báo cáo: dữ liệu, các bước trích xuất, số đo, triển khai
    └─ walkthrough-v008.html   pipeline chạy từng giai đoạn trên 1 video toán
 ```
@@ -35,7 +47,7 @@ uvicorn app.main:app --reload --port 8001
 
 > Nếu port 8001 đã bị chiếm, đổi sang port khác, ví dụ `--port 8002`, và thêm
 > `VITE_API_BASE_URL=http://localhost:8002/api` vào `frontend/.env.local`, sau đó
-> khởi động lại Vite. Cấu hình API được đọc tại `frontend/src/lib/api.js`.
+> khởi động lại Vite. Cấu hình API được đọc tại `frontend/src/shared/lib/api.js`.
 
 Cần điền `GEMINI_API_KEY` trong file `.env` ở thư mục gốc trước khi hỏi được câu hỏi.
 
@@ -120,7 +132,7 @@ Mở http://localhost:5173
 
 ## Nạp kết quả pipeline vào app
 
-Máy không có GPU nên pipeline chạy trên Kaggle (xem `kaggle/lecture_rag/README.md`). Tải
+Máy không có GPU nên pipeline chạy trên Kaggle (xem `pipeline/README.md`). Tải
 `fast_pipeline_export.zip`, giải nén rồi:
 
 ```bash

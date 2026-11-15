@@ -18,8 +18,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app import storage  # noqa: E402
-from app.services import retrieval  # noqa: E402
+from app.shared import storage  # noqa: E402
+from app.features.search import retrieval  # noqa: E402
 
 
 def passages(folder: Path, prefix: str) -> list[str]:

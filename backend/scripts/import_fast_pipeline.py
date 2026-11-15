@@ -10,7 +10,7 @@ Với mỗi video (thư mục L25_Vxxx trong fast_pipeline_export):
 Cách dùng:
     cd backend
     .venv/Scripts/python scripts/import_fast_pipeline.py \
-        --export ../kaggle/lecture_rag/runs/<run>/outputs/export \
+        --export ../pipeline/runs/<run>/outputs/export \
         --videos path/to/mp4s   # chỉ cần cho video chưa có trong app
 """
 
@@ -22,8 +22,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app import storage  # noqa: E402
-from app.models import Transcript  # noqa: E402
+from app.shared import storage  # noqa: E402
+from app.shared.models import Transcript  # noqa: E402
 
 VARIANT = "F_fast_pipeline"
 

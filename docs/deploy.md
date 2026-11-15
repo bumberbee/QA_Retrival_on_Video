@@ -39,7 +39,7 @@ của Supabase; frontend đọc link từ đó lúc mở trang, nên không ph�
 
 ## Bước 1 · Schema Supabase và kết nối R2 (~½ ngày)
 
-- File migration `deploy/supabase/schema.sql`:
+- File migration `infra/supabase/schema.sql`:
 
 | Bảng | Nội dung |
 |---|---|
@@ -57,9 +57,9 @@ của Supabase; frontend đọc link từ đó lúc mở trang, nên không ph�
 
 ## Bước 2 · Backend đọc/ghi Supabase + R2 (~1,5 ngày)
 
-- `backend/app/storage.py`: có biến môi trường Supabase thì dùng Supabase + R2, không có thì dùng file
+- `backend/app/shared/storage.py`: có biến môi trường Supabase thì dùng Supabase + R2, không có thì dùng file
   như hiện tại (để chạy thử trên máy). API cho frontend giữ nguyên.
-- `backend/app/services/retrieval.py`: tìm kiếm thành 2 truy vấn SQL
+- `backend/app/features/search/retrieval.py`: tìm kiếm thành 2 truy vấn SQL
   - theo nghĩa: `ORDER BY embedding <=> :query_vector LIMIT 20` (E5 ONNX mã hóa câu hỏi như hiện tại);
   - theo từ khóa: `tsv @@ websearch_to_tsquery(...)` xếp theo `ts_rank`;
   - gộp RRF (nghĩa 1,0 · từ khóa 0,5), chữ slide ×1,05, lấy 3 slide; hỏi nhiều video = `video_id = ANY(...)`,
@@ -83,7 +83,7 @@ của Supabase; frontend đọc link từ đó lúc mở trang, nên không ph�
 - Lúc mở trang: đọc link backend từ `app_config`; không đọc được hoặc backend không trả lời thì hiện
   "Server demo đang tắt".
 
-**Máy Vast** (`deploy/vast_setup.sh`)
+**Máy Vast** (`infra/vast_setup.sh`)
 1. Thuê 1× RTX 3090/4090 (24 GB), ổ ~60 GB, image có CUDA, chế độ **On-demand**.
 2. Script: clone repo → cài Python, `backend/requirements.txt`, FFmpeg → cài Ollama, tải `qwen2.5:7b`
    → chép `.env` (bạn tự đưa lên bằng `scp`) → chạy backend (uvicorn) → chạy `cloudflared tunnel --url`
@@ -101,7 +101,7 @@ dòng "Nguồn"; chọn 2 video → hỏi → nguồn từ cả hai video.
 ## Bước 5 (tùy chọn) · Upload là tự trích xuất (~2 ngày)
 
 - Nút **Thêm video** trên web: video lên R2, tạo dòng trong `jobs`.
-- Worker trên máy Vast: lấy job, chạy pipeline 01 → 05 (`notebook_code/`, OCR Qwen3-VL, Whisper, E5)
+- Worker trên máy Vast: lấy job, chạy pipeline 01 → 05 (`pipeline/stages/` và `pipeline/shared/`, OCR Qwen3-VL, Whisper, E5)
   bằng GPU, ghi kết quả vào Supabase + R2, cập nhật bước hiện tại vào `jobs`.
 - Web hiện thanh tiến độ trên thẻ video ("Đang đọc chữ slide 7/20…"); xong thì hỏi được ngay.
 - Video 30 phút ≈ 4–6 phút trên RTX 4090. Cần GPU 24 GB vì worker (Qwen3-VL) và Ollama dùng chung.

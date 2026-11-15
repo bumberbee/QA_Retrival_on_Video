@@ -9,7 +9,7 @@ Reads the file layout under --data (videos/, transcripts/, keyframes/, slide_var
 writes: videos, segments (the stage-04 segment kept whole in extra), transcript_segments and chunks
 (with their stored E5 vectors, so search scores match the file version) into SUPABASE_DB_URL; the
 mp4 and every keyframe to R2. Re-running replaces a video's rows; files already in R2 are skipped.
-Run deploy/supabase/schema.sql once first.
+Run infra/supabase/schema.sql once first.
 """
 
 import argparse
@@ -23,7 +23,8 @@ from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
-from app.services import db, objects  # noqa: E402
+from app.shared import db
+from app.shared import objects  # noqa: E402
 
 
 def read_json(path: Path, default=None):
@@ -115,7 +116,7 @@ def main() -> None:
         sys.exit("Thiếu R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY / R2_BUCKET (hoặc dùng --skip-files)")
     missing = db.check_schema()
     if missing:
-        sys.exit(f"Supabase chưa có bảng {missing}: chạy deploy/supabase/schema.sql trước")
+        sys.exit(f"Supabase chưa có bảng {missing}: chạy infra/supabase/schema.sql trước")
     ids = sorted(p.name.removesuffix(".meta.json") for p in (args.data / "videos").glob("*.meta.json"))
     if args.videos:
         wanted = {f"{name}.mp4" for name in args.videos}

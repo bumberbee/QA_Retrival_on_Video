@@ -4,7 +4,7 @@ Tài liệu này nối tiếp `nang-cap-pipeline.md`. Lộ trình cũ đã làm 
 
 Bản v3 dựa trên hai nguồn:
 - **Đợt kiểm tra ngày 01/11/2026**: 5 Codex đọc code và đối chiếu với đầu ra thật của lần chạy 10 video. Lỗi kèm bằng chứng nằm trong các file `result-*.md`.
-- **Bộ đo mới**: `kaggle/lecture_rag/eval/` gồm 120 câu hỏi do Codex soạn, **chưa có người kiểm**.
+- **Bộ đo mới**: `pipeline/eval/` gồm 120 câu hỏi do Codex soạn, **chưa có người kiểm**.
 
 Bản tiếng Anh chi tiết hơn (các thí nghiệm, cách đo, tiêu chí giữ hay bỏ) nằm ở `upgrade-v3-research.md`.
 
