@@ -32,6 +32,46 @@ triggers fallback: configured backend -> rules -> neutral prior with
 rules; callers must handle their uncertain priors. Unknown names/backends and
 invalid outputs raise errors. Latency includes failed attempts and fallback.
 
+## Reranker scores (A3)
+
+Set `LECTURE_RERANK=on` before starting the backend; the default is off. Search
+reranks the top 30 RRF candidates before the existing slide selection. With the
+flag off, result/context/evidence-ID bytes match the pre-A3 fixture. With scores,
+search adds `best_rerank` and scored evidence chunks retain `rerank_score` and
+one-based `rerank_rank`, including in the context returned by `build_context`.
+Unscored same-slide/neighbor expansions have no invented scores.
+
+```python
+found = search(video_id, question)
+decide("Q8", found)  # or {"retrieval": found}
+decide("Q9", {"chunk": evidence_chunk})  # or the scored chunk itself
+```
+
+The registered `reranker` backend consumes existing scores without loading a
+model. Q8 uses `best_rerank`: `>= accept` -> `enough`, `<= reject` -> `irrelevant`,
+otherwise `insufficient`. Q9 uses the individual chunk's `rerank_score`:
+`>= accept` -> `keep`, otherwise `drop`. The Q9 keep threshold is its policy
+`accept` value. Injected policies control labels and zones as well as defaults.
+Missing scores raise `NotConfigured` and retain the existing neutral fallback;
+callers must handle this uncertain result for unscored expansions.
+
+For Q8 specifically, `p` is the evidence support score, so the returned zone
+matches the accept/reject thresholds; it is **not** a calibrated probability
+of the selected three-way label. The generic choice confidence formula is
+still reported, but does not establish calibration. Q9 `p` is support for `keep`.
+
+`search/rerank.py` implements the shared `rerank(question, candidates, *,
+scorer=None, top_k=None)` interface. Injected scorers return logits. The default
+loads BAAI/bge-reranker-v2-m3 lazily, preferring installed ONNX/tokenizers, with
+joint 512-token truncation and batches of eight. It only reads local files:
+set `LECTURE_RERANK_MODEL_DIR` to an already provisioned snapshot/export, or
+fill the `RERANK_REVISION` commit-hash TODO to resolve an existing Hub cache.
+No `main` fallback or download is attempted. Missing files/dependencies raise
+`RerankerUnavailable`; search propagates that error when enabled.
+
+See `pipeline/notes/RERANK_PLAN.md` for the pending paired dev-120 measurement
+and Kaggle notebook builder recipe. No evaluation/model run was performed for A3.
+
 ## Router injection and state
 
 `route_question(question, state, *, encode=None, llm=None, backends=None,
@@ -77,5 +117,5 @@ earlier tie. `resolve_route` returns the exact A2b route table, or
 - Review the 20 authored examples per label with lecturers; no evaluation data
   was used to author them.
 - Agree Q6/Q11 meanings and labels: A2/A2b do not define them.
-- Configure reranker, NLI, mini-Jev/Jev and an LLM callable when available.
+- Provision/pin the reranker weights; configure NLI, mini-Jev/Jev and an LLM callable when available.
 - API, agent state machine and frontend debug integration are intentionally deferred.
