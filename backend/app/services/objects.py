@@ -28,7 +28,9 @@ def client():
     import boto3
     from botocore.config import Config
 
-    endpoint = os.getenv("R2_ENDPOINT") or f"https://{os.environ['R2_ACCOUNT_ID']}.r2.cloudflarestorage.com"
+    # accept the bare account id or the whole S3 endpoint the dashboard shows
+    account = os.environ["R2_ACCOUNT_ID"].strip().removeprefix("https://").split(".")[0].strip("/")
+    endpoint = os.getenv("R2_ENDPOINT") or f"https://{account}.r2.cloudflarestorage.com"
     return boto3.client(
         "s3", endpoint_url=endpoint, region_name=os.getenv("R2_REGION", "auto"),
         aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],

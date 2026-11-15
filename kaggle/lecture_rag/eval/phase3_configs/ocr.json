@@ -1,0 +1,20 @@
+{
+  "ad_suspect_overlap": null,
+  "speech_relevance": true,
+  "slide_speech": null,
+  "embedding_model": "intfloat/multilingual-e5-small",
+  "revision": "614241f622f53c4eeff9890bdc4f31cfecc418b3",
+  "dedupe_previous": false,
+  "conservative_ocr": true,
+  "heading_titles": false,
+  "asr_correction": "legacy",
+  "failure_guard": false,
+  "speech_ad_filter": false,
+  "chunk_tokens": 350,
+  "overlap_tokens": 40,
+  "batch_size": 32,
+  "speech_chunk_tokens": 180,
+  "speech_maximum_seconds": 50.0,
+  "include_generated_descriptions": false,
+  "generated_semantic_only": false
+}

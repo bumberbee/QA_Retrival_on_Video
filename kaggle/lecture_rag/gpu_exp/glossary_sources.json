@@ -1,0 +1,556 @@
+{
+  "hVU5Mw19V_c": [
+    {
+      "term": "Bayes",
+      "ocr_supporting_segments": [
+        "hVU5Mw19V_c:seg_00000",
+        "hVU5Mw19V_c:seg_00001",
+        "hVU5Mw19V_c:seg_00002",
+        "hVU5Mw19V_c:seg_00003",
+        "hVU5Mw19V_c:seg_00004",
+        "hVU5Mw19V_c:seg_00005",
+        "hVU5Mw19V_c:seg_00006",
+        "hVU5Mw19V_c:seg_00007",
+        "hVU5Mw19V_c:seg_00008",
+        "hVU5Mw19V_c:seg_00009",
+        "hVU5Mw19V_c:seg_00010",
+        "hVU5Mw19V_c:seg_00011",
+        "hVU5Mw19V_c:seg_00012",
+        "hVU5Mw19V_c:seg_00013",
+        "hVU5Mw19V_c:seg_00014",
+        "hVU5Mw19V_c:seg_00015",
+        "hVU5Mw19V_c:seg_00016",
+        "hVU5Mw19V_c:seg_00017"
+      ],
+      "manual_support": null
+    },
+    {
+      "term": "xác suất",
+      "ocr_supporting_segments": [
+        "hVU5Mw19V_c:seg_00000",
+        "hVU5Mw19V_c:seg_00002",
+        "hVU5Mw19V_c:seg_00006",
+        "hVU5Mw19V_c:seg_00007",
+        "hVU5Mw19V_c:seg_00008",
+        "hVU5Mw19V_c:seg_00009",
+        "hVU5Mw19V_c:seg_00010",
+        "hVU5Mw19V_c:seg_00011",
+        "hVU5Mw19V_c:seg_00012"
+      ],
+      "manual_support": null
+    },
+    {
+      "term": "biến cố",
+      "ocr_supporting_segments": [
+        "hVU5Mw19V_c:seg_00000",
+        "hVU5Mw19V_c:seg_00002",
+        "hVU5Mw19V_c:seg_00006"
+      ],
+      "manual_support": null
+    },
+    {
+      "term": "công thức xác suất đầy đủ",
+      "ocr_supporting_segments": [
+        "hVU5Mw19V_c:seg_00010"
+      ],
+      "manual_support": null
+    }
+  ],
+  "v2YTz8ToEag": [
+    {
+      "term": "PPF",
+      "ocr_supporting_segments": [
+        "v2YTz8ToEag:seg_00025",
+        "v2YTz8ToEag:seg_00026",
+        "v2YTz8ToEag:seg_00027",
+        "v2YTz8ToEag:seg_00028",
+        "v2YTz8ToEag:seg_00029",
+        "v2YTz8ToEag:seg_00030",
+        "v2YTz8ToEag:seg_00031"
+      ],
+      "manual_support": null
+    },
+    {
+      "term": "đường giới hạn khả năng sản xuất",
+      "ocr_supporting_segments": [
+        "v2YTz8ToEag:seg_00014",
+        "v2YTz8ToEag:seg_00023",
+        "v2YTz8ToEag:seg_00025",
+        "v2YTz8ToEag:seg_00026",
+        "v2YTz8ToEag:seg_00027",
+        "v2YTz8ToEag:seg_00028"
+      ],
+      "manual_support": null
+    },
+    {
+      "term": "chi phí cơ hội",
+      "ocr_supporting_segments": [
+        "v2YTz8ToEag:seg_00021",
+        "v2YTz8ToEag:seg_00023",
+        "v2YTz8ToEag:seg_00024",
+        "v2YTz8ToEag:seg_00031"
+      ],
+      "manual_support": null
+    },
+    {
+      "term": "khan hiếm",
+      "ocr_supporting_segments": [
+        "v2YTz8ToEag:seg_00016",
+        "v2YTz8ToEag:seg_00024",
+        "v2YTz8ToEag:seg_00027",
+        "v2YTz8ToEag:seg_00028",
+        "v2YTz8ToEag:seg_00031",
+        "v2YTz8ToEag:seg_00033"
+      ],
+      "manual_support": null
+    },
+    {
+      "term": "kinh tế học",
+      "ocr_supporting_segments": [
+        "v2YTz8ToEag:seg_00011",
+        "v2YTz8ToEag:seg_00013",
+        "v2YTz8ToEag:seg_00014",
+        "v2YTz8ToEag:seg_00015",
+        "v2YTz8ToEag:seg_00016",
+        "v2YTz8ToEag:seg_00017",
+        "v2YTz8ToEag:seg_00018",
+        "v2YTz8ToEag:seg_00019",
+        "v2YTz8ToEag:seg_00020",
+        "v2YTz8ToEag:seg_00021",
+        "v2YTz8ToEag:seg_00023",
+        "v2YTz8ToEag:seg_00025",
+        "v2YTz8ToEag:seg_00026",
+        "v2YTz8ToEag:seg_00027",
+        "v2YTz8ToEag:seg_00029",
+        "v2YTz8ToEag:seg_00030",
+        "v2YTz8ToEag:seg_00031",
+        "v2YTz8ToEag:seg_00032",
+        "v2YTz8ToEag:seg_00033",
+        "v2YTz8ToEag:seg_00034",
+        "v2YTz8ToEag:seg_00035",
+        "v2YTz8ToEag:seg_00036",
+        "v2YTz8ToEag:seg_00037",
+        "v2YTz8ToEag:seg_00038",
+        "v2YTz8ToEag:seg_00039",
+        "v2YTz8ToEag:seg_00040"
+      ],
+      "manual_support": null
+    }
+  ],
+  "y1CvB950VlU": [
+    {
+      "term": "Python",
+      "ocr_supporting_segments": [
+        "y1CvB950VlU:seg_00000",
+        "y1CvB950VlU:seg_00001",
+        "y1CvB950VlU:seg_00005",
+        "y1CvB950VlU:seg_00007",
+        "y1CvB950VlU:seg_00008",
+        "y1CvB950VlU:seg_00009",
+        "y1CvB950VlU:seg_00010",
+        "y1CvB950VlU:seg_00011",
+        "y1CvB950VlU:seg_00012",
+        "y1CvB950VlU:seg_00013",
+        "y1CvB950VlU:seg_00014",
+        "y1CvB950VlU:seg_00015",
+        "y1CvB950VlU:seg_00016",
+        "y1CvB950VlU:seg_00017",
+        "y1CvB950VlU:seg_00018",
+        "y1CvB950VlU:seg_00019",
+        "y1CvB950VlU:seg_00020",
+        "y1CvB950VlU:seg_00021",
+        "y1CvB950VlU:seg_00022",
+        "y1CvB950VlU:seg_00023",
+        "y1CvB950VlU:seg_00024",
+        "y1CvB950VlU:seg_00026",
+        "y1CvB950VlU:seg_00027",
+        "y1CvB950VlU:seg_00028",
+        "y1CvB950VlU:seg_00029",
+        "y1CvB950VlU:seg_00031",
+        "y1CvB950VlU:seg_00032",
+        "y1CvB950VlU:seg_00033",
+        "y1CvB950VlU:seg_00034",
+        "y1CvB950VlU:seg_00037",
+        "y1CvB950VlU:seg_00039",
+        "y1CvB950VlU:seg_00042",
+        "y1CvB950VlU:seg_00043",
+        "y1CvB950VlU:seg_00044",
+        "y1CvB950VlU:seg_00045",
+        "y1CvB950VlU:seg_00046",
+        "y1CvB950VlU:seg_00047",
+        "y1CvB950VlU:seg_00048",
+        "y1CvB950VlU:seg_00049",
+        "y1CvB950VlU:seg_00050",
+        "y1CvB950VlU:seg_00051",
+        "y1CvB950VlU:seg_00052",
+        "y1CvB950VlU:seg_00053"
+      ],
+      "manual_support": null
+    },
+    {
+      "term": "len",
+      "ocr_supporting_segments": [
+        "y1CvB950VlU:seg_00001",
+        "y1CvB950VlU:seg_00009",
+        "y1CvB950VlU:seg_00012",
+        "y1CvB950VlU:seg_00013",
+        "y1CvB950VlU:seg_00014",
+        "y1CvB950VlU:seg_00015",
+        "y1CvB950VlU:seg_00016",
+        "y1CvB950VlU:seg_00017",
+        "y1CvB950VlU:seg_00018",
+        "y1CvB950VlU:seg_00019",
+        "y1CvB950VlU:seg_00020",
+        "y1CvB950VlU:seg_00021",
+        "y1CvB950VlU:seg_00022",
+        "y1CvB950VlU:seg_00023",
+        "y1CvB950VlU:seg_00024",
+        "y1CvB950VlU:seg_00026",
+        "y1CvB950VlU:seg_00027",
+        "y1CvB950VlU:seg_00028",
+        "y1CvB950VlU:seg_00029",
+        "y1CvB950VlU:seg_00031",
+        "y1CvB950VlU:seg_00034",
+        "y1CvB950VlU:seg_00039",
+        "y1CvB950VlU:seg_00042",
+        "y1CvB950VlU:seg_00043"
+      ],
+      "manual_support": null
+    },
+    {
+      "term": "for",
+      "ocr_supporting_segments": [
+        "y1CvB950VlU:seg_00001",
+        "y1CvB950VlU:seg_00009",
+        "y1CvB950VlU:seg_00017",
+        "y1CvB950VlU:seg_00018",
+        "y1CvB950VlU:seg_00019",
+        "y1CvB950VlU:seg_00020",
+        "y1CvB950VlU:seg_00021",
+        "y1CvB950VlU:seg_00022",
+        "y1CvB950VlU:seg_00023",
+        "y1CvB950VlU:seg_00024"
+      ],
+      "manual_support": null
+    },
+    {
+      "term": "print",
+      "ocr_supporting_segments": [
+        "y1CvB950VlU:seg_00001",
+        "y1CvB950VlU:seg_00006",
+        "y1CvB950VlU:seg_00007",
+        "y1CvB950VlU:seg_00008",
+        "y1CvB950VlU:seg_00009",
+        "y1CvB950VlU:seg_00010",
+        "y1CvB950VlU:seg_00012",
+        "y1CvB950VlU:seg_00013",
+        "y1CvB950VlU:seg_00014",
+        "y1CvB950VlU:seg_00015",
+        "y1CvB950VlU:seg_00016",
+        "y1CvB950VlU:seg_00017",
+        "y1CvB950VlU:seg_00018",
+        "y1CvB950VlU:seg_00019",
+        "y1CvB950VlU:seg_00020",
+        "y1CvB950VlU:seg_00021",
+        "y1CvB950VlU:seg_00022",
+        "y1CvB950VlU:seg_00023",
+        "y1CvB950VlU:seg_00024",
+        "y1CvB950VlU:seg_00025",
+        "y1CvB950VlU:seg_00026",
+        "y1CvB950VlU:seg_00027",
+        "y1CvB950VlU:seg_00028",
+        "y1CvB950VlU:seg_00029",
+        "y1CvB950VlU:seg_00030",
+        "y1CvB950VlU:seg_00031",
+        "y1CvB950VlU:seg_00032",
+        "y1CvB950VlU:seg_00033",
+        "y1CvB950VlU:seg_00034",
+        "y1CvB950VlU:seg_00035",
+        "y1CvB950VlU:seg_00036",
+        "y1CvB950VlU:seg_00037",
+        "y1CvB950VlU:seg_00038",
+        "y1CvB950VlU:seg_00039",
+        "y1CvB950VlU:seg_00040",
+        "y1CvB950VlU:seg_00041",
+        "y1CvB950VlU:seg_00042",
+        "y1CvB950VlU:seg_00049",
+        "y1CvB950VlU:seg_00050",
+        "y1CvB950VlU:seg_00051",
+        "y1CvB950VlU:seg_00052",
+        "y1CvB950VlU:seg_00053"
+      ],
+      "manual_support": null
+    },
+    {
+      "term": "end",
+      "ocr_supporting_segments": [
+        "y1CvB950VlU:seg_00001",
+        "y1CvB950VlU:seg_00009",
+        "y1CvB950VlU:seg_00017",
+        "y1CvB950VlU:seg_00018",
+        "y1CvB950VlU:seg_00022",
+        "y1CvB950VlU:seg_00024",
+        "y1CvB950VlU:seg_00033",
+        "y1CvB950VlU:seg_00037",
+        "y1CvB950VlU:seg_00038",
+        "y1CvB950VlU:seg_00049"
+      ],
+      "manual_support": null
+    },
+    {
+      "term": "sep",
+      "ocr_supporting_segments": [
+        "y1CvB950VlU:seg_00033",
+        "y1CvB950VlU:seg_00037",
+        "y1CvB950VlU:seg_00038",
+        "y1CvB950VlU:seg_00049"
+      ],
+      "manual_support": null
+    },
+    {
+      "term": "chuỗi",
+      "ocr_supporting_segments": [
+        "y1CvB950VlU:seg_00001",
+        "y1CvB950VlU:seg_00009",
+        "y1CvB950VlU:seg_00017",
+        "y1CvB950VlU:seg_00018",
+        "y1CvB950VlU:seg_00024"
+      ],
+      "manual_support": null
+    },
+    {
+      "term": "string",
+      "ocr_supporting_segments": [
+        "y1CvB950VlU:seg_00000",
+        "y1CvB950VlU:seg_00001",
+        "y1CvB950VlU:seg_00009",
+        "y1CvB950VlU:seg_00017",
+        "y1CvB950VlU:seg_00018",
+        "y1CvB950VlU:seg_00024",
+        "y1CvB950VlU:seg_00025",
+        "y1CvB950VlU:seg_00030",
+        "y1CvB950VlU:seg_00035",
+        "y1CvB950VlU:seg_00036",
+        "y1CvB950VlU:seg_00040",
+        "y1CvB950VlU:seg_00041"
+      ],
+      "manual_support": null
+    },
+    {
+      "term": "a1",
+      "ocr_supporting_segments": [
+        "y1CvB950VlU:seg_00004",
+        "y1CvB950VlU:seg_00005",
+        "y1CvB950VlU:seg_00006",
+        "y1CvB950VlU:seg_00007",
+        "y1CvB950VlU:seg_00008",
+        "y1CvB950VlU:seg_00010",
+        "y1CvB950VlU:seg_00011",
+        "y1CvB950VlU:seg_00013",
+        "y1CvB950VlU:seg_00019",
+        "y1CvB950VlU:seg_00020",
+        "y1CvB950VlU:seg_00021",
+        "y1CvB950VlU:seg_00022",
+        "y1CvB950VlU:seg_00023",
+        "y1CvB950VlU:seg_00026",
+        "y1CvB950VlU:seg_00027",
+        "y1CvB950VlU:seg_00028",
+        "y1CvB950VlU:seg_00029",
+        "y1CvB950VlU:seg_00031",
+        "y1CvB950VlU:seg_00032",
+        "y1CvB950VlU:seg_00033",
+        "y1CvB950VlU:seg_00034",
+        "y1CvB950VlU:seg_00037",
+        "y1CvB950VlU:seg_00038",
+        "y1CvB950VlU:seg_00039",
+        "y1CvB950VlU:seg_00042",
+        "y1CvB950VlU:seg_00043",
+        "y1CvB950VlU:seg_00044",
+        "y1CvB950VlU:seg_00045",
+        "y1CvB950VlU:seg_00046",
+        "y1CvB950VlU:seg_00047",
+        "y1CvB950VlU:seg_00048",
+        "y1CvB950VlU:seg_00049",
+        "y1CvB950VlU:seg_00050",
+        "y1CvB950VlU:seg_00051",
+        "y1CvB950VlU:seg_00052",
+        "y1CvB950VlU:seg_00053"
+      ],
+      "manual_support": null
+    },
+    {
+      "term": "a2",
+      "ocr_supporting_segments": [
+        "y1CvB950VlU:seg_00005",
+        "y1CvB950VlU:seg_00006",
+        "y1CvB950VlU:seg_00007",
+        "y1CvB950VlU:seg_00008",
+        "y1CvB950VlU:seg_00010",
+        "y1CvB950VlU:seg_00011",
+        "y1CvB950VlU:seg_00013",
+        "y1CvB950VlU:seg_00014",
+        "y1CvB950VlU:seg_00015",
+        "y1CvB950VlU:seg_00016",
+        "y1CvB950VlU:seg_00019",
+        "y1CvB950VlU:seg_00020",
+        "y1CvB950VlU:seg_00021",
+        "y1CvB950VlU:seg_00022",
+        "y1CvB950VlU:seg_00023",
+        "y1CvB950VlU:seg_00026",
+        "y1CvB950VlU:seg_00027",
+        "y1CvB950VlU:seg_00028",
+        "y1CvB950VlU:seg_00029",
+        "y1CvB950VlU:seg_00031",
+        "y1CvB950VlU:seg_00034",
+        "y1CvB950VlU:seg_00038",
+        "y1CvB950VlU:seg_00039",
+        "y1CvB950VlU:seg_00042",
+        "y1CvB950VlU:seg_00043",
+        "y1CvB950VlU:seg_00044",
+        "y1CvB950VlU:seg_00045",
+        "y1CvB950VlU:seg_00046",
+        "y1CvB950VlU:seg_00047",
+        "y1CvB950VlU:seg_00048",
+        "y1CvB950VlU:seg_00049",
+        "y1CvB950VlU:seg_00050",
+        "y1CvB950VlU:seg_00051",
+        "y1CvB950VlU:seg_00052",
+        "y1CvB950VlU:seg_00053"
+      ],
+      "manual_support": null
+    }
+  ],
+  "L25_V011": [
+    {
+      "term": "Liên Hiệp Quốc",
+      "ocr_supporting_segments": [
+        "L25_V011:seg_00004",
+        "L25_V011:seg_00005",
+        "L25_V011:seg_00006"
+      ],
+      "manual_support": null
+    },
+    {
+      "term": "Hội đồng Bảo an",
+      "ocr_supporting_segments": [
+        "L25_V011:seg_00006"
+      ],
+      "manual_support": null
+    },
+    {
+      "term": "quyền bình đẳng",
+      "ocr_supporting_segments": [],
+      "manual_support": "Original L25_V011 seg_00006 image inspected: quyền bình đẳng; historical OCR quyền đăng ký is wrong."
+    },
+    {
+      "term": "chủ quyền",
+      "ocr_supporting_segments": [
+        "L25_V011:seg_00006",
+        "L25_V011:seg_00007"
+      ],
+      "manual_support": null
+    }
+  ],
+  "cs_0001": [
+    {
+      "term": "FIFO",
+      "ocr_supporting_segments": [
+        "cs_0001:seg_00005",
+        "cs_0001:seg_00006",
+        "cs_0001:seg_00008",
+        "cs_0001:seg_00009",
+        "cs_0001:seg_00013",
+        "cs_0001:seg_00015",
+        "cs_0001:seg_00020"
+      ],
+      "manual_support": null
+    },
+    {
+      "term": "MSCs",
+      "ocr_supporting_segments": [
+        "cs_0001:seg_00003",
+        "cs_0001:seg_00005",
+        "cs_0001:seg_00008",
+        "cs_0001:seg_00010",
+        "cs_0001:seg_00011",
+        "cs_0001:seg_00012",
+        "cs_0001:seg_00015",
+        "cs_0001:seg_00016",
+        "cs_0001:seg_00020"
+      ],
+      "manual_support": null
+    },
+    {
+      "term": "RSC",
+      "ocr_supporting_segments": [
+        "cs_0001:seg_00005",
+        "cs_0001:seg_00007",
+        "cs_0001:seg_00008",
+        "cs_0001:seg_00009",
+        "cs_0001:seg_00015",
+        "cs_0001:seg_00018",
+        "cs_0001:seg_00019",
+        "cs_0001:seg_00020"
+      ],
+      "manual_support": null
+    },
+    {
+      "term": "synchronous",
+      "ocr_supporting_segments": [
+        "cs_0001:seg_00001",
+        "cs_0001:seg_00002",
+        "cs_0001:seg_00007",
+        "cs_0001:seg_00016",
+        "cs_0001:seg_00019"
+      ],
+      "manual_support": null
+    },
+    {
+      "term": "asynchronous",
+      "ocr_supporting_segments": [
+        "cs_0001:seg_00001",
+        "cs_0001:seg_00002",
+        "cs_0001:seg_00005",
+        "cs_0001:seg_00008",
+        "cs_0001:seg_00009",
+        "cs_0001:seg_00013",
+        "cs_0001:seg_00015",
+        "cs_0001:seg_00016",
+        "cs_0001:seg_00020"
+      ],
+      "manual_support": null
+    },
+    {
+      "term": "partial order",
+      "ocr_supporting_segments": [
+        "cs_0001:seg_00000",
+        "cs_0001:seg_00003"
+      ],
+      "manual_support": null
+    },
+    {
+      "term": "message passing",
+      "ocr_supporting_segments": [
+        "cs_0001:seg_00000",
+        "cs_0001:seg_00001"
+      ],
+      "manual_support": null
+    },
+    {
+      "term": "decidable",
+      "ocr_supporting_segments": [
+        "cs_0001:seg_00011",
+        "cs_0001:seg_00012",
+        "cs_0001:seg_00013"
+      ],
+      "manual_support": null
+    },
+    {
+      "term": "undecidable",
+      "ocr_supporting_segments": [
+        "cs_0001:seg_00013"
+      ],
+      "manual_support": null
+    }
+  ]
+}

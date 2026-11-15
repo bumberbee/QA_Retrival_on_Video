@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CODE = ROOT / "notebook_code"
 
 
-EXTRA_MODULES = {"alignment": ["textclean.py"]}
+EXTRA_MODULES = {"alignment": ["textclean.py", "adfilter.py"]}
 
 
 def load_code(name):
@@ -362,6 +362,13 @@ class NotebookAndContractTests(unittest.TestCase):
             sources = ["".join(cell["source"]).strip() for cell in notebook["cells"]]
             self.assertIn((CODE / item["module"]).read_text(encoding="utf-8").strip(), sources)
             self.assertIn((CODE / "common.py").read_text(encoding="utf-8").strip(), sources)
+            for filename in item.get("extra_modules", []):
+                self.assertIn((CODE / filename).read_text(encoding="utf-8").strip(), sources)
+        for name in ("fast_pipeline_l25", "full_pipeline_walkthrough", "run_pipeline"):
+            notebook = json.loads((ROOT / "notebooks" / (name + ".ipynb")).read_text(encoding="utf-8"))
+            sources = ["".join(cell["source"]).strip() for cell in notebook["cells"]]
+            for filename in ("common.py", "textclean.py", "adfilter.py", "alignment.py", "indexing.py", "visual.py"):
+                self.assertIn((CODE / filename).read_text(encoding="utf-8").strip(), sources)
 
     def test_artifact_checks_reject_corruption_and_unfinished_runs(self):
         pipeline = load_code("alignment")
@@ -406,6 +413,49 @@ class NotebookAndContractTests(unittest.TestCase):
 
 
 class TimingAndRetrievalTests(unittest.TestCase):
+    def test_symbol_only_speech_is_dropped_but_numbers_and_ocr_survive(self):
+        indexing = load_code("indexing")
+        for junk in ("%", " % ! -- ", "♪♫"):
+            segment = {
+                "segment_id": "s", "sequence": 0, "start_sec": 0, "end_sec": 10,
+                "speech": {"spans": [{"span_id": "junk", "start_sec": 0,
+                                      "end_sec": 1, "text": junk},
+                                     {"span_id": "math", "start_sec": 2,
+                                      "end_sec": 3, "text": "12 - 3 = 9"},
+                                     {"span_id": "letter", "start_sec": 4,
+                                      "end_sec": 5, "text": "ừ"}],
+                           "fallback_span_ids": ["coarse"]},
+                "visual": {"title": "Lecture", "occurrence_id": "s:visual",
+                           "image_path": "s.jpg", "keyframe_time_sec": 2,
+                           "ocr_text": "%", "visual_description": "", "regions": []},
+            }
+            fallback = [{"span_id": "coarse", "start_sec": 6, "end_sec": 7,
+                         "text": junk, "timing_precision": "segment"}]
+            chunks = indexing.make_evidence_chunks(
+                [segment], fallback, CharacterTokenizer(), speech_maximum_seconds=1,
+            )
+            self.assertEqual([(c["source_type"], c["text"]) for c in chunks],
+                             [("speech", "12 - 3 = 9"), ("speech", "ừ"), ("ocr", "%")])
+            self.assertEqual([c["chunk_id"] for c in chunks],
+                             ["s:u0001:p000", "s:u0002:p000", "s:u0004:p000"])
+
+    def test_symbol_only_split_speech_parts_are_dropped(self):
+        indexing = load_code("indexing")
+        segment = {
+            "segment_id": "s", "sequence": 0, "start_sec": 0, "end_sec": 10,
+            "speech": {"spans": [{"span_id": "spoken", "start_sec": 0,
+                                  "end_sec": 1, "text": "A" + "%" * 50}],
+                       "fallback_span_ids": []},
+            "visual": {"title": "", "occurrence_id": "s:visual",
+                       "image_path": "s.jpg", "keyframe_time_sec": 2,
+                       "ocr_text": "", "visual_description": "", "regions": []},
+        }
+        chunks = indexing.make_evidence_chunks(
+            [segment], [], CharacterTokenizer(), chunk_tokens=20, overlap_tokens=0,
+        )
+        self.assertEqual(len(chunks), 1)
+        self.assertTrue(chunks[0]["text"].startswith("A"))
+
     def test_malformed_vision_output_cannot_enter_search_evidence(self):
         visual, indexing = load_code("visual"), load_code("indexing")
         for malformed in ('{"description": "unfinished', '!' * 900):
@@ -986,9 +1036,15 @@ class MediaAndPipelineTests(unittest.TestCase):
         self.assertTrue((hybrid02 / hybrid_records[0]["regions"][0]["image_path"]).exists())
         qwen_calls = []
 
-        def qwen_read(images, language):
+        def qwen_read(images, language, *, on_answer=None):
             qwen_calls.append(len(images))
-            return ["ĐỊNH LUẬT BẢO TOÀN\nΔm = Zm_p\n[Hình] Đồ thị năng lượng liên kết." for _ in images]
+            answers = [{"text": "ĐỊNH LUẬT BẢO TOÀN\nΔm = Zm_p\n[Hình] Đồ thị năng lượng liên kết.",
+                     "ocr_quality": {"status": "available", "reasons": [], "evidence_excluded": False}}
+                    for _ in images]
+            if on_answer:
+                for n, answer in enumerate(answers):
+                    on_answer(n, answer)
+            return answers
         with mock.patch.object(visual, "load_qwen_ocr", return_value=qwen_read):
             qwen02, qwen_manifest, qwen_records = visual.run_visual_extraction(
                 self.stage01, output / "qwen", ocr_engine="qwen")

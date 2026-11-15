@@ -690,7 +690,7 @@ def parse_qwen_slide(raw):
             if description:
                 figures.append(description)
         elif line.strip():
-            lines.append(line.strip())
+            lines.append(line.rstrip())
     blocks = [{"text": text, "bbox": [0, 0, 1, 1], "confidence": None, "source": "qwen3-vl",
                "block_type": "text", "line_index": order, "reading_order": order}
               for order, text in enumerate(lines)]
@@ -699,37 +699,160 @@ def parse_qwen_slide(raw):
     return blocks, regions
 
 
-def load_qwen_ocr(devices=("cuda:0", "cuda:1"), max_new_tokens=1536):
-    """Qwen3-VL-4B reading whole slides, one model copy per GPU. Returns
-    read_many(images, language) -> raw answers, the images split between the GPUs."""
+QWEN_OCR_MODEL = "Qwen/Qwen3-VL-4B-Instruct"
+QWEN_OCR_REVISION = "ebb281ec70b05090aa6165b016eac8ec08e71b17"
+QWEN_LITERAL_SUFFIX = {
+    "vi": " Giữ nguyên mã nguồn, dấu ngoặc, dấu nháy và thụt lề. Không giải thích hoặc lặp nội dung.",
+    "en": " Preserve source code, brackets, quotes and indentation. Do not explain or repeat content.",
+}
+QWEN_RETRY_PROMPTS = {
+    "vi": "Chép nguyên văn duy nhất một lần mọi chữ trong ảnh; giữ dấu, số và mã nguồn. Không mô tả, không suy diễn.",
+    "en": "Copy all visible text exactly once; preserve accents, numbers and source code. Do not describe or infer.",
+}
+
+
+def qwen_ocr_validation(text, token_ids, eos_token_id):
+    """Pure completion check: genuine final EOS and fewer than eight phrase repeats.
+
+    Match the experiment's 1–32 word phrase review, including numeric loops.
+    Decoded EOS-looking strings never count as a generated EOS token.
+    """
+    eos_ids = eos_token_id if isinstance(eos_token_id, (list, tuple, set)) else [eos_token_id]
+    ended = bool(len(token_ids) and token_ids[-1] in eos_ids and token_ids[-1] is not None)
+    words = re.findall(r"\w+", (text or "").lower())
+    longest = 1 if words else 0
+    for width in range(1, min(32, len(words) // 2) + 1):
+        matching = 0
+        # A run of k equal tokens at distance width contains floor(k/width)+1
+        # consecutive phrase copies. This counts exact runs in O(32 * words).
+        for start in range(len(words) - width - 1, -1, -1):
+            matching = matching + 1 if words[start] == words[start + width] else 0
+            longest = max(longest, matching // width + 1)
+    reasons = ([] if ended else ["ocr_missing_eos"])
+    if longest >= 8:
+        reasons.append("ocr_repetition_loop")
+    if not (text or "").strip():
+        reasons.append("ocr_empty_output")
+    return {"eos": ended, "max_consecutive_repeats": longest,
+            "validated": not reasons, "reasons": reasons}
+
+
+def qwen_ocr_with_retry(generate, language="vi", *, validate=True, retry_invalid=True,
+                        max_new_tokens=1536):
+    """Model-free orchestration; generate(prompt, token_limit, penalty) returns a dict.
+
+    Preserve both attempts even if the second fails. There is at most one retry,
+    with the experiment's literal-only prompt, 2048 tokens and penalty 1.10.
+    """
+    language = "vi" if language == "vi" else "en"
+    prompt = QWEN_SLIDE_PROMPTS[language] + QWEN_LITERAL_SUFFIX[language]
+    attempts = []
+    for attempt in range(2 if validate and retry_invalid else 1):
+        limit, penalty = (2048, 1.10) if attempt else (max_new_tokens, 1.05)
+        try:
+            result = dict(generate(prompt, limit, penalty))
+            tokens = result.pop("token_ids")
+            eos = result.pop("eos_token_id")
+            result.update(qwen_ocr_validation(result["text"], tokens, eos))
+            result.update(generated_tokens=len(tokens), last_token_id=tokens[-1] if tokens else None,
+                          eos_token_ids=eos)
+        except Exception as error:
+            result = {"text": "", "validated": False, "eos": False,
+                      "reasons": ["ocr_generation_error"], "error": str(error)}
+        result.update(attempt=attempt + 1, max_new_tokens=limit, repetition_penalty=penalty,
+                      prompt_sha256=fingerprint(prompt))
+        attempts.append(result)
+        if result["validated"] or not validate:
+            break
+        prompt = QWEN_RETRY_PROMPTS[language]
+    selected = attempts[-1]
+    # Disabling validation is explicit and recorded; generation errors still fail.
+    failed = not selected["validated"] and (validate or "error" in selected)
+    return {"text": selected["text"], "validated": selected["validated"],
+            "validation_enabled": validate, "attempts": attempts,
+            "ocr_quality": {"status": "failed" if failed else "available" if validate else "unchecked",
+                            "reasons": selected["reasons"] if failed else [],
+                            "evidence_excluded": failed,
+                            "source": "qwen_generation_validation"}}
+
+
+def qwen_content_roi(image, interval, frame_hsv=None, configured_roi=None):
+    """Prefer audited/configured content boxes, then the document border or saved screen.
+
+    Expand the identity ROI to undo its bezel inset. Fall back to the whole frame
+    when no conservative screen exists; never reuse the experiment's tight value crops.
+    """
+    roi = configured_roi
+    method = "configured_content_roi"
+    if roi is None:
+        roi = detect_content_roi(image, frame_hsv)
+        method = "configured_document_border"
+    if roi is None:
+        states = interval.get("reveal_states", [])
+        roi = states[-1].get("display_roi") if states else None
+        method = "expanded_state_display_roi"
+        if roi:
+            dx, dy = (roi[2] - roi[0]) * .02, (roi[3] - roi[1]) * .02
+            roi = (max(0, roi[0] - dx), max(0, roi[1] - dy),
+                   min(1, roi[2] + dx), min(1, roi[3] + dy))
+    if roi is not None and not (len(roi) == 4 and 0 <= roi[0] < roi[2] <= 1
+                                and 0 <= roi[1] < roi[3] <= 1):
+        raise ValueError("Invalid Qwen content ROI")
+    return roi, method if roi else "full_frame_fallback"
+
+
+def load_qwen_ocr(devices=("cuda:0", "cuda:1"), max_new_tokens=1536, *,
+                  model_id=QWEN_OCR_MODEL, revision=QWEN_OCR_REVISION,
+                  min_pixels=256 * 32 * 32, max_pixels=1280 * 32 * 32,
+                  validate=True, retry_invalid=True):
+    """Read images on one model copy per GPU; return text plus attempt provenance."""
     import threading
+
+    import time
 
     import torch
     from transformers import AutoProcessor, Qwen3VLForConditionalGeneration
 
-    processor = AutoProcessor.from_pretrained(HYBRID_VLM_MODEL)
+    if not devices or not 0 < min_pixels <= max_pixels:
+        raise ValueError("Qwen requires devices and positive ordered pixel bounds")
+    processor = AutoProcessor.from_pretrained(model_id, revision=revision,
+                                             min_pixels=min_pixels, max_pixels=max_pixels)
     models = [Qwen3VLForConditionalGeneration.from_pretrained(
-        HYBRID_VLM_MODEL, torch_dtype=torch.float16, device_map=device,
+        model_id, revision=revision, torch_dtype=torch.float16, device_map=device,
         attn_implementation="sdpa").eval() for device in devices]
 
-    def read_one(model, image, language):
-        prompt = QWEN_SLIDE_PROMPTS["vi" if language == "vi" else "en"]
-        messages = [{"role": "user", "content": [{"type": "image", "image": image},
-                                                  {"type": "text", "text": prompt}]}]
-        inputs = processor.apply_chat_template(messages, tokenize=True, add_generation_prompt=True,
-                                               return_dict=True, return_tensors="pt").to(model.device)
-        with torch.inference_mode():
-            out = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False,
-                                 repetition_penalty=1.05)
-        return processor.batch_decode(out[:, inputs["input_ids"].shape[1]:], skip_special_tokens=True)[0].strip()
+    def read_one(model, image, language, force_tokens=None):
+        def generate(prompt, limit, penalty):
+            messages = [{"role": "user", "content": [{"type": "image", "image": image},
+                                                      {"type": "text", "text": prompt}]}]
+            inputs = processor.apply_chat_template(messages, tokenize=True, add_generation_prompt=True,
+                                                   return_dict=True, return_tensors="pt").to(model.device)
+            started = time.monotonic()
+            with torch.inference_mode():
+                out = model.generate(**inputs, max_new_tokens=limit, do_sample=False,
+                                     **({'min_new_tokens': force_tokens} if force_tokens else {}),
+                                     repetition_penalty=penalty)
+            tokens = out[0, inputs["input_ids"].shape[1]:].tolist()
+            return {"text": processor.decode(tokens, skip_special_tokens=True).strip(),
+                    "token_ids": tokens, "eos_token_id": model.generation_config.eos_token_id,
+                    "seconds": time.monotonic() - started, "image_size": list(image.size),
+                    "image_grid_thw": inputs["image_grid_thw"].tolist()}
+        result = qwen_ocr_with_retry(generate, language, validate=validate and not force_tokens,
+                                     retry_invalid=retry_invalid and not force_tokens,
+                                     max_new_tokens=force_tokens or max_new_tokens)
+        result.update(model_id=model_id, revision=revision,
+                      resolved_revision=getattr(model.config, "_commit_hash", None))
+        return result
 
-    def read_many(images, language="vi"):
+    def read_many(images, language="vi", *, on_answer=None, force_tokens=None):
         answers, errors = [None] * len(images), []
 
         def worker(k):
             try:
                 for n in range(k, len(images), len(models)):
-                    answers[n] = read_one(models[k], images[n], language)
+                    answers[n] = read_one(models[k], images[n], language, force_tokens)
+                    if on_answer is not None:
+                        on_answer(n, answers[n])
                     print(f"Qwen đọc slide {sum(a is not None for a in answers)}/{len(images)}", flush=True)
             except Exception as error:   # re-raised in the caller's thread
                 errors.append(error)
@@ -747,6 +870,12 @@ def load_qwen_ocr(devices=("cuda:0", "cuda:1"), max_new_tokens=1536):
     return read_many
 
 
+def shared_qwen_ocr(devices, **options):
+    """Identical production/canary cache key: never load another resident copy."""
+    return shared_model(("qwen_ocr", tuple(devices), fingerprint(options)),
+                        lambda: load_qwen_ocr(devices, **options))
+
+
 def run_visual_extraction(stage01_dir, output_root, video_id="L25_V001", *,
                           languages=("vi", "en"),
                           vision_model="Qwen/Qwen2.5-VL-3B-Instruct",
@@ -757,7 +886,10 @@ def run_visual_extraction(stage01_dir, output_root, video_id="L25_V001", *,
                           hybrid_devices=("cuda:0", "cuda:1"), ocr_gate=None, hybrid_rescue_area=0.4,
                           describe_language="vi", hybrid_skip_repeated_decor=False,
                           hybrid_min_region_area=0.0, reuse_near_duplicates=False,
-                          hybrid_pipelined=False):
+                          hybrid_pipelined=False, qwen_content_crop=True, qwen_content_rois=None,
+                          qwen_model=QWEN_OCR_MODEL, qwen_revision=QWEN_OCR_REVISION,
+                          qwen_min_pixels=256 * 32 * 32, qwen_max_pixels=1280 * 32 * 32,
+                          qwen_validate=True, qwen_retry_invalid=True):
     """ocr_engine: "easyocr" (lines of text with boxes), "hybrid" (Unlimited-OCR for
     text, LaTeX and tables + Qwen3-VL reading every chart/figure region) or "qwen" (Qwen3-VL-4B
     reads the whole slide in one call, one model per GPU of hybrid_devices: on 2 Vietnamese and
@@ -798,8 +930,17 @@ def run_visual_extraction(stage01_dir, output_root, video_id="L25_V001", *,
         "ocr_engine": ocr_engine, "languages": list(languages),
         **({"hybrid_ocr_model": HYBRID_OCR_MODEL, "hybrid_vlm_model": HYBRID_VLM_MODEL,
             "hybrid_prompt_sha256": fingerprint(hybrid_crop_prompt(describe_language))} if ocr_engine == "hybrid" else {}),
-        **({"qwen_ocr_model": HYBRID_VLM_MODEL, "describe_language": describe_language,
-            "qwen_prompt_sha256": fingerprint(QWEN_SLIDE_PROMPTS["vi" if describe_language == "vi" else "en"])}
+        **({"qwen_ocr_model": qwen_model, "qwen_revision": qwen_revision,
+            "describe_language": describe_language, "qwen_content_crop": qwen_content_crop,
+            "qwen_content_rois": qwen_content_rois or {},
+            "qwen_min_pixels": qwen_min_pixels, "qwen_max_pixels": qwen_max_pixels,
+            "qwen_validate": qwen_validate, "qwen_retry_invalid": qwen_retry_invalid,
+            "qwen_validation_recipe": "eos_phrase_1_to_32_repeats_8_v1",
+            "qwen_generation": {"max_new_tokens": 1536, "repetition_penalty": 1.05,
+                                "retry_max_new_tokens": 2048, "retry_repetition_penalty": 1.10},
+            "qwen_prompt_sha256": fingerprint(QWEN_SLIDE_PROMPTS["vi" if describe_language == "vi" else "en"]
+                                             + QWEN_LITERAL_SUFFIX["vi" if describe_language == "vi" else "en"]),
+            "qwen_retry_prompt_sha256": fingerprint(QWEN_RETRY_PROMPTS["vi" if describe_language == "vi" else "en"])}
            if ocr_engine == "qwen" else {}),
         "vision_model": vision_model, "vision_revision": vision_revision,
         "vision_prompt_sha256": fingerprint(VISUAL_PROMPT),
@@ -837,6 +978,12 @@ def run_visual_extraction(stage01_dir, output_root, video_id="L25_V001", *,
             options["min_region_area"] = hybrid_min_region_area
         return options
 
+    def get_qwen_reader():
+        options = dict(model_id=qwen_model, revision=qwen_revision,
+                       min_pixels=qwen_min_pixels, max_pixels=qwen_max_pixels,
+                       validate=qwen_validate, retry_invalid=qwen_retry_invalid)
+        return shared_qwen_ocr(hybrid_devices, **options)
+
     # Per keyframe, before any OCR: content box, OCR gate, near-duplicate source (None for ads).
     decisions, pending, pending_assets = [], [], set()
     for index, interval in enumerate(intervals):
@@ -845,7 +992,13 @@ def run_visual_extraction(stage01_dir, output_root, video_id="L25_V001", *,
             continue
         with Image.open(relative_asset(stage01_dir, interval["image_path"])) as opened:
             image = opened.convert("RGB")
-        roi = detect_content_roi(image, frame_hsv)
+        crop_method = "configured_document_border"
+        if ocr_engine == "qwen" and qwen_content_crop:
+            crop_rois = qwen_content_rois or {}
+            roi, crop_method = qwen_content_roi(
+                image, interval, frame_hsv, crop_rois.get(interval["segment_id"], crop_rois.get(video_id)))
+        else:
+            roi = detect_content_roi(image, frame_hsv)
         gate_skip, gate_scores = gate_keyframe(ocr_gate, image, roi)
         reused_from = None
         if reuse_near_duplicates and not gate_skip:
@@ -853,7 +1006,7 @@ def run_visual_extraction(stage01_dir, output_root, video_id="L25_V001", *,
             reused_from = near_duplicate(read_thumbs, thumb)
             if reused_from is None:
                 read_thumbs.append((interval["segment_id"], thumb))
-        decisions.append((roi, gate_skip, gate_scores, reused_from))
+        decisions.append((roi, gate_skip, gate_scores, reused_from, crop_method))
         asset_id = interval["image_sha256"]
         if (((ocr_engine == "hybrid" and hybrid_pipelined) or ocr_engine == "qwen") and not gate_skip
                 and reused_from is None and asset_id not in pending_assets
@@ -863,10 +1016,25 @@ def run_visual_extraction(stage01_dir, output_root, video_id="L25_V001", *,
     ahead = {}   # interval index -> (blocks, regions, raw) read before the records are built
     qwen_read = None
     if pending and ocr_engine == "qwen":
-        qwen_read = shared_model(("qwen_ocr", tuple(hybrid_devices)), lambda: load_qwen_ocr(hybrid_devices))
-        answers = qwen_read([crop for _, crop in pending], describe_language)
-        for (index, _), raw in zip(pending, answers):
-            ahead[index] = (*parse_qwen_slide(raw), raw)
+        qwen_read = get_qwen_reader()
+        # Persist raw answers inside the reader's worker, before it starts the next image.
+        # Final extraction may still be interrupted; this answer cache survives that death.
+        missing = []
+        for item in pending:
+            answer_cache = cache_directory / (intervals[item[0]]["image_sha256"] + ".qwen.json")
+            if answer_cache.exists():
+                ahead[item[0]] = read_json(answer_cache)
+            else:
+                missing.append(item)
+
+        def save_answer(n, answer):
+            index = missing[n][0]
+            asset_id = intervals[index]["image_sha256"]
+            write_json(cache_directory / (asset_id + ".qwen.json"), answer)
+            ahead[index] = answer
+
+        if missing:
+            qwen_read([crop for _, crop in missing], describe_language, on_answer=save_answer)
     elif pending:
         hybrid_read = shared_model(("hybrid_ocr", tuple(hybrid_devices)),
                                    lambda: load_hybrid_ocr(*hybrid_devices))
@@ -900,7 +1068,7 @@ def run_visual_extraction(stage01_dir, output_root, video_id="L25_V001", *,
         cache = cache_directory / f"{asset_id}.json"
         with Image.open(image_path) as opened:
             image = opened.convert("RGB")
-            roi, gate_skip, gate_scores, reused_from = decisions[index]
+            roi, gate_skip, gate_scores, reused_from, crop_method = decisions[index]
             content_name = None
             if roi:
                 content_name = f"content_crops/seg_{interval['sequence']:05d}.jpg"
@@ -922,16 +1090,16 @@ def run_visual_extraction(stage01_dir, output_root, video_id="L25_V001", *,
                 extraction = read_json(cache)
                 resolved_revision = extraction.get("resolved_revision", resolved_revision)
             else:
-                hybrid_regions, hybrid_raw = [], None
+                hybrid_regions, hybrid_raw, qwen_result = [], None, None
                 if ocr_engine == "qwen":
                     if index in ahead:
-                        blocks, hybrid_regions, hybrid_raw = ahead.pop(index)
+                        qwen_result = ahead.pop(index)
                     else:   # same image as a slide read just before (pending holds each asset once)
                         if qwen_read is None:
-                            qwen_read = shared_model(("qwen_ocr", tuple(hybrid_devices)),
-                                                     lambda: load_qwen_ocr(hybrid_devices))
-                        hybrid_raw = qwen_read([crop_to_roi(image, roi)], describe_language)[0]
-                        blocks, hybrid_regions = parse_qwen_slide(hybrid_raw)
+                            qwen_read = get_qwen_reader()
+                        qwen_result = qwen_read([crop_to_roi(image, roi)], describe_language)[0]
+                    hybrid_raw = qwen_result["text"]
+                    blocks, hybrid_regions = parse_qwen_slide(hybrid_raw)
                     for item in blocks + hybrid_regions:
                         item["bbox"] = roi_to_image_box(item["bbox"], roi)
                 elif ocr_engine == "hybrid":
@@ -974,6 +1142,8 @@ def run_visual_extraction(stage01_dir, output_root, video_id="L25_V001", *,
                     "hybrid_regions": hybrid_regions, "raw_hybrid_response": hybrid_raw,
                     "raw_vision_response": raw,
                     "resolved_revision": resolved_revision if use_vision else None,
+                    **({"ocr_generation": qwen_result, "ocr_quality": qwen_result["ocr_quality"]}
+                       if qwen_result is not None else {}),
                 }
                 write_json(cache, extraction)
             if not gate_skip:
@@ -1017,8 +1187,11 @@ def run_visual_extraction(stage01_dir, output_root, video_id="L25_V001", *,
             "raw_vision_response": extraction["raw_vision_response"],
             "raw_ocr_response": extraction.get("raw_hybrid_response"),
             "description_status": vision["parse_status"],
-            "ocr_status": "skipped_no_content" if vision["parse_status"] == "skipped_no_content" else "read",
+            "ocr_status": ("skipped_no_content" if vision["parse_status"] == "skipped_no_content" else
+                           "failed" if extraction.get("ocr_quality", {}).get("evidence_excluded") else "read"),
             "ocr_gate_score": gate_score,
+            **({"ocr_generation": extraction["ocr_generation"], "ocr_quality": extraction["ocr_quality"],
+                "ocr_crop_method": crop_method} if "ocr_generation" in extraction else {}),
             **({"ocr_reused_from": reused_from} if reused_from else {}),
             **({"ocr_gate_crop_scores": gate_scores["crops"]} if "crops" in gate_scores else {}),
         })
@@ -1029,6 +1202,7 @@ def run_visual_extraction(stage01_dir, output_root, video_id="L25_V001", *,
                             parents=[parent], extra={
                                 "record_count": len(records),
                                 "ocr_read_count": sum(r.get("ocr_status") == "read" for r in records),
+                                "ocr_failed_count": sum(r.get("ocr_status") == "failed" for r in records),
                                 "ocr_skipped_no_content": sum(r.get("ocr_status") == "skipped_no_content"
                                                               for r in records)})
     return directory, manifest, records

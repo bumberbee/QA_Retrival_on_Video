@@ -1,17 +1,55 @@
-﻿"""Build docs/progress-report.html: progress report for the supervisor, same school template and
-styles as the defense deck (make_thesis_slides.py), one step per slide with real outputs.
+﻿"""Build docs/progress-report.html: progress report for the supervisor, using the school template,
+styles and helpers of docs/deck_template.py, one step per slide with real outputs.
 
     python docs/make_progress_slides.py <template media dir> <runs dir>
 <template media dir>: ppt/media of the unzipped "Template Powerpoint v1.pptx";
-<runs dir>: kaggle/lecture_rag/runs (exports of 20261002-full-10-ads and 20261005-run-pipeline).
+<runs dir>: retained for CLI compatibility; run images are restored under docs/figs.
 """
 import base64, io, re, sys
 from pathlib import Path
 from PIL import Image
 
 HERE = Path(__file__).resolve().parent
+
+# Confirmation run dated 03/11. Fill ONLY this dict after its results are audited.
+# None is rendered as "đang chờ"; do not substitute cached ablation results.
+CONFIRM = {
+    "kernel": "lecture-rag-fast-10-confirm-20261102",
+    # D:/thesis-data/run-20261102/confirm-eval/confirm-eval-summary.json (CPU kernel
+    # lecture-rag-confirm-cpu-eval-20261104, "fixed" = 12 "%" speech chunks removed; same metrics as-is).
+    "dev_hit1": 0.627, "dev_hit3": 0.818, "dev_mrr": 0.714, "dev_context_recall": 0.791,
+    "legacy_hit1": 0.795, "legacy_hit3": 0.955, "legacy_mrr": 0.871, "legacy_time_overlap": 0.909,
+    "strict_hit1": 0.727, "strict_hit3": 0.886, "strict_mrr": 0.795,
+    # gpu-ledger.json (2 x T4 x 4,698.93 log seconds); progress.json wall time; 1 failed / 3 retried OCR groups.
+    "t4_hours": 2.61, "wall_seconds": 4494, "ocr_failures": 1, "ocr_retries": 3,
+}
+
+# Dev: RUN_20261102.md and audit/reproduced-summary.json (rounded to 3 decimals).
+# Legacy here uses ORIGINAL any-positive group-time overlap:
+# RUN_20261102.md, ABLATION_20261102.md, audit/reproduced-summary-time.json.
+# Do not mix it with default-scoring reproduced-summary.json or minimum-overlap.
+ABLATION = [
+    ("Old reference", (0.591, 0.782, 0.674, 0.764), (0.818, 0.955, 0.871, 0.909)),
+    ("New + medium", (0.591, 0.764, 0.673, 0.745), (0.795, 0.864, 0.826, 0.818)),
+    ("New + turbo (bỏ)", (0.564, 0.773, 0.662, 0.727), (0.705, 0.864, 0.773, 0.795)),
+    ("<b>Principled (báo cáo)</b>", (0.600, 0.782, 0.679, 0.755), (0.818, 0.955, 0.871, 0.909)),
+    ("Recommended-final (lạc quan)", (0.636, 0.818, 0.718, 0.809), (0.818, 0.955, 0.875, 0.909)),
+]
+
+
+def metric_line(values):
+    return " / ".join(f"{value:.3f}" for value in values)
+
+
+def confirm_value(key):
+    value = CONFIRM[key]
+    if value is None:
+        return '<span class="wip">đang chờ</span>'
+    return f"{value:.3f}" if isinstance(value, float) else str(value)
+
+
 MEDIA, RUNS = Path(sys.argv[1]), Path(sys.argv[2])
-source = (HERE / "make_thesis_slides.py").read_text(encoding="utf-8")
+source = (HERE / "deck_template.py").read_text(encoding="utf-8")
 head, tail = source.split("\nS = []\n", 1)[0], source.split("\nCSS = f'''", 1)[1]
 ns = {"__name__": "progress"}
 sys.argv = [sys.argv[0], str(MEDIA), str(HERE / "progress-report.html")]
@@ -20,15 +58,13 @@ ns["SECTIONS"] = ["Bài toán & mục tiêu", "Dữ liệu", "Hệ thống xử 
                   "Kết quả & đánh giá", "Kế hoạch & xin ý kiến", "Phụ lục"]
 content, section, card, table = ns["content"], ns["section"], ns["card"], ns["table"]
 ns["PIPELINE_SVG"] = (ns["PIPELINE_SVG"].replace("quảng cáo · khung trống", "bộ gác: có chữ không?")
-                      .replace(">OCR đa thành phần<", ">OCR cả slide<")
-                      .replace("Unlimited-OCR + Qwen", "Qwen3-VL-4B · cả slide")
+                      .replace(">OCR đa thành phần<", ">OCR vùng nội dung<")
+                      .replace("Unlimited-OCR + Qwen", "Qwen3-VL-4B · crop")
                       )
 ns["RAG_SVG"] = (ns["RAG_SVG"].replace("≤ 4 slide neo", "3 slide tốt nhất")
                  .replace("+ slide trước/sau", "chữ slide ×1,05"))
 
 FIGS = HERE / "figs"
-V008 = RUNS / "20261002-full-10-ads/outputs/fast_pipeline_export/L25_V008"
-MLS = RUNS / "20261005-run-pipeline/export/MLS-15DA1"
 
 
 def photo(path, width=900, quality=78, top_share=1.0):
@@ -65,7 +101,7 @@ S.append(f'''<section class="slide title-slide">
       <div><span>Giảng viên hướng dẫn:</span><b>TS. ĐẶNG THỊ PHÚC</b></div>
     </div>
   </div>
-  <div class="cover-date">Hồ Chí Minh, 10/2026</div>
+  <div class="cover-date">Hồ Chí Minh, 11/2026</div>
 </section>''')
 S.append(content(0, "Nội dung báo cáo", '<ol class="agenda">' + "".join(
     f'<li><span>{n:02d}</span>{name}</li>' for n, name in enumerate(ns["SECTIONS"], 1)) + "</ol>"))
@@ -76,12 +112,12 @@ S.append(content(0, "Tóm tắt: đề tài làm gì, đã làm được đến 
     <li>RAG: tìm bằng chứng trong bài trước, LLM chỉ trả lời từ đó → hạn chế bịa.</li></ul>
     <h3 style="margin-top:12px">Đã làm được</h3><ul class="small">
     <li>Đủ <b>5 bước xử lý video</b> chạy trên Kaggle + <b>web app</b> hỏi đáp chạy được.</li>
-    <li>5 bộ dữ liệu (536 video), nhãn tay cho L25, 74 câu hỏi đánh giá.</li></ul></div>
+    <li>5 bộ dữ liệu (536 video), nhãn tay L25. <b>Dev-120:</b> 110 câu có đáp án, 10 ngoài bài; AI soạn, chưa được người kiểm.</li></ul></div>
   <div class="kpis two">
     <div><b>0,970</b><span>F1 tách slide (6 video test L25)</span></div>
     <div><b>94%</b><span>từ tiếng Việt OCR đọc đúng (Qwen3-VL, 20 slide)</span></div>
-    <div><b>65/66</b><span>câu hỏi tìm đúng slide trong 3 kết quả đầu</span></div>
-    <div><b>~12 phút</b><span>xử lý một video 30 phút (Kaggle 2×T4)</span></div></div>
+    <div><b>0.600</b><span>Hit@1, principled trên 110 câu có đáp án của dev-120</span></div>
+    <div><b>0.782</b><span>Hit@3 dev-120, MRR 0.679, context recall 0.755</span></div></div>
 </div>''', "dense"))
 
 # 1 overview
@@ -91,16 +127,16 @@ S.append(content(1, "Yêu cầu đề tài và tiến độ chung", '''<div clas
     <li><b>Xử lý video:</b> phát hiện slide + keyframe; OCR tiêu đề, văn bản, công thức, bảng, hình; STT lời giảng theo slide; đồng bộ theo thời gian.</li>
     <li><b>Multimodal Lecture RAG:</b> câu hỏi SV → truy xuất slide + transcript + ngữ cảnh → LLM → trả lời.</li></ol></div>
   <div><h3>Tiến độ</h3>''' + table(["Phần", "Trạng thái"], [
-      ["Phát hiện slide", "<span class='ok'>✔ xong</span> · F1 0,970"],
+      ["Phát hiện slide", "<span class='ok'>✔ đã đo</span> · F1 0,970 (6 video test L25)"],
       ["Lọc nội dung (bộ gác OCR)", "<span class='ok'>✔ chốt</span> · bỏ 81% khung trống, bỏ nhầm 7 slide / 2.917 khung"],
-      ["OCR đa thành phần", "<span class='ok'>✔ chốt Qwen3-VL cả slide</span> · nhanh ×1,8–7"],
-      ["Speech-to-Text", "<span class='ok'>✔ chạy tốt</span>"],
+      ["OCR đa thành phần", "Qwen3-VL, content crop, kiểm EOS/lặp, tối đa một retry"],
+      ["Speech-to-Text", "Giữ medium; turbo bị loại sau đối chiếu truy xuất"],
       ["Đồng bộ slide ↔ transcript", "<span class='ok'>✔ xong</span>"],
-      ["Chỉ mục + truy xuất", "<span class='ok'>✔ chốt E5 + BM25</span> · Hit@3 65/66"],
-      ["LLM trả lời + web app", "<span class='ok'>✔ chạy được</span> · Qwen2.5-7B, stream, mốc giờ bấm được"],
+      ["Chỉ mục + truy xuất", "E5 + BM25 · principled dev-120: Hit@3 0.782"],
+      ["LLM trả lời + web app", "Vercel + Supabase + R2 hoạt động; backend GPU còn chờ"],
       ["Đánh giá tự động (RAGAS)", "<span class='wip'>◐ chưa làm</span> · cần GPU"]]) + '''</div>
 </div>''', "dense"))
-S.append(card(1, "Luồng xử lý đã xây dựng", ns["PIPELINE_SVG"] + '<p class="note">Hình 1: Mọi khối đã chạy được từ đầu đến cuối trên Kaggle (GPU T4 x2). Video 30 phút: ~12 phút (đo với OCR cũ đã tăng tốc); với OCR Qwen3-VL ước tính 8–12 phút, chưa đo trọn.</p>'))
+S.append(card(1, "Luồng xử lý đã xây dựng", ns["PIPELINE_SVG"] + '<p class="note">Lần chạy riêng Kaggle 02/11: 10 video, wall time pipeline 4.950,79 s. Bộ chỉ mục mới có hồi quy nên chưa được chấp nhận thay bản tham chiếu. Nguồn: RUN_20261102.md.</p>'))
 
 S.append(content(1, "Tổng hợp hệ thống: mỗi bước làm gì, ví dụ, kết quả", table(
     ["Bước", "Làm gì", "Công cụ", "Ví dụ thật", "Kết quả đo"],
@@ -108,14 +144,14 @@ S.append(content(1, "Tổng hợp hệ thống: mỗi bước làm gì, ví dụ
       "V008 (20 phút): 67 trạng thái → 16 đoạn", "F1 <b>0,970</b> (L25) · 0,909 (LPM)"],
      ["Bộ gác", "Bỏ OCR khung không có chữ (giảng viên, logo, quảng cáo)", "SigLIP, 14 câu mô tả, ngưỡng 0,15",
       "Logo điểm 0,00 → bỏ; slide chữ 0,99 → đọc", "Bỏ 81% khung trống, bỏ nhầm 7 slide / 2.917 khung"],
-     ["02 · OCR", "Đọc chữ, công thức (LaTeX), bảng, mô tả hình", "Qwen3-VL-4B, mỗi GPU một bản",
-      "V037: “1.HOÀN CẢNH LỊCH SỬ · 2.DIỄN BIẾN …” + [Hình]", "Đúng <b>94%</b> từ tiếng Việt · nhanh ×1,8–7 so với cách cũ"],
+     ["02 · OCR", "Đọc chữ, công thức (LaTeX), bảng, mô tả hình", "Qwen3-VL-4B, content crop + kiểm EOS/lặp",
+      "V037: “1.HOÀN CẢNH LỊCH SỬ · 2.DIỄN BIẾN …” + [Hình]", "02/11: 1 OCR lỗi, 4 retry (10 video)"],
      ["03 · Lời giảng", "Chuyển giọng nói thành chữ, có thời gian từng từ", "faster-whisper-medium + lọc khoảng lặng",
       "V008: 3.599 từ; sửa “xác xuất” → “xác suất”", "~3 phút / 30 phút video"],
-     ["04 · Đồng bộ", "Gán lời giảng vào slide đang hiện, làm sạch OCR", "Thời gian giữa từ + bỏ dòng lặp/logo",
-      "Slide 1:38–2:10 nhận đúng lời “P A bằng N A chia N Omega”", "13 chỗ ASR được sửa theo chữ slide (V008)"],
+     ["04 · Đồng bộ", "Gán lời giảng vào slide đang hiện, làm sạch OCR", "Mốc trạng thái hình; thời gian gốc từng từ",
+      "OCR lỗi bị loại; lời giảng hợp lệ được giữ", "Mốc OCR theo visual state, lời giảng theo từ"],
      ["05 · Chỉ mục & tìm", "Cắt thành mẩu, tìm theo nghĩa + từ khóa, lấy 3 slide", "E5 + BM25, gộp RRF, chữ slide ×1,05",
-      "“Xác suất tính thế nào?” → slide 1:37–2:10 hạng 1", "Hit@1 <b>55/66</b> · Hit@3 <b>65/66</b>"],
+      "“Xác suất tính thế nào?” → slide 1:37–2:10 hạng 1", "Principled dev-120: H1 <b>0.600</b> · H3 <b>0.782</b>"],
      ["Trả lời", "LLM trả lời từ bằng chứng, kèm mốc thời gian", "Qwen2.5-7B (Ollama), stream",
       "“Liên hợp quốc ra đời thế nào?” → … ▶ 02:10–02:38", "Trích mốc 4/5 · ngoài bài: “không đề cập”"]],
     "Chi tiết từng bước: phần 03–04 và Phụ lục"), "dense tiny"))
@@ -308,7 +344,7 @@ S.append(content(3, "Bước 1 · Phát hiện slide: kết quả", '''<div clas
     <li>Ô có <b>slide chữ nền vàng</b> = nội dung bài giảng → đưa sang OCR.</li>
     <li>Ô <b>người thật, cảnh trường, món ăn</b> = quảng cáo; <b>giảng viên + slide nhỏ</b> vẫn là bài giảng.</li></ul>
     <div class="kpis one"><div><b>67 → 16</b><span>trạng thái hình → 12 slide + 4 đoạn quảng cáo (V008, 20 phút)</span></div></div></div>
-  ''' + fig(photo(V008 / "01_slides/contact_sheet.jpg", 1100), "Hình 5: Keyframe của 16 đoạn trong video L25_V008") + "</div>"))
+  ''' + fig(embed("v008_contact_sheet.jpg"), "Hình 5: Keyframe của 16 đoạn trong video L25_V008") + "</div>"))
 S.append(content(3, "1.6 · Vì sao chọn ngưỡng 0,055 và 2 s?", '''<div class="cols2">
   <div class="panel"><h3>Hai con số quyết định khi nào cắt slide</h3><ul class="small">
     <li><b>Ngưỡng khác</b> (<code>change_threshold</code>): hai ảnh khác nhau hơn mức này mới coi là <b>có thay đổi</b>.
@@ -381,7 +417,7 @@ S.append(content(3, "Bước 1 · Gộp slide hiện ra từng dòng (V008)", ''
     <li>Mỗi hàng bên phải là một slide sau khi gộp, từ trạng thái đầu đến cuối.</li>
     <li>Hàng 2 (giảng viên) là trường hợp cảnh quay gần như đứng yên cũng được gộp.</li></ul>
     <div class="kpis one"><div><b>0,970</b><span>F1 tách slide · 6 video test L25 (P 0,990 · R 0,951)</span></div></div></div>
-  ''' + fig(photo(RUNS / "20261006-full-10-v2/outputs/lecture_rag/L25_V008/01_slides/reveal_sheet.jpg", 1100, top_share=0.42), "Mỗi hàng là các trạng thái được gộp thành một slide (V008)") + "</div>"))
+  ''' + fig(embed("v008_reveal_sheet.jpg"), "Mỗi hàng là các trạng thái được gộp thành một slide (V008)") + "</div>"))
 S.append(content(3, "Bộ gác OCR: khung này có chữ để đọc không?", '''<div class="cols2">
   <div class="panel"><h3>Vì sao cần</h3><ul class="small">
     <li>Sau bước 1, mỗi đoạn có 1 keyframe. Nhưng <b>không phải keyframe nào cũng là slide</b>:
@@ -457,10 +493,8 @@ S.append(content(3, "Bộ gác: quét lại trên 2.917 khung (90 video)", '''<d
     <li>Giữ <b>softmax</b>, ngưỡng <b>0,15</b>, <code>frame+crops</code>. 9 thẻ tiêu đề vẫn bị bỏ: ít thông tin, chấp nhận.</li></ul></div></div>''', "dense"))
 S.append(content(3, "Bước 1c · Kết quả demo trên video V008", fig(embed("gate_grid.jpg"),
     "Khung xanh = đọc OCR · khung đỏ = bỏ OCR (điểm &lt; 0,15): bỏ đúng 3 quảng cáo (#3, #9, #12) + 2 logo; giảng viên kèm slide nhỏ vẫn được đọc.", "wide")))
-seg = V008 / "04_bundle" / "keyframes"
-V037 = Path("D:/thesis-data/l25-all-2/export/L25_V037/01_slides/keyframes/seg_00005.jpg")
-S.append(content(3, "Bước 2 · OCR: Qwen3-VL-4B đọc cả slide", '''<div class="split">
-  ''' + fig(photo(V037, 900), "Keyframe L25_V037 (Cao trào cách mạng 1930–1931)") + '''
+S.append(content(3, "Bước 2 · OCR: Qwen3-VL-4B đọc nội dung slide", '''<div class="split">
+  ''' + fig(embed("v037_keyframe.jpg"), "Keyframe L25_V037 (Cao trào cách mạng 1930–1931)") + '''
   <div><h3>Kết quả OCR (Qwen3-VL, nguyên văn)</h3><pre class="ocr small">-Khung hoàng kinh tế thế giới 1929-1933
 làm kinh tế Việt Nam suy thoái, khủng hoảng nặng nề.
 -Các tầng lớp xã hội bị tác động, đời sống khó khăn bản cùng …
@@ -469,12 +503,24 @@ làm kinh tế Việt Nam suy thoái, khủng hoảng nặng nề.
   <h3 style="margin-top:8px">Cách cũ (hybrid) trên cùng slide</h3><pre class="ocr small">THANK NIEN
 -Khùng hoàng kinh tế thế giới … khùng hoàng nặng nè.
 2.DIỂN BIẾN · 3.ý NGHĨA LICH SỰ · Thầy NGUYÊN VIỆT ĐẦNG DU …</pre>
-  <p class="note">Một lần gọi model cho cả slide: ít lỗi dấu hơn, bỏ logo kênh và tên giảng viên, có dòng [Hình] mô tả sơ đồ. Vẫn còn lỗi nhỏ (“Khung hoàng”, “bản cùng”).</p></div></div>'''))
+  <p class="note">Ví dụ lưu từ 10/2026, còn lỗi “Khung hoàng”, “bản cùng”. Bản 11/2026 đọc vùng nội dung và kiểm EOS/lặp trước khi dùng làm bằng chứng.</p></div></div>'''))
+S.append(content(3, "Cải tiến trích xuất (11/2026)", '''<div class="cols2">
+  <div><h3>Qwen OCR</h3><ul class="small">
+    <li><b>Content crops:</b> ưu tiên ROI đã cấu hình, rồi vùng tài liệu hoặc vùng hiển thị. Giữ cả khung nếu không có crop phù hợp.</li>
+    <li><b>Kiểm đầu ra:</b> phải có token EOS thật, không rỗng và không có vòng lặp kéo dài.</li>
+    <li><b>Tối đa một retry:</b> prompt đọc nguyên văn. Lưu cả hai lần thử và lý do lỗi.</li>
+    <li>Retry vẫn lỗi: loại OCR khỏi bằng chứng, giữ lời giảng hợp lệ.</li></ul></div>
+  <div><h3>Mốc thời gian và nhóm nội dung</h3><ul class="small">
+    <li><b>State onsets:</b> lưu thời điểm bắt đầu từng trạng thái hình. OCR trích mốc của trạng thái đại diện.</li>
+    <li>Lời giảng vẫn theo thời gian gốc từng từ và nhóm sở hữu. Không suy ra thời gian cho từng dòng OCR.</li>
+    <li><b>Same-content merge:</b> gộp nhóm có cùng nội dung. Principled chỉ thêm onsets + merge vào cấu hình legacy.</li>
+    <li>Bỏ tùy chọn riêng cho bảng viết tay. Tùy chọn editor cho <code>y1CvB950VlU</code> vẫn cần kiểm chứng.</li></ul></div>
+</div><p class="note">Nguồn: PORT_V3.md; ABLATION_20261102.md. OCR mặc định là Qwen, ASR được giữ ở medium sau đánh giá.</p>''', "dense"))
 S.append(content(3, "Bước 2b · Công thức và hình vẽ (bài giảng tiếng Anh)", '''<div class="cols2">
-  <div>''' + fig(photo(MLS / "04_bundle/keyframes/seg_00007.jpg", 800), "Hình 6: Slide viết tay MLS-15DA1 (9:27)") + '''<pre class="ocr small">Def: A vector v ∈ V is an eigenvector of T if Tv = λv
+  <div>''' + fig(embed("mls15da1_keyframe.jpg"), "Hình 6: Slide viết tay MLS-15DA1 (9:27)") + '''<pre class="ocr small">Def: A vector v ∈ V is an eigenvector of T if Tv = λv
 for some λ ∈ R.
 Proof. λ is an eigenvalue of T ⇔ Ker(T − λ) ≠ ∅</pre></div>
-  <div>''' + fig(photo(MLS / "04_bundle/regions/027c538c510c8a9ba390_000.jpg", 700), "Hình 7: Vùng hình được Qwen3-VL mô tả") + '''<pre class="ocr small">“A hand-drawn diagram showing a cube transforming
+  <div>''' + fig(embed("mls15da1_region.jpg"), "Hình 7: Vùng hình được Qwen3-VL mô tả") + '''<pre class="ocr small">“A hand-drawn diagram showing a cube transforming
 into a skewed rectangular prism …”</pre>
   <p class="note">Mô tả hình theo ngôn ngữ của bài (tiếng Anh). Chữ viết tay đôi khi đọc sai ký hiệu.</p></div></div>'''))
 S.append(content(3, "Bước 2 · Vì sao chọn Qwen3-VL (1/2): tốc độ trên 4 video", '''<div class="cols2"><div>''' + table(
@@ -483,7 +529,7 @@ S.append(content(3, "Bước 2 · Vì sao chọn Qwen3-VL (1/2): tốc độ tr�
     ["hVU5Mw19V_c · toán viết tay", "18", "227 s", "705 s", "×3,1"],
     ["design_0004 · tiếng Anh", "20", "175 s", "1.255 s", "×7,2"],
     ["medical_0000 · tiếng Anh", "33", "208 s", "371 s", "×1,8"]],
-    "Thời gian bước 02 trên Kaggle 2×T4, cùng keyframe và cùng bộ gác") + '''</div>
+    "Benchmark 10/2026: bước 02 trên Kaggle 2×T4, cùng keyframe và cùng bộ gác") + '''</div>
   <div class="panel"><h3>So sánh hai cách</h3><ul class="small">
     <li><b>Hybrid</b> (cách cũ): Unlimited-OCR đọc chữ, rồi Qwen3-VL đọc riêng từng vùng hình → nhiều lần gọi model.</li>
     <li><b>Qwen3-VL cả slide</b>: một lần gọi cho cả slide, <b>mỗi GPU một bản</b> → nhanh hơn <b>×1,8–7</b>.</li>
@@ -496,7 +542,7 @@ S.append(content(3, "Bước 2 · Vì sao chọn Qwen3-VL (2/2): độ chính x�
      ["Unlimited-OCR", "76%", "70%", "80%"],
      ["EasyOCR (0,6 s/slide)", "74%", "71%", "61%"],
      ["GOT-OCR 2.0", "24%", "3%", "52%"]],
-    "20 slide tiếng Việt + 40 slide toán M3AV có đáp án") + '''</div>
+    "Benchmark 10/2026: 20 slide tiếng Việt + 40 slide toán M3AV có đáp án") + '''</div>
   <div class="panel"><h3>Đọc bảng thế nào</h3><ul class="small">
     <li><b>Đúng từ</b>: tỉ lệ từ trong đáp án mà công cụ đọc ra được.</li>
     <li><b>Đúng dấu</b>: chỉ tính các từ có dấu tiếng Việt, đo việc giữ dấu.</li>
@@ -506,18 +552,28 @@ S.append(content(3, "Bước 2 · Vì sao chọn Qwen3-VL (2/2): độ chính x�
 S.append(content(3, "Bước 3–4 · Speech-to-Text và đồng bộ", '''<div class="cols2">
   <div class="panel"><h3>Speech-to-Text</h3><ul class="small">
     <li><b>faster-whisper-medium</b>, lọc khoảng lặng, có <b>thời gian từng từ</b>.</li>
-    <li>Chạy song song với tách slide và OCR (~3 phút / 30 phút video).</li>
-    <li>V008: 3.599 từ trong 27 cửa sổ.</li></ul>
+    <li>Giữ medium sau đối chiếu với turbo trên dev-120 và legacy-49.</li>
+    <li>Làm sạch bằng <code>glossary_code</code>, giữ thời gian gốc và provenance của từ.</li></ul>
     <h3 style="margin-top:14px">Đồng bộ</h3><ul class="small">
-    <li>Từ nói lúc slide nào hiện → gán vào slide đó.</li>
-    <li>Làm sạch OCR: bỏ logo, tên GV, dòng lặp.</li>
-    <li><b>Sửa từ nghe nhầm</b> theo chữ trên slide: 13 chỗ trên V008.</li></ul></div>
-  <div><h3>Một slide sau đồng bộ (V008 · 1:38–2:10)</h3>
+    <li>Lời giảng theo thời gian từng từ và nhóm slide. OCR theo onset của trạng thái đại diện.</li>
+    <li>Làm sạch OCR, loại đầu ra lỗi khỏi bằng chứng truy xuất.</li>
+    <li>Không loại lời giảng hợp lệ chỉ vì OCR lỗi.</li></ul></div>
+  <div><h3>Ví dụ đã lưu (V008 · 10/2026)</h3>
     <div class="pair"><b>Chữ trên slide</b><p>ĐỊNH NGHĨA XÁC SUẤT · P(A) = n(A)/n(Ω) …</p>
     <b>Lời giảng gán vào slide</b><p>“P A sẽ bằng với lại N A chia cho N Omega. Trong đó N A là số kết quả thuận lợi của biến cố A …”</p>
     <b>Sửa ASR</b><p><s>xác xuất</s> → <b>xác suất</b> · <s>sát xuất</s> → <b>xác suất</b></p></div></div></div>'''))
 S.append(content(3, "Bước 3–4 · Kết quả demo trên video V008", fig(embed("sync_demo.jpg"),
-    "Mỗi từ Whisper nghe được (vạch) có thời gian → gán vào slide đang hiện; lời đã sửa theo chữ trên slide.", "wide")))
+    "Ví dụ 10/2026: mỗi từ Whisper (vạch) có thời gian và được gán vào slide đang hiện.", "wide")))
+
+S.append(content(3, "Lần chạy riêng Kaggle 02/11", '''<p><b>10 video</b>, kernel private <code>lecture-rag-fast-10-20261102</code> đã hoàn tất.</p>''' + table(
+    ["Đo thực tế", "Kết quả"],
+    [["Wall time pipeline", "<b>4.950,79 s</b> (các bước chạy chồng nhau)"],
+     ["GPU cấp phát (2 T4/session)", "Full: <b>2,8665 T4-hours</b>; canary + full: <b>3,0784 T4-hours</b>, không tính hàng đợi"],
+     ["OCR trên 10 video", "<b>1 lỗi / 4 retry</b>; 28 cờ cần xem lại. OCR lỗi bị loại, lời giảng được giữ"],
+     ["ASR, dev-120 (H1 / H3 / MRR / CR)", "Medium: <b>0.591 / 0.764 / 0.673 / 0.745</b><br>Turbo: 0.564 / 0.773 / 0.662 / 0.727"],
+     ["Quyết định", "<b>Loại turbo, giữ medium.</b> Cả hai bộ chỉ mục mới vẫn hồi quy so với old reference"]],
+    "Nguồn: RUN_20261102.md. So sánh CPU giữ cùng stage-01/02, dùng transcript medium đã cache và turbo của run.") + '''
+<p class="note">Validator gốc báo lỗi đường dẫn ảnh nên run chưa đạt acceptance. Audit tài sản offline đã đạt 10/10, không đồng nghĩa chất lượng truy xuất đã đạt.</p>''', "dense eval"))
 
 # 4 retrieval
 S.append(section(4))
@@ -533,8 +589,11 @@ S.append(content(4, "Web app sau khi nâng cấp", '''<div class="split">''' + f
     <li><b>Chữ hiện dần</b> khi LLM đang viết (stream), không phải chờ màn hình trống.</li>
     <li>Mốc <b>▶ 02:10–02:38</b> trong câu trả lời: bấm là video tua tới đúng đoạn.</li>
     <li>Dòng <b>“Nguồn”</b>: 3 slide dùng làm bằng chứng, cũng bấm được.</li>
-    <li>Hỏi tiếp <b>“Còn ASEAN thì sao?”</b> → hệ thống hiểu là hỏi hoàn cảnh ra đời ASEAN, nguồn có slide 06:49.</li>
-    <li>Hạn chế: LLM chạy trên CPU mất ~170 s mới ra chữ đầu → cần GPU khi demo.</li></ul></div></div>'''))
+    <li>Hỏi tiếp <b>“Còn ASEAN thì sao?”</b> cùng ngữ cảnh câu trước.</li></ul>
+    <h3 style="margin-top:12px">Trạng thái triển khai</h3><ul class="small">
+    <li><b>Vercel frontend + Supabase pgvector + Cloudflare R2</b> đang hoạt động.</li>
+    <li><b>Backend GPU trên Vast.ai chưa hoàn tất.</b> LLM trên CPU còn chậm, demo đã lưu mất ~170 s tới chữ đầu.</li></ul>
+    <p class="note">Kiến trúc: docs/deploy.md. Ảnh là demo 13/10, không phải ảnh backend GPU đã triển khai.</p></div></div>''', "dense"))
 S.append(content(4, "Ví dụ hỏi đáp (bộ 26 câu đầu, chạy trên Kaggle T4)", table(
     ["Câu hỏi", "Trả lời của hệ thống", ""],
     [["Xác suất của một biến cố được tính như thế nào?", "P(A) = n(A)/n(Ω), n(A): số kết quả thuận lợi …", "✔"],
@@ -542,7 +601,7 @@ S.append(content(4, "Ví dụ hỏi đáp (bộ 26 câu đầu, chạy trên Kag
      ["Tổng hai số là số chẵn khi nào?", "Cả hai cùng lẻ hoặc cả hai cùng chẵn", "✔ (qwen2:7b từng sai)"],
      ["What is the leading coefficient of the characteristic polynomial?", "(−1)ⁿ, nêu ở phần chứng minh 34:31", "✔"],
      ["Cách cài đặt PyTorch? (ngoài bài)", "Bài giảng không đề cập", "✔"]],
-    "Bảng 2: 26 câu hỏi có đáp án · Qwen3-4B 24/26 đúng, Qwen2.5-7B 4-bit 25/26, ~15 s/câu trên T4")))
+    "Demo 10/2026 trên bộ 26 câu cũ: Qwen3-4B 24/26 đúng, Qwen2.5-7B 4-bit 25/26, ~15 s/câu trên T4. Đây không phải đánh giá câu trả lời trên dev-120.")))
 
 # 5 results
 S.append(section(5))
@@ -555,70 +614,98 @@ S.append(content(5, "Tiêu chí đánh giá (1/2) · từng bước pipeline", t
     "Bảng: CER, WER càng thấp càng tốt; F1, Recall càng cao càng tốt")))
 S.append(content(5, "Tiêu chí đánh giá (2/2) · hỏi đáp và hiệu năng", table(
     ["Phần", "Chỉ số", "Đo cái gì", "Dữ liệu"],
-    [["05 · Tìm kiếm", "<b>Recall@k</b>, <b>MRR</b>", "đoạn chứa đáp án có trong top k không, đứng hạng mấy (hạng 1 → 1, hạng 2 → 0,5)", "26 câu hỏi có khoảng giây đáp án (V008, MLS-15DA1)"],
+    [["05 · Tìm kiếm", "<b>Hit@1/3</b>, <b>MRR</b>, <b>context recall</b>", "hạng slide có đáp án và bằng chứng thực sự còn trong ngữ cảnh", "dev-120: 110 có đáp án / 10 ngoài bài; legacy-49: 44 / 5"],
      ["Câu trả lời (LLM)", "LLM chấm: <b>đúng</b> · <b>bám nguồn</b> · <b>dẫn đúng mốc</b> · từ chối đúng", "trả lời đúng bài, không bịa, chỉ đúng slide/thời điểm, biết nói “bài không đề cập”", "cùng bộ câu hỏi + câu ngoài bài"],
-     ["Hiệu năng", "phút/video · giây/bước · độ trễ trả lời", "chạy được trên GPU miễn phí (T4) và trả lời đủ nhanh", "10 + 78 video L25"]],
-    "Nguyên tắc: chỉ chỉnh tham số trên phần tuning của L25; số báo cáo lấy trên phần test và kênh chưa thấy (vn12, LPM, M3AV, SlideSpeech)")))
-S.append(content(5, "Kết quả đo được (pipeline đã chốt)", table(
+     ["Hiệu năng", "wall time · T4-hours · độ trễ trả lời", "thời gian pipeline và GPU cấp phát, không cộng các bước chạy chồng", "lần chạy riêng 10 video ngày 02/11"]],
+    "Dev-120 chưa được người kiểm và không phải test độc lập. Legacy không có nhãn từ khóa thống nhất: dùng retained-time-overlap, không gọi là context recall.")))
+S.append(content(5, "Kết quả đo được (dev-120 và benchmark cũ)", table(
     ["Thành phần", "Tập đo", "Kết quả"],
-    [["Phát hiện slide", "6 video test L25", "F1 <b>0,970</b> · LPM 0,909 (ngưỡng tốt nhất sau quét 15 cấu hình)"],
-     ["Bộ gác OCR (lọc nội dung)", "481 khung L25 · M3AV · LPM; 2.917 khung (78 L25 + 12 kênh khác)", "giữ slide có chữ <b>100%</b>; quét lại: bỏ nhầm <b>7</b> slide, bỏ được <b>81%</b> khung trống"],
+    [["Phát hiện slide", "6 video test L25", "F1 <b>0,970</b> · LPM 0,909 (ngưỡng sau quét 15 cấu hình)"],
+     ["Bộ gác OCR", "481 khung; quét lại 2.917 khung (78 L25 + 12 kênh khác)", "481 khung: giữ slide có chữ <b>100%</b>; quét lại: bỏ nhầm <b>7</b> slide, bỏ <b>81%</b> khung trống"],
      ["OCR công thức", "slide toán M3AV", "CER <b>0,36</b> (GOT-OCR 2.0: 0,52)"],
-     ["Truy xuất E5 + BM25", "66 câu có đáp án · 6 video", "Hit@1 <b>55/66</b> · Hit@3 <b>65/66</b> (bge-m3: 53 · 62)"],
-     ["Câu trả lời LLM", "26 câu (4 câu ngoài bài)", "Qwen3-4B <b>24/26</b> · Qwen2.5-7B <b>25/26</b> (qwen2:7b: 9/13)"],
-     ["LLM trong web app", "5 câu, CPU", "Qwen2.5-7B trích mốc [mm:ss] <b>4/5</b> (qwen2:7b: 0/5), đúng 5/5"],
-     ["Thời gian", "video 30 phút", "xử lý <b>~12 phút</b> (Kaggle 2×T4) · trả lời ~15 s (T4), ~170–200 s (CPU)"]],
-    "Bảng 3: Kết quả của pipeline đã chốt"), "dense"))
-S.append(content(5, "Ablation: lời giảng, chữ slide hay cả hai?", '''<div class="cols2"><div>''' + table(
-    ["Tìm trên", "Hit@1", "Hit@3", "Đáp án chỉ trên slide (hit@1)"],
-    [["Chỉ lời giảng", "50/66", "59/66", "5/14"],
-     ["Chỉ chữ slide (OCR + hình)", "49/66", "59/66", "8/14"],
-     ["<b>Cả hai (đa phương thức)</b>", "<b>55/66</b>", "<b>65/66</b>", "<b>9/14</b>"]]) + '''</div>
-  <div class="panel"><h3>Ý nghĩa</h3><ul class="small">
-    <li>74 câu hỏi trên 6 video (L25, kênh khác, tiếng Anh), mỗi câu ghi đáp án nằm ở lời giảng, slide hay cả hai.</li>
-    <li>Ghép hai nguồn: đúng slide trong top 3 <b>65/66</b>, mỗi nguồn riêng chỉ <b>59/66</b> → chứng minh giá trị <b>đa phương thức</b>.</li>
-    <li>Lời giảng nhiều đoạn gấp đôi nên lấn át; ưu tiên nhẹ chữ slide (×1,05) đưa câu chỉ có trên slide từ 6 lên 9/14.</li>
-    <li>48 câu mới được soạn tự động (Claude) từ nội dung bài, nhóm đang kiểm lại.</li></ul></div></div>'''))
-S.append(content(5, "So sánh các phương án (thời gian + kết quả)", table(
-    ["Phương án", "Thời gian", "Kết quả", "Quyết định"],
-    [["Bộ lọc quảng cáo học từ L25", "~17 s/video", "L25 99,8% · kênh khác coi 47–100% video là QC", "<span class='bad'>bỏ</span>"],
-     ["Hình + lời lạc chủ đề (E5)", "vài giây", "video tệ nhất chỉ giữ 84–86% bài giảng", "<span class='bad'>bỏ</span>"],
-     ["LLM chia chương + gán nhãn", "32 s / 30 phút", "chỉ bắt 5–12% quảng cáo; tìm 2 tầng kém hơn", "<span class='bad'>bỏ</span>"],
-     ["Bộ slide chuẩn (bỏ trùng trước OCR)", "—", "chỉ bớt 2% thời gian OCR", "<span class='bad'>bỏ</span>"],
-     ["Ảnh OCR 768 / 640", "chậm ×3 / nhanh 20%", "hỏng chữ / mất 1/3 nội dung", "<span class='bad'>bỏ</span>"],
-     ["bge-m3 thay E5", "+3–5 s lập chỉ mục", "22 câu: 21 vs 19/22; đo lại 66 câu: 53 · 62 vs E5 55 · 65", "<span class='bad'>bỏ</span>"],
-     ["Qwen3-VL đọc cả slide thay hybrid", "×1,8–7 nhanh hơn", "VI 94% từ (hybrid 80%), không lặp dòng", "<span class='ok'>chọn</span>"],
-     ["Ưu tiên chữ slide ×1,05 khi tìm", "0", "Hit@1 50 → 55/66 (×1,1–1,5 kém hơn)", "<span class='ok'>chọn</span>"],
-     ["OCR chạy chồng 2 GPU + gom lô + dùng lại slide gần trùng", "×1,4–1,5 nhanh hơn", "chữ OCR giữ nguyên (10/10, 20/21 slide)", "<span class='ok'>chọn</span>"],
-     ["Qwen3-4B / Qwen2.5-7B thay qwen2:7b", "~15 s/câu (T4)", "24–25/26 đúng (trước 9/13)", "<span class='ok'>chọn</span>"]],
-    "Bảng 4: Các phương án đã thử ngày 05–13/10/2026"), "dense"))
+     ["Truy xuất: old reference", "dev-120 (110 câu có đáp án)", "Hit@1 0.591 · Hit@3 0.782 · MRR 0.674 · CR 0.764"],
+     ["<b>Truy xuất: principled</b>", "<b>cùng dev-120, chưa human review</b>", "<b>Hit@1 0.600 · Hit@3 0.782<br>MRR 0.679 · context recall 0.755</b>"],
+     ["Câu trả lời LLM", "dev-120", "Chưa đánh giá RAGAS; điểm truy xuất không đo độ đúng hoặc từ chối của LLM"],
+     ["Thời gian pipeline", "10 video, lần chạy riêng 02/11", "<b>4.950,79 s</b>; canary + full <b>3,0784 T4-hours</b>"]],
+    "Benchmark tách slide, bộ gác và OCR giữ từ 10/2026, không phải đo lại ngày 02/11. Dev: PHASE3.md; audit/reproduced-summary.json. Thời gian: RUN_20261102.md."), "dense"))
+S.append(content(5, "Ablation trích xuất: dev-120 và legacy-49", '''<p>Dev: <b>110 có đáp án / 10 ngoài bài</b>. Legacy: <b>44 / 5</b>, cùng tập giao cố định.</p>''' + table(
+    ["Cấu hình", "Dev: H1 / H3 / MRR / CR", "Legacy: H1 / H3 / MRR / time"],
+    [[label, metric_line(dev), metric_line(legacy)] for label, dev, legacy in ABLATION],
+    "Legacy ở bảng này dùng chấm gốc: giao thời gian nhóm dù rất ngắn. Time là retained-time-overlap, không phải CR.") + '''
+<p class="note"><b>Principled là số báo cáo.</b> Recommended-final chọn override theo từng video trên dev, nên kết quả lạc quan và chưa chứng minh khả năng tổng quát.</p>
+<p class="note">Nguồn: RUN_20261102.md; ABLATION_20261102.md; audit/reproduced-summary*.json. Chi tiết scoring ở Phụ lục.</p>''', "dense eval"))
+S.append(content(5, "Độ tin cậy và hồi quy trích xuất", '''<div class="cols2">
+  <div><h3>Hồi quy có nguyên nhân</h3><ul class="small">
+    <li>Tùy chọn board riêng cho <code>hVU5Mw19V_c</code> làm <b>18 thành 117 nhóm</b>, 73 thành 240 chunk.</li>
+    <li>Medium ASR giữ nguyên 5.113 từ. Nhóm ngắn cạnh tranh top-3 và làm mất lời giảng lân cận hữu ích.</li>
+    <li>Đổi nhóm, ảnh đại diện và OCR tương tác với nhau. Chưa tách riêng được tác động của crop.</li>
+    <li>Onset timing không đổi xếp hạng, nhưng có thể đổi phần bằng chứng được chấm.</li></ul></div>
+  <div><h3>Giới hạn của số cải thiện</h3><ul class="small">
+    <li><b>Principled:</b> legacy + onsets + merge, cùng cached medium. Dev H1 0.600, CR 0.755 so với 0.764 cũ.</li>
+    <li><b>Recommended-final:</b> H1 0.636 có override board, editor, chart và L25_V008 được chọn trên dev.</li>
+    <li><b>Strict minimum-overlap, legacy-49:</b> old / principled / recommended-final đều <b>0.750 / 0.864 / 0.792</b> (H1 / H3 / MRR).</li>
+    <li>Kết quả cached OCR không bảo đảm một lần trích xuất GPU mới sẽ lặp lại kết quả đó.</li></ul></div>
+</div><p class="note">Nguồn: ABLATION_20261102.md; audit/boundary-diagnostic.json. Strict scoring là chẩn đoán riêng trên ba cấu hình đã kiểm toán.</p>''', "dense"))
+
+S.append(content(5, "Lần chạy kiểm chứng 03/11", f'''<p><b>Chạy lại từ đầu trên GPU, cả 10 video hoàn tất</b> · <code>{CONFIRM['kernel']}</code></p>
+<p>Bỏ override merge riêng của <b>L25_V008</b>; giữ medium, state onsets, same-content merge. hVU5Mw19V_c về lại 18 nhóm.
+Dev H1 0.627 cao hơn principled cached (0.600) nhưng vẫn chấm trên cùng bộ dev.</p>''' + table(
+    ["Tập chấm", "Hit@1", "Hit@3", "MRR", "CR / time"],
+    [["Dev-120", *[confirm_value(f"dev_{k}") for k in ("hit1", "hit3", "mrr", "context_recall")]],
+     ["Legacy-49, chấm gốc", *[confirm_value(f"legacy_{k}") for k in ("hit1", "hit3", "mrr", "time_overlap")]],
+     ["Legacy-49, strict", *[confirm_value(f"strict_{k}") for k in ("hit1", "hit3", "mrr")], "không áp dụng"]]) + table(
+    ["T4-hours cấp phát", "Wall time pipeline (s)", "OCR lỗi", "OCR retry"],
+    [[confirm_value(k) for k in ("t4_hours", "wall_seconds", "ocr_failures", "ocr_retries")]]) + '''
+<p class="note">Nguồn: confirm-eval-summary.json (kernel CPU lecture-rag-confirm-cpu-eval-20261104, đã bỏ 12 đoạn speech chỉ có “%”, điểm không đổi); gpu-ledger.json.</p>''', "dense eval"))
+
 S.append(content(5, "Hạn chế hiện tại (nói thẳng)", '''<div class="cols2">
   <div class="panel"><h3>Số liệu cần kiểm thêm</h3><ul class="small">
-    <li><b>48/74 câu hỏi</b> đánh giá và <b>20 đáp án OCR tiếng Việt</b> do Claude soạn từ nội dung bài; nhóm đang kiểm lại.</li>
-    <li>Bộ câu hỏi còn nhỏ (66 câu có đáp án): hệ số ưu tiên ×1,05 cần xác nhận lại trên bộ lớn hơn.</li>
-    <li>Thời gian trọn pipeline với OCR Qwen <b>chưa đo</b> (mới đo từng bước).</li>
-    <li>Chưa chấm câu trả lời bằng RAGAS, chưa so với LLM không dùng RAG.</li></ul></div>
+    <li><b>120 câu dev do AI soạn, chưa được người kiểm.</b> Chưa có test độc lập để kết luận khả năng tổng quát.</li>
+    <li>Recommended-final có override chọn trên dev. Principled cũng chỉ là kết quả phát triển, chưa phải kiểm chứng mới.</li>
+    <li><b>RAGAS chưa thực hiện</b>, chưa so với LLM không RAG. Điểm truy xuất không đo độ đúng câu trả lời.</li>
+    <li>Benchmark OCR tiếng Việt cũ dùng đáp án AI soạn, còn cần người kiểm.</li></ul></div>
   <div class="panel"><h3>Hệ thống</h3><ul class="small">
-    <li>LLM trên CPU chậm (~3 phút/câu); trên GPU ~15 s.</li>
-    <li>Mới hỏi trên <b>1 video</b>, chưa hỏi cả khóa học.</li>
-    <li>Chữ viết tay, số trong công thức: OCR còn sai.</li>
-    <li>Slide cuộn (scroll) đang bị tách thành nhiều slide trùng chữ.</li></ul></div></div>'''))
+    <li><b>LLM trên CPU còn chậm.</b> Backend GPU Vast.ai chưa hoàn tất dù Vercel, Supabase và R2 đã hoạt động.</li>
+    <li>Run 02/11 có <b>1 OCR lỗi, 4 retry</b> và cờ cần xem lại. Chữ viết tay, số và mã nguồn còn sai.</li>
+    <li>Tùy chọn editor riêng cho <code>y1CvB950VlU</code> vẫn còn, cần ablation và kiểm tra trên video mới.</li>
+    <li>Kết quả run kiểm chứng 03/11 chưa có trong báo cáo.</li></ul></div></div>''', "dense"))
 # 6 plan
 S.append(section(6))
 S.append(content(6, "Kế hoạch tiếp theo", '''<div class="road">''' + "".join(
     f'<div class="step {cls}"><b>{n}</b><span>{t}</span><i>{s}</i></div>'
-    for n, t, s, cls in [(1, "Kiểm bộ câu hỏi + đáp án OCR", "gold set: CER, WER, F1 trên kênh mới", "now"),
-                         (2, "Chạy lại 10 video L25", "pipeline mới (OCR Qwen), đo thời gian thật", "next"),
-                         (3, "RAGAS + so với LLM không RAG", "trên bộ 74 câu hỏi", "next"),
+    for n, t, s, cls in [(1, "Audit run kiểm chứng 03/11", "điền CONFIRM, đối chiếu dev-120 / legacy-49", "now"),
+                         (2, "Người kiểm câu hỏi + OCR", "kiểm 120 câu dev, tạo test độc lập, giữ gold cố định", "next"),
+                         (3, "RAGAS + so với LLM không RAG", "đúng, bám nguồn, mốc dẫn và từ chối", "next"),
                          (4, "Hỏi trên nhiều video", "cả khóa học, trích [video · mm:ss]", "next"),
-                         (5, "Demo trên GPU thuê", "trả lời ~2–5 s thay vì ~3 phút", "next"),
-                         (6, "Viết khóa luận", "chương thực nghiệm, kết quả", "next")]) + '''</div>
+                         (5, "Hoàn tất backend Vast.ai", "nối frontend và đo độ trễ LLM thực tế", "next"),
+                         (6, "Ablation editor + viết luận", "giới hạn override, tách dev và test", "next")]) + '''</div>
 <div class="key"><span class="k now">đang làm</span><span class="k next">tiếp theo</span></div>'''))
 S.append(content(6, "Xin ý kiến cô", '''<div class="asks">
-  <div><b>01</b><p>Đánh giá câu trả lời bằng <strong>LLM chấm (RAGAS)</strong> có được chấp nhận, hay cần thêm người chấm?</p></div>
-  <div><b>02</b><p>Bộ câu hỏi <strong>soạn tự động rồi nhóm kiểm</strong> (74 câu, 6 video) đã đủ cho chương thực nghiệm chưa?</p></div>
-  <div><b>03</b><p>Phạm vi demo: hỏi trên <strong>1 video</strong> hay <strong>cả khóa học</strong>?</p></div>
-  <div><b>04</b><p>Có nên <strong>thuê GPU</strong> cho buổi demo, hay ưu tiên chạy hoàn toàn trên máy?</p></div></div>'''))
+  <div><b>01</b><p>Với <strong>dev-120 do AI soạn</strong>, cần bao nhiêu người kiểm và cách tạo test độc lập thế nào?</p></div>
+  <div><b>02</b><p>Báo cáo <strong>principled</strong> làm kết quả chính, để cấu hình có override ở phần ablation có phù hợp không?</p></div>
+  <div><b>03</b><p>RAGAS cần kết hợp người chấm thế nào để đánh giá <strong>bám nguồn, mốc dẫn và từ chối</strong>?</p></div>
+  <div><b>04</b><p>Ưu tiên <strong>hoàn tất backend GPU Vast.ai</strong> cho demo hay mở rộng hỏi đáp cả khóa học trước?</p></div></div>'''))
+
+S.append(content(5, "Phụ lục · Recipe OCR và chính sách cấu hình", table(
+    ["Phần", "Cấu hình / bằng chứng"],
+    [["Qwen OCR", "Qwen3-VL-4B-Instruct, FP16/SDPA, content crop; lưu crop, ROI và provenance"],
+     ["Kiểm đầu ra và retry", "EOS thật; không rỗng; dưới 8 lần lặp liên tiếp (cụm 1–32 từ). Lần đầu 1.536 token, penalty 1.05; một retry 2.048 token, penalty 1.10"],
+     ["Thí nghiệm OCR trước production", "29 ảnh: CER 0.33755 thành 0.31033; lỗi/lặp 4/29 thành 0/29. Không suy ra mức tăng tốc toàn pipeline"],
+     ["Principled", "Legacy + state onsets + same-content merge, cached medium, cùng cleaning và retrieval. Không thêm tùy chọn board/editor riêng"],
+     ["Recommended-final (cached)", "Board: 18 nhóm + OCR cũ; L25_V008: merge OFF; editor: nhóm an toàn + ảnh/OCR tương thích; chart: bảo vệ OCR của một ảnh đã kiểm"],
+     ["Builder dùng cho kiểm chứng", "Medium, onsets + merge ON; bỏ override board và L25_V008; còn editor y1CvB950VlU. Chưa chứng minh fresh OCR lặp lại cached hybrid"]],
+    "Nguồn: PORT_V3.md; ABLATION_20261102.md. Recipe OCR, lựa chọn cache và builder kiểm chứng là các cấu hình khác nhau."), "dense"))
+S.append(content(5, "Phụ lục · Legacy-49: đối chiếu cách chấm", table(
+    ["Cấu hình", "Audit mặc định: H1 / H3 / MRR / time", "Chấm gốc theo thời gian nhóm"],
+    [["Old reference", "0.795 / 0.932 / 0.848 / 0.886", "0.818 / 0.955 / 0.871 / 0.909"],
+     ["Principled", "0.795 / 0.932 / 0.848 / 0.886", "0.818 / 0.955 / 0.871 / 0.909"],
+     ["Recommended-final", "0.795 / 0.955 / 0.864 / 0.909", "0.818 / 0.955 / 0.875 / 0.909"]],
+    "Cùng 49 câu (44 có đáp án). Cột trái: reproduced-summary.json. Cột phải: reproduced-summary-time.json và bảng ablation gốc.") + '''
+<ul class="small" style="margin-top:14px">
+  <li>Chấm gốc chấp nhận mọi giao thời gian nhóm dương. Hai trường hợp board chỉ giao ranh giới 0,08 s nên có thể được cộng điểm.</li>
+  <li><b>Strict minimum-overlap:</b> cả ba cấu hình đã audit đều H1 <b>0.750</b>, H3 <b>0.864</b>, MRR <b>0.792</b>. Không gộp số này vào bảng chấm gốc.</li>
+  <li>Legacy time là bằng chứng thời gian còn trong ngữ cảnh, không đo key-term context recall. Strict của new+medium/turbo chưa có trong các nguồn audit này.</li></ul>
+<p class="note">Nguồn: audit/reproduced-summary*.json; boundary-diagnostic.json; ABLATION_20261102.md.</p>''', "dense"))
 S.append(f'''<section class="slide end-slide">
   <div class="logo-white end-logo"></div>
   <h2 class="end-title">Cảm ơn cô<br>đã lắng nghe</h2>
@@ -629,7 +716,8 @@ APPENDIX = ("Dữ liệu 1 ·", "Cấu trúc L25", "Dữ liệu 2 ·", "Cấu tr
             "Dữ liệu 4 ·", "Cấu trúc M3AV", "Dữ liệu 5 ·", "Cấu trúc SlideSpeech",
             "1.1 ·", "1.2 ·", "1.3 ·", "1.4 ·", "1.5 ·", "1.6 ·", "1b.1 ·", "1b.2 ·", "1b.3 ·",
             "1c.2 ·", "1c.3 ·", "1c.4 ·", "Bước 1c · Kết quả demo", "Bước 2b ·",
-            "Tiêu chí đánh giá (1/2)", "Tiêu chí đánh giá (2/2)")
+            "Tiêu chí đánh giá (1/2)", "Tiêu chí đánh giá (2/2)",
+            "Bước 2 · Vì sao chọn Qwen3-VL", "Ví dụ hỏi đáp (bộ 26", "Phụ lục ·")
 detail = [s for s in S if any(f"<h2>{key}" in s for key in APPENDIX)]
 S[:] = [s for s in S if s not in detail] + [section(7)] + detail
 EXTRA = '''
@@ -645,6 +733,9 @@ EXTRA = '''
 .kpis.one{{grid-template-columns:1fr}}
 .kpis.two{{grid-template-columns:1fr 1fr;gap:12px}} .kpis.two b{{font-size:30px}} .kpis.two span{{font-size:13px}}
 .dense table{{font-size:14px}} .dense td,.dense th{{padding:5px 9px}}
+.eval table{{font-size:17px}} .eval p{{margin:6px 0 10px}}
+.eval .note,.eval .tcap{{font-size:15px;line-height:1.4}}
+.eval table + table{{margin-top:14px}}
 .tiny table{{font-size:13px}} .tiny td,.tiny th{{padding:4px 8px;line-height:1.3}}
 .steps4{{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}}
 .steps4 div{{background:var(--soft);border-radius:14px;padding:12px 14px;border-top:5px solid var(--blue)}}

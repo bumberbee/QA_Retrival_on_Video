@@ -126,6 +126,7 @@ def _update(import_id: str, **changes) -> None:
 
 
 def start_import(url: str) -> VideoImportStatus:
+    storage.require_local_writes()
     source_url, platform = validate_source_url(url)
     with _lock:
         pending = sum(job.status in {"queued", "downloading"} for job in _jobs.values())
@@ -312,9 +313,12 @@ def _friendly_error(error: Exception) -> str:
 def _run_import(import_id: str, source_url: str, platform: str) -> None:
     _update(import_id, status="downloading", progress=None)
     destination = None
+    metadata_path = None
     video_id = storage.new_video_id()
     try:
-        imports_directory = storage.DATA_DIR / "imports"
+        storage.require_local_writes()
+        imports_directory = storage.contained_path(storage.DATA_DIR, "imports")
+        metadata_path = storage.video_meta_path(video_id)
         imports_directory.mkdir(parents=True, exist_ok=True)
         deadline = time.monotonic() + MAX_IMPORT_SECONDS
         with tempfile.TemporaryDirectory(prefix=f"{import_id}-", dir=imports_directory) as temporary:
@@ -342,5 +346,6 @@ def _run_import(import_id: str, source_url: str, platform: str) -> None:
         logger.warning("Video import %s failed: %s", import_id, type(error).__name__)
         if destination is not None:
             destination.unlink(missing_ok=True)
-        storage.video_meta_path(video_id).unlink(missing_ok=True)
+        if metadata_path is not None:
+            metadata_path.unlink(missing_ok=True)
         _update(import_id, status="failed", progress=None, error=_friendly_error(error))

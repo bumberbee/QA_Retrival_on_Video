@@ -137,7 +137,7 @@ class VideoStreamingTests(unittest.IsolatedAsyncioTestCase):
     async def test_missing_video_keeps_the_existing_404(self):
         with patch("app.routers.videos.storage.find_video_file", return_value=None):
             with self.assertRaises(HTTPException) as raised:
-                await get_video_file("missing", self.request())
+                get_video_file("000000000000", self.request())
             self.assertEqual(raised.exception.status_code, 404)
 
 

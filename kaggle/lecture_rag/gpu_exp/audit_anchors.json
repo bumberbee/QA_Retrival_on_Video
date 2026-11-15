@@ -1,0 +1,13 @@
+{
+  "note": "Targeted visual anchors transcribed from the original audit keyframes. This is not a complete page transcription. Numeric anchors retain the lecturer's visible spelling and values; no arithmetic correction is applied.",
+  "items": {
+    "hVU5Mw19V_c:seg_00000": {"required": ["100/370", "120/370", "150/370"], "forbidden_errors": ["100/330", "120/330", "150/330"]},
+    "hVU5Mw19V_c:seg_00012": {"required": ["1,5", "46,75"], "forbidden_errors": ["4,5 kg", "46,35"]},
+    "L25_V011:seg_00006": {"required": ["quyền bình đẳng"], "forbidden_errors": ["quyền đăng ký"]},
+    "tHE1mC_n0-E:seg_00097": {"required": ["Câu 3", "Câu 4", "thẳng đứng lên trên", "lớn hơn", "cực N sang cực S"], "forbidden_errors": [], "coverage_checks": ["all four a/b/c/d statements", "the following Câu 4 is retained", "magnetic-force formula BIℓ is literal"]},
+    "tHE1mC_n0-E:seg_00201": {"required": ["CO", "1600", "365"], "forbidden_errors": [], "coverage_checks": ["first paragraph describes oxygen recovery from CO2 in spacecraft", "do not replace that paragraph with a methane-burning explanation; a later CH4 question is genuinely present"]},
+    "v2YTz8ToEag:seg_00040": {"required": ["CÂU HỎI TRẮC NGHIỆM", "Bạn đã trả lời đúng"], "forbidden_errors": []},
+    "y1CvB950VlU:seg_00005": {"required": ["a3", "a4"], "forbidden_errors": ["a5="], "code_checks": ["a3 has triple double quotes on two lines", "a4 has triple single quotes with an empty multiline body", "no invented a5 declaration"]},
+    "y1CvB950VlU:seg_00020": {"required": ["a1", "a2", "print(len(a2))", "for i in a2", "print(i)"], "forbidden_errors": [], "code_checks": ["preserve a2 assignment", "print(i) indented under for loop"]}
+  }
+}

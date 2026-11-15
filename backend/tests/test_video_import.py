@@ -239,21 +239,21 @@ class VideoImportTests(unittest.TestCase):
                 video_import._browser_video(path, time.monotonic() + 30)
 
 
-class VideoImportRouteTests(unittest.IsolatedAsyncioTestCase):
-    async def test_invalid_url_returns_400(self):
+class VideoImportRouteTests(unittest.TestCase):
+    def test_invalid_url_returns_400(self):
         with self.assertRaises(HTTPException) as raised:
-            await import_video(VideoImportRequest(url="http://localhost/video.mp4"))
+            import_video(VideoImportRequest(url="http://localhost/video.mp4"))
         self.assertEqual(raised.exception.status_code, 400)
 
-    async def test_busy_queue_returns_429(self):
+    def test_busy_queue_returns_429(self):
         with patch.object(video_import, "start_import", side_effect=video_import.ImportBusyError("Đang bận")):
             with self.assertRaises(HTTPException) as raised:
-                await import_video(VideoImportRequest(url="https://youtu.be/test"))
+                import_video(VideoImportRequest(url="https://youtu.be/test"))
         self.assertEqual(raised.exception.status_code, 429)
 
-    async def test_unknown_import_returns_404(self):
+    def test_unknown_import_returns_404(self):
         with self.assertRaises(HTTPException) as raised:
-            await get_video_import("unknown-import")
+            get_video_import("unknown-import")
         self.assertEqual(raised.exception.status_code, 404)
 
 

@@ -12,7 +12,7 @@ Kaggle: GPU T4 x2, Internet on, input = dataset l25a-lecture-videos-media (any d
 import json
 from pathlib import Path
 
-from build_fast_pipeline import DEPS
+from build_fast_pipeline import DEPS, STAGE01_CONFIG, QWEN_CONFIG, ASR_CONFIG
 from build_notebooks import CODE, cell
 
 ROOT = Path(__file__).resolve().parent
@@ -62,12 +62,17 @@ REUSE_NEAR_DUPLICATES = True      # slide gần trùng slide đã đọc: dùng 
 # chỉ dùng khi OCR_ENGINE = 'hybrid' (các mục tăng tốc đã chốt)
 HYBRID_OPTIONS = dict(hybrid_pipelined=True, hybrid_min_region_area=0.02, hybrid_skip_repeated_decor=True)
 # 03 · giọng nói
-ASR_MODEL = 'Systran/faster-whisper-medium'
-ASR_REVISION = '08e178d48790749d25932bbc082711ddcfdfbc4f'
-ASR_DEVICE_INDEX, ASR_MODE = 1, 'windowed'
+# Production ASR settings inserted by the builder below.
+# 04 · xử lý văn bản (phase 3)
+CONSERVATIVE_OCR, HEADING_TITLES = 'canonical_subscripts', False
+ASR_CORRECTION, FAILURE_GUARD = 'glossary_code', True
+SPEECH_AD_FILTER = 'school_signatures'
 # 05 · chỉ mục
 EMBEDDING_MODEL = 'intfloat/multilingual-e5-small'
 EMBEDDING_REVISION = '614241f622f53c4eeff9890bdc4f31cfecc418b3'
+EMBEDDING_DEVICE = 'cuda:0' if OCR_ENGINE == 'easyocr' else 'cuda:1'
+INCLUDE_GENERATED_DESCRIPTIONS, GENERATED_SEMANTIC_ONLY = False, False
+VISUAL_STATE_TIMING = True
 # 7 · câu hỏi thử (None = hỏi cả bài; số = đang xem ở giây đó)
 QUESTIONS = [
     ('Xác suất của một biến cố được tính như thế nào?', None),
@@ -77,6 +82,12 @@ QUESTIONS = [
     ('Cách cài đặt PyTorch?', None),
 ]
 """
+
+CONFIG = CONFIG.replace('SAMPLE_HZ, FINE_HZ, MERGE_REVEALS = 1.0, 8.0, True\n',
+                        'SAMPLE_HZ, FINE_HZ, MERGE_REVEALS = 1.0, 8.0, True\n' + STAGE01_CONFIG)
+CONFIG = CONFIG.replace("OCR_ENGINE, HYBRID_DEVICES = 'qwen', ('cuda:0', 'cuda:1')\n",
+                        "OCR_ENGINE, HYBRID_DEVICES = 'qwen', ('cuda:0', 'cuda:1')\n" + QWEN_CONFIG)
+CONFIG = CONFIG.replace('# Production ASR settings inserted by the builder below.\n', ASR_CONFIG)
 
 HELPERS = """import base64, html, io, json, shutil, sys, time
 from IPython.display import HTML, display
@@ -170,9 +181,12 @@ params({**(ad_scorer[1] if ad_scorer else {'ad_filter': 'tắt'}), 'ocr_gate': o
 STAGE01 = """heading('1 · Bước 01 · Tách slide')
 note('Quét video một lượt (mẫu 1 Hz + khung 8 Hz), tìm ranh giới ổn định, bỏ vùng chuyển động, tách chuyển cảnh ẩn, '
      'chọn ảnh nét nhất, gộp slide hiện dần. Lọc quảng cáo chạy ở cuối bước này.')
+stage01_options = dict(merge_reveals=MERGE_REVEALS, export_state_onsets=EXPORT_STATE_ONSETS,
+                       merge_same_content=MERGE_SAME_CONTENT)
+stage01_options.update(STAGE01_VIDEO_OPTIONS.get(VIDEO_ID, {}))
 stage01, manifest01, intervals = timed('01 tách slide + lọc quảng cáo', run_slide_detection,
     VIDEO, OUTPUT_ROOT, VIDEO_ID, sample_hz=SAMPLE_HZ, fine_hz=FINE_HZ,
-    merge_reveals=MERGE_REVEALS, scan='single_pass', ad_scorer=ad_scorer,
+    scan='single_pass', ad_scorer=ad_scorer, **stage01_options,
     ad_options={'mode': AD_MODE})
 table([{'chỉ số': k, 'giá trị': manifest01.get(k)} for k in
        ('sample_count', 'visual_state_count', 'merged_reveal_count', 'hidden_split_count',
@@ -223,6 +237,7 @@ else:
 STAGE03 = """heading('3 · Bước 03 · Nhận dạng giọng nói')
 stage03, manifest03, transcript = timed('03 giọng nói', run_transcription, None, VIDEO, OUTPUT_ROOT, VIDEO_ID,
     model_id=ASR_MODEL, revision=ASR_REVISION, language='vi', transcription_mode=ASR_MODE,
+    batch_size=ASR_BATCH_SIZE,
     device_index=ASR_DEVICE_INDEX)
 table([{'chỉ số': k, 'giá trị': v} for k, v in {
     'trạng thái': transcript['status'], 'số từ': len(transcript['words']), 'số cửa sổ': len(transcript['windows']),
@@ -243,6 +258,10 @@ note('Bộ gác (SigLIP zero-shot, 14 câu mô tả) chấm từng keyframe: đi
 stage02, manifest02, records = timed('02 bộ gác + OCR', run_visual_extraction, stage01, OUTPUT_ROOT, VIDEO_ID,
     languages=OCR_LANGUAGES, ocr_device='cuda', ocr_scale=OCR_SCALE, ocr_batch_size=OCR_BATCH_SIZE,
     ocr_engine=OCR_ENGINE, hybrid_devices=HYBRID_DEVICES, ocr_gate=ocr_gate, describe_language=DESCRIBE_LANGUAGE,
+    qwen_model=QWEN_OCR_MODEL, qwen_revision=QWEN_OCR_REVISION,
+    qwen_content_crop=QWEN_CONTENT_CROP, qwen_content_rois=QWEN_CONTENT_ROIS,
+    qwen_min_pixels=QWEN_MIN_PIXELS, qwen_max_pixels=QWEN_MAX_PIXELS,
+    qwen_validate=QWEN_VALIDATE, qwen_retry_invalid=QWEN_RETRY_INVALID,
     reuse_near_duplicates=REUSE_NEAR_DUPLICATES, **(HYBRID_OPTIONS if OCR_ENGINE == 'hybrid' else {}))
 def raw_parts(record):
     # Qwen: raw text answer; hybrid: JSON with the Unlimited-OCR answer and the second passes
@@ -282,7 +301,8 @@ from sentence_transformers import SentenceTransformer
 _e5 = SentenceTransformer(EMBEDDING_MODEL, revision=EMBEDDING_REVISION, device='cuda:1')
 speech_embed = lambda texts: _e5.encode(['query: ' + t for t in texts], normalize_embeddings=True, convert_to_numpy=True)
 stage04, manifest04, segments = timed('04 đồng bộ', run_alignment, stage01, stage02, stage03, OUTPUT_ROOT, VIDEO_ID,
-                                      speech_embed=speech_embed)
+    speech_embed=speech_embed, conservative_ocr=CONSERVATIVE_OCR, heading_titles=HEADING_TITLES,
+    asr_correction=ASR_CORRECTION, failure_guard=FAILURE_GUARD, speech_ad_filter=SPEECH_AD_FILTER)
 table([{'chỉ số': k, 'giá trị': manifest04.get(k)} for k in ('segment_count', 'word_count', 'ad_segment_count', 'ad_flagged_count', 'ad_word_count')])
 table([{'#': s['sequence'], 'loại': s['content_kind'] + (' · nghi QC (không lập chỉ mục)' if s.get('ad_flagged') else ''),
         'thời gian': f"{clock(s['start_sec'])}–{clock(s['end_sec'])}",
@@ -309,7 +329,10 @@ table([{'ảnh': img(stage04 / example['visual']['image_path'], 420), 'chữ OCR
 
 STAGE05 = """heading('6 · Bước 05 · Chỉ mục tìm kiếm')
 stage05, manifest05, chunks = timed('05 chỉ mục', run_indexing, stage04, OUTPUT_ROOT, VIDEO_ID,
-    embedding_model=EMBEDDING_MODEL, revision=EMBEDDING_REVISION)
+    embedding_model=EMBEDDING_MODEL, revision=EMBEDDING_REVISION,
+    device=EMBEDDING_DEVICE,
+    include_generated_descriptions=INCLUDE_GENERATED_DESCRIPTIONS, generated_semantic_only=GENERATED_SEMANTIC_ONLY,
+    visual_state_timing=VISUAL_STATE_TIMING)
 from collections import Counter
 table([{'nguồn': k, 'số đoạn': v} for k, v in Counter(c['source_type'] for c in chunks).items()])
 params(manifest05['parameters'], ['embedding_model', 'chunk_tokens', 'overlap_tokens', 'speech_chunk_tokens',

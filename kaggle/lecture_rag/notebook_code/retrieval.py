@@ -1,24 +1,44 @@
 """Lecture-scoped hybrid search and bounded, chronological evidence expansion."""
 
+VIETNAMESE_LEXICAL = True
+LEXICAL_PHRASES = True
 
-# Function words (accents removed) that match almost every chunk and only add BM25 noise.
+# Legacy query retained for baseline ablations.
 STOPWORDS = set("""a ai anh ay ba bang bao bi boi cac cach cai can cho chi chua chung co con cua cung da dang
 de den deu di do doi duoc gi gio ha hay hon khi khong la lai lam len luc ma minh mot moi muon nao nay
 neu ngay nhieu nhu nhung noi o phai qua ra rang rat roi sao se sau tai the thi thoi theo thu tren tro
-trong tu va van ve vi voi vua xin the what how why which when who is are the of a an to in on for and
-or do does""".split())
+trong tu va van ve vi voi vua xin what how why which when who is are of an to in on for and or do does""".split())
+VI_STOPWORDS = set("""ai anh ấy bằng bao bị bởi các cái cần cho chưa chúng có còn của cũng đã đang
+để đến đều đi đó được gì giờ hãy hơn khi không là lại làm mà mình một mỗi muốn nào này
+nếu nhiều như những nói ở phải quá ra rằng rất rồi sao sẽ sau tại thì thôi theo trên
+trong và vẫn về vì với vừa xin what how why which when who is are of an to in on for and or do does""".split())
 
 
-def lexical_search(database, question, count=20):
+def lexical_query(question, vietnamese=True, phrases=False):
+    # Remove only unambiguous accented function words; bare syllables may be technical terms.
+    original = re.findall(r"[^\W_]+", unicodedata.normalize("NFC", question.casefold()))
+    words = [normalize_search(word) for word in original]
+    keep = [word not in VI_STOPWORDS if vietnamese else folded not in STOPWORDS
+            for word, folded in zip(original, words)]
+    terms = list(dict.fromkeys(word for word, allowed in zip(words, keep) if allowed))[:64]
+    if not vietnamese and not terms:
+        terms = list(dict.fromkeys(words))[:64]
+    pairs = list(dict.fromkeys((words[i], words[i + 1]) for i in range(len(words) - 1)
+                              if keep[i] and keep[i + 1] and words[i] in terms and words[i + 1] in terms))[:32] if phrases else []
+    return terms, pairs
+
+
+def lexical_search(database, question, count=20, vietnamese=VIETNAMESE_LEXICAL, phrases=LEXICAL_PHRASES):
     from contextlib import closing
     import sqlite3
 
-    terms = [term for term in dict.fromkeys(re.findall(r"[^\W_]+", normalize_search(question)))
-             if term not in STOPWORDS] or list(dict.fromkeys(re.findall(r"[^\W_]+", normalize_search(question))))
+    terms, pairs = lexical_query(question, vietnamese, phrases)
     if not terms:
         return []
     # Quote every token; user input never becomes FTS operators or SQL.
-    expression = " OR ".join(f'"{term}"' for term in terms[:64])
+    expression = " OR ".join(f'"{term}"' for term in terms)
+    if pairs:
+        expression += " OR " + " OR ".join(f'"{a} {b}"' for a, b in pairs)
     with closing(sqlite3.connect(
             Path(database).resolve().as_uri() + "?mode=ro", uri=True)) as connection:
         return connection.execute(

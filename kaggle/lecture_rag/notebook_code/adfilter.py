@@ -29,6 +29,71 @@ AD_PROMPTS = [
 ]
 
 
+def promotional_word_spans(words, asian_spots=False):
+    """Conservative CPU speech filter: explicit school spot boundaries or subscription CTAs.
+    Never remove an interval by topic score alone. Mixed lesson/spot intervals retain all
+    words outside the matched spot. Unbounded school mentions remain review candidates."""
+    tokens, owners = [], []
+    for index, word in enumerate(words):
+        for token in re.findall(r"\w+", word.get("text_asr", word["text"]).lower()):
+            token = unicodedata.normalize("NFD", token)
+            tokens.append("".join(c for c in token if unicodedata.category(c) != "Mn").replace("đ", "d"))
+            owners.append(index)
+    text = " ".join(tokens)
+    positions = list(re.finditer(r"\S+", text))
+    ranges = []
+
+    def add(start, end, reason):
+        indices = sorted(set(owners[i] for i, p in enumerate(positions) if p.start() < end and p.end() > start))
+        if not indices:
+            return
+        # Include a leading "Trường" in the institution name, never a teaching sentence.
+        if reason == "bounded_school_spot" and indices[0] and tokens[owners.index(indices[0]) - 1] == "truong":
+            indices.insert(0, indices[0] - 1)
+        ranges.append({"start_sec": min(words[i]["start_sec"] for i in indices),
+                       "end_sec": max(words[i]["end_sec"] for i in indices),
+                       "reason": reason, "word_ids": [words[i]["word_id"] for i in indices],
+                       "text": " ".join(words[i].get("text_asr", words[i]["text"]).strip() for i in indices)})
+
+    school = re.compile(r"\b(?:dai hoc quoc (?:te|de) sai gon|truong quoc te a chau|the asian school|siu|s i u|sru)\b")
+    ending = re.compile(r"\b(?:tam hon viet nam giao duc the gioi|da den luc (?:vuon|vuong) xa hon nhung gi da hoc)\b")
+    asian_ending = re.compile(r"\btuong lai cua chinh minh\b")
+    consumed = -1
+    for start in school.finditer(text):
+        if start.start() < consumed:
+            continue
+        asian_signature = asian_spots == "signature" and "a chau" in start.group()
+        end = (asian_ending if asian_signature else ending).search(text, start.end())
+        if end is None:
+            continue
+        inside = text[start.start():end.end()]
+        if asian_signature and not re.search(
+                r"\btu hao la (?:ngoi|nguoi) truong mang den nen giao duc tien tien\b",
+                " ".join(inside.split()[:30])):
+            continue
+        # A brand plus a spot's closing slogan is a strong explicit boundary. Limit length
+        # in real time so an incidental mention cannot swallow minutes of teaching.
+        first = next(i for i, p in enumerate(positions) if p.end() > start.start())
+        last = max(i for i, p in enumerate(positions) if p.start() < end.end())
+        if words[owners[last]]["end_sec"] - words[owners[first]]["start_sec"] > 240:
+            continue
+        if not re.search(r"\b(?:siu|s i u|hoc phi|hoc bong|tuyen sinh|asian)\b", inside) and not (
+                asian_spots and re.search(r"\btruong quoc te a chau\b", inside)):
+            continue
+        add(start.start(), end.end(), "bounded_school_spot")
+        consumed = end.end()
+    # Only the explicit call to subscribe/support is removed. QR codes, links, enrolment
+    # examples and the words "trường"/"khóa học" alone are not exclusion rules.
+    cta = re.compile(r"\b(?:(?:hay|nho|dung quen) )?(?:dang (?:ky|ki) kenh|ung ho kenh|kenh de ung ho|subscribe)\b")
+    for match in cta.finditer(text):
+        if any(r["reason"] == "bounded_school_spot" and
+               words[owners[next(i for i, p in enumerate(positions) if p.end() > match.start())]]["word_id"]
+               in r["word_ids"] for r in ranges):
+            continue
+        add(match.start(), match.end(), "subscription_cta")
+    return ranges
+
+
 def ad_runs(mask):
     """[start, end) index runs of a 0/1 sequence where it is 1."""
     runs, index = [], 0

@@ -1,0 +1,194 @@
+[
+  {
+    "video_id": "hVU5Mw19V_c",
+    "segment_id": "hVU5Mw19V_c:seg_00000",
+    "start_sec": 0.0,
+    "end_sec": 578.96,
+    "source": "ocr",
+    "reasons": [
+      "audited_numeric_error"
+    ],
+    "review_origin": "supplied_ocr_audit",
+    "note": "Class probability denominator 330 in OCR; keyframe says 370."
+  },
+  {
+    "video_id": "hVU5Mw19V_c",
+    "segment_id": "hVU5Mw19V_c:seg_00012",
+    "start_sec": 1549.64,
+    "end_sec": 1706.08,
+    "source": "ocr",
+    "reasons": [
+      "audited_numeric_error"
+    ],
+    "review_origin": "supplied_ocr_audit",
+    "note": "OCR says 4.5 kg / 46.35%; keyframe says 1.5 kg / 46.75%."
+  },
+  {
+    "video_id": "L25_V011",
+    "segment_id": "L25_V011:seg_00006",
+    "start_sec": 158.28,
+    "end_sec": 409.88,
+    "source": "ocr",
+    "reasons": [
+      "audited_word_error"
+    ],
+    "review_origin": "supplied_ocr_audit",
+    "note": "UN mind-map quy?n b?nh ??ng becomes quy?n ??ng k?."
+  },
+  {
+    "video_id": "y1CvB950VlU",
+    "segment_id": "y1CvB950VlU:seg_00005",
+    "start_sec": 64.133333,
+    "end_sec": 126.966667,
+    "source": "ocr",
+    "reasons": [
+      "audited_code_error"
+    ],
+    "review_origin": "supplied_ocr_audit",
+    "note": "Raw Qwen loses triple quotes and invents a5; requires a crop reread."
+  },
+  {
+    "video_id": "y1CvB950VlU",
+    "segment_id": "y1CvB950VlU:seg_00017",
+    "start_sec": 256.1,
+    "end_sec": 259.266667,
+    "source": "ocr",
+    "reasons": [
+      "raw_code_indentation_missing"
+    ],
+    "review_origin": "supplied_ocr_audit",
+    "note": "Raw response already lacks indentation; cannot recover it on CPU."
+  },
+  {
+    "video_id": "y1CvB950VlU",
+    "segment_id": "y1CvB950VlU:seg_00037",
+    "start_sec": 620.233333,
+    "end_sec": 638.433333,
+    "source": "ocr",
+    "reasons": [
+      "audited_ui_occlusion"
+    ],
+    "review_origin": "supplied_ocr_audit",
+    "note": "Tooltip contaminates the selected keyframe; needs another frame/crop."
+  },
+  {
+    "video_id": "y1CvB950VlU",
+    "segment_id": "y1CvB950VlU:seg_00038",
+    "start_sec": 638.433333,
+    "end_sec": 642.9,
+    "source": "ocr",
+    "reasons": [
+      "audited_ui_occlusion"
+    ],
+    "review_origin": "supplied_ocr_audit",
+    "note": "Autocomplete / tooltip covers incomplete code; needs another frame/crop."
+  },
+  {
+    "video_id": "hVU5Mw19V_c",
+    "segment_id": "hVU5Mw19V_c:seg_00000",
+    "start_sec": 5,
+    "end_sec": 16,
+    "source": "asr",
+    "reasons": [
+      "audited_technical_term_error"
+    ],
+    "review_origin": "supplied_asr_audit",
+    "note": "Bayes is heard as Bias/BS; glossary correction does not invent replacements."
+  },
+  {
+    "video_id": "hVU5Mw19V_c",
+    "segment_id": "hVU5Mw19V_c:seg_00012",
+    "start_sec": 1557.16,
+    "end_sec": 1558,
+    "source": "asr",
+    "reasons": [
+      "audited_technical_term_error"
+    ],
+    "review_origin": "supplied_asr_audit",
+    "note": "Bayes is heard as BIS."
+  },
+  {
+    "video_id": "y1CvB950VlU",
+    "segment_id": "y1CvB950VlU:seg_00009",
+    "start_sec": 196.17,
+    "end_sec": 207,
+    "source": "asr",
+    "reasons": [
+      "audited_technical_term_error"
+    ],
+    "review_origin": "supplied_asr_audit",
+    "note": "len is heard as LAN."
+  },
+  {
+    "video_id": "y1CvB950VlU",
+    "segment_id": "y1CvB950VlU:seg_00010",
+    "start_sec": 196.17,
+    "end_sec": 207,
+    "source": "asr",
+    "reasons": [
+      "audited_technical_term_error"
+    ],
+    "review_origin": "supplied_asr_audit",
+    "note": "len is heard as LAN."
+  },
+  {
+    "video_id": "y1CvB950VlU",
+    "segment_id": "y1CvB950VlU:seg_00011",
+    "start_sec": 196.17,
+    "end_sec": 207,
+    "source": "asr",
+    "reasons": [
+      "audited_technical_term_error"
+    ],
+    "review_origin": "supplied_asr_audit",
+    "note": "len is heard as LAN."
+  },
+  {
+    "video_id": "y1CvB950VlU",
+    "segment_id": "y1CvB950VlU:seg_00019",
+    "start_sec": 309.53,
+    "end_sec": 310.81,
+    "source": "asr",
+    "reasons": [
+      "audited_technical_term_error"
+    ],
+    "review_origin": "supplied_asr_audit",
+    "note": "for is heard as 4 4."
+  },
+  {
+    "video_id": "y1CvB950VlU",
+    "segment_id": "y1CvB950VlU:seg_00023",
+    "start_sec": 410.42,
+    "end_sec": 419.68,
+    "source": "asr",
+    "reasons": [
+      "audited_technical_term_error"
+    ],
+    "review_origin": "supplied_asr_audit",
+    "note": "end identifier is not recovered from ASR."
+  },
+  {
+    "video_id": "v2YTz8ToEag",
+    "segment_id": "v2YTz8ToEag:seg_00026",
+    "start_sec": 1659.45,
+    "end_sec": 1661,
+    "source": "asr",
+    "reasons": [
+      "audited_technical_term_error"
+    ],
+    "review_origin": "supplied_asr_audit",
+    "note": "PPF is heard as PPS."
+  },
+  {
+    "video_id": "L25_V037",
+    "segment_id": "L25_V037:seg_00006",
+    "start_sec": 262.97,
+    "end_sec": 271.12,
+    "source": "asr",
+    "reasons": [
+      "audited_technical_term_error"
+    ],
+    "review_origin": "supplied_asr_audit",
+    "note": "v? trang is heard as ph? trang; outside the adopted probability glossary."
+  }
+]
