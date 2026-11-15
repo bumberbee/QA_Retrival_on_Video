@@ -66,6 +66,24 @@ def retrieval_options(features=None):
 
 # A follow-up usually asks about the slides just cited: their chunks get this extra factor.
 FOLLOW_UP_BOOST = 1.1
+# "nhận định 14", "câu 2", "bài 3": embeddings cannot tell numbered items apart, so chunks naming
+# exactly that item are lifted above every RRF score (RRF scores are < 0.05). LECTURE_ORDINAL_BOOST=off disables.
+ORDINAL_BOOST = (os.environ.get("LECTURE_ORDINAL_BOOST", "on").strip().lower() not in {"0", "false", "off", "no"})
+ORDINAL_BONUS = 1.0
+ORDINAL_WORDS = (r"nhan dinh|cau hoi|cau|bai tap|bai|phan|vi du|dinh ly|dinh nghia|chuong|muc|buoc|"
+                 r"slide|trang|hinh|question|exercise|example|part|section|chapter|step|lesson")
+ORDINAL_RE = re.compile(rf"\b({ORDINAL_WORDS})\s+(?:so\s+|thu\s+)?0*(\d{{1,3}})\b")
+
+
+def ordinal_refs(question: str) -> list[tuple[str, str]]:
+    """Numbered items named in the question, e.g. [("nhan dinh", "14")]."""
+    return ORDINAL_RE.findall(normalize_search(question))
+
+
+def mentions_ordinal(text: str, refs: list[tuple[str, str]]) -> bool:
+    normal = normalize_search(text)
+    return any(re.search(rf"\b{re.escape(word)}\s+(?:so\s+|thu\s+)?0*{number}(?![\d.,]*\d)", normal)
+               for word, number in refs)
 STOPWORDS = set("""a ai anh ay ba bang bao bi boi cac cach cai can cho chi chua chung co con cua cung da dang
 de den deu di do doi duoc gi gio ha hay hon khi khong la lai lam len luc ma minh mot moi muon nao nay
 neu ngay nhieu nhu nhung noi o phai qua ra rang rat roi sao se sau tai the thi thoi theo thu tren tro
@@ -432,6 +450,12 @@ def search(video_id: str, question: str, current_time: float | None = None, enco
         if prefer_segments and any(c["segment_id"] in prefer_segments for c in index.chunks
                                    if groups[c["chunk_id"]] == groups[cid]):
             scores[cid] *= FOLLOW_UP_BOOST
+    refs = ordinal_refs(question) if ORDINAL_BOOST else []
+    if refs:
+        for n, chunk in enumerate(index.chunks):
+            if (sources is None or kinds[n] in sources) and mentions_ordinal(chunk["text"], refs):
+                cid = representatives.get(groups[chunk["chunk_id"]], chunk["chunk_id"])
+                scores[cid] = scores.get(cid, 0.0) + ORDINAL_BONUS
     ranked = sorted(scores, key=lambda cid: -scores[cid])
     reranked = {}
     if RERANK:
