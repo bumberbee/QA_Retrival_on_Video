@@ -211,7 +211,8 @@ def run_transcription(stage01_dir, video_path, output_root, video_id="L25_V001",
                       language="vi", device="auto", initial_prompt=None,
                       target_sec=45.0, minimum_sec=20.0, maximum_sec=60.0,
                       overlap_sec=1.25, silence_threshold_db=-38.0,
-                      transcription_mode="windowed", batch_size=8, device_index=0):
+                      transcription_mode="windowed", batch_size=8, device_index=0,
+                      skip_asr=False):
     import numpy as np
 
     if transcription_mode not in {"windowed", "batched"} or batch_size < 1:
@@ -232,6 +233,7 @@ def run_transcription(stage01_dir, video_path, output_root, video_id="L25_V001",
     directory = begin_stage(output_root, 3)
     parameters = {
         "model_id": model_id, "revision": revision, "language": language,
+        **({"skip_asr": True} if skip_asr else {}),
         "initial_prompt": initial_prompt, "target_sec": target_sec,
         "minimum_sec": minimum_sec, "maximum_sec": maximum_sec,
         "overlap_sec": overlap_sec, "silence_threshold_db": silence_threshold_db,
@@ -242,8 +244,9 @@ def run_transcription(stage01_dir, video_path, output_root, video_id="L25_V001",
         "packages": package_versions(["faster-whisper", "ctranslate2", "numpy"]),
     }
     all_words, fallback_spans, windows, slide_clips = [], [], [], []
+    detected_language = None
     invalid_count, dedup_count = 0, 0
-    if source["has_audio"]:
+    if source["has_audio"] and not skip_asr:
         audio_path = directory / "audio/lecture_16k.wav"
         normalize_audio(video_path, source, audio_path)
         pcm = read_pcm_audio(audio_path)
@@ -289,6 +292,8 @@ def run_transcription(stage01_dir, video_path, output_root, video_id="L25_V001",
                 else:
                     raw = transcribe_window(model, normalized, language, initial_prompt)
                 write_json(cache, raw)
+            if detected_language is None:
+                detected_language = raw.get("language")
             if raw.get("speech_duration_sec") is not None:
                 window["speech_duration_sec"] = raw["speech_duration_sec"]
             words, invalid = globalize_window_words(raw["words"], window, duration)
@@ -319,10 +324,10 @@ def run_transcription(stage01_dir, video_path, output_root, video_id="L25_V001",
                 "start_sec": start_sample / 16000, "end_sec": end_sample / 16000,
             })
     transcript = {
-        "video_id": video_id, "language": language, "words": all_words,
+        "video_id": video_id, "language": detected_language if language is None else language, "words": all_words,
         "fallback_spans": fallback_spans, "windows": windows,
         "slide_audio_clips": slide_clips,
-        "status": "completed" if source["has_audio"] else "no_audio",
+        "status": "skipped_requested" if skip_asr else "completed" if source["has_audio"] else "no_audio",
         "invalid_word_count": invalid_count, "overlap_duplicates_removed": dedup_count,
     }
     write_json(directory / "transcript.json", transcript)
