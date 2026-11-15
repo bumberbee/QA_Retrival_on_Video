@@ -23,7 +23,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app import storage  # noqa: E402
+from app.shared import storage  # noqa: E402
 
 VARIANTS = {
     "A_old_no_merge": "A · Dự án cũ (không gộp)",

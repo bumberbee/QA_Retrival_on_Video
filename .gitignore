@@ -7,9 +7,9 @@ frontend/dist/
 .mcpenv-kaggle/
 __pycache__/
 *.pyc
-kaggle/lecture_rag/runs/
+pipeline/runs/
 
-kaggle/lecture_rag/gold/*/review/
+pipeline/gold/*/review/
 
 # Local secrets and tool state
 .env.*

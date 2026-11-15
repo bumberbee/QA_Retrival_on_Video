@@ -31,7 +31,7 @@ The five audits cover 10 videos, 279.4 minutes, 502 intervals, 51,187 ASR words,
 
 The previous roadmap already implemented Qwen2.5-7B, timestamp display, streaming, E5 prefixes, VAD, follow-up rewriting, source ablations, OCR loop collapsing, and a SigLIP prompt/threshold experiment. It also selected Qwen OCR, rejected GOT as a Vietnamese replacement, and found E5 better than BGE-M3 on its larger local question set. Those choices are baselines here. Do not repeat those comparisons without a new failure hypothesis. PhoWhisper, RAGAS, neighbour expansion, and image-conditioned answering were proposed but not demonstrated as complete; the experiments below make their scope and acceptance criteria more precise.
 
-Use `kaggle/lecture_rag/eval/` as the existing evaluation entry point:
+Use `pipeline/eval/` as the existing evaluation entry point:
 
 - `rebuild_offline.py` reconstructs stages 04/05 from raw exported OCR/ASR with CPU ONNX E5, isolated experiment outputs, and parity/provenance checks. Its configuration is an allowlist, and it currently only supports the pinned production E5. New chunking, query construction, reranking, and model variants require deliberate adapters later; they are not already arbitrary harness switches.
 - `eval_retrieval.py` measures the production search and the actual `build_context` output, reporting Hit@1/3/5, MRR, context recall, and quality lints. **The production maximum is three slides, so current Hit@5 equals Hit@3.** Obtain five genuine candidates before interpreting an experimental Hit@5.
@@ -331,4 +331,4 @@ These are **not supporting sources for claims** in this document. No search-resu
 - The five supplied `result-1-slides.md`, `result-2-ocr.md`, `result-3-asr.md`, `result-4-align-index.md`, and `result-5-e2e.md` under `C:/Users/nguye/AppData/Local/Temp/claude/C--Users-nguye-OneDrive-M-y-t-nh-Thesis/96f4c665-1d84-4329-8c3e-c7e072f42ac3/scratchpad/codex-pipeline/`.
 - `docs/paper/nang-cap-pipeline.md` for completed/rejected prior experiments and earlier proposals.
 - Matching PDF files under `docs/paper/` and `docs/paper/edu-rag/`; existing summaries are secondary and may describe older pipeline behaviour, including neighbour expansion that the production audit did not find.
-- `kaggle/lecture_rag/eval/eval_retrieval.py`, `rebuild_offline.py`, and `offline_common.py` for the actual harness scope. No new evaluation results or model runs were produced for this research document.
+- `pipeline/eval/eval_retrieval.py`, `rebuild_offline.py`, and `offline_common.py` for the actual harness scope. No new evaluation results or model runs were produced for this research document.

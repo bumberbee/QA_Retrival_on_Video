@@ -39,4 +39,4 @@ npm run lint
 npm run build
 ```
 
-`src/App.jsx` manages the application shell and uploads. `src/components/VideoRail.jsx` lists the videos and `src/components/Workspace.jsx` holds the player and Q&A view. `src/components/ImportDialog.jsx` handles the link/file choices, while `src/lib/useVideoImport.js` manages import jobs and polling. Shared controls are in `src/components/UI.jsx`, translations and API helpers are in `src/lib`, and the responsive styles are in `src/index.css` and `src/components/import-dialog.css`.
+`src/app/App.jsx` manages the application shell and uploads, with the entry point in `src/app/main.jsx`. `src/features/library/VideoRail.jsx` lists the videos and `src/features/chat/Workspace.jsx` holds the player and Q&A view, using `src/features/player/VideoPlayer.jsx`. `src/features/import/ImportDialog.jsx` handles the link/file choices, while `src/features/import/useVideoImport.js` manages import jobs and polling. Shared controls are in `src/shared/components`, translations and API helpers are in `src/shared/lib`, and the responsive styles are in `src/app/index.css` and `src/features/import/import-dialog.css`.

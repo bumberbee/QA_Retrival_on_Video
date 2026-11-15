@@ -8,9 +8,11 @@ from fastapi.responses import JSONResponse
 
 load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
 
-from . import storage  # noqa: E402
-from .routers import conversations, qa, videos  # noqa: E402
-from .services import llm  # noqa: E402
+from app.shared import storage  # noqa: E402
+from app.features.conversations import router as conversations
+from app.features.ask import router as qa
+from app.features.videos import router as videos  # noqa: E402
+from app.features.ask import llm  # noqa: E402
 
 app = FastAPI(title="Video Q&A API")
 

@@ -10,7 +10,7 @@ GitHub popularity is `stargazers_count`; last update is `pushed_at`, not necessa
 
 ## Local baseline and experimental contract
 
-Read locally: `docs/paper/upgrade-v3-research.md`, the five supplied `result-*.md` audits, `kaggle/lecture_rag/eval/{BASELINE.md,PHASE2.md,eval_retrieval.py,questions_dev.json}`. The older research plan's network limitation no longer applies to this new report.
+Read locally: `docs/paper/upgrade-v3-research.md`, the five supplied `result-*.md` audits, `pipeline/eval/{BASELINE.md,PHASE2.md,eval_retrieval.py,questions_dev.json}`. The older research plan's network limitation no longer applies to this new report.
 
 **Use Phase 2 app defaults as the comparator.** The local PHASE2 report records Hit@1 **0.600**, Hit@3 **0.791**, MRR **0.682**, context recall **0.745** on 110 answerable questions. These are internal development results, not external model benchmarks. Context packing, OCR group deduplication, source-boost removal and Vietnamese lexical fixes have already changed; do not attribute those improvements to a new model.
 
@@ -162,7 +162,7 @@ These are verified **source repositories**, not verified drop-in replacements fo
 Each pilot below is **one to two developer days independently**; the full list is not a two-day schedule. Start with reviewed short clips/crops rather than rerunning all 279 minutes. Freeze a comparator run with current Phase 2 defaults. The shared existing command is:
 
 ```powershell
-& backend/.venv/Scripts/python.exe kaggle/lecture_rag/eval/eval_retrieval.py --index-root PILOT_INDEX_ROOT --videos VIDEO_ID ... --name PILOT_NAME
+& backend/.venv/Scripts/python.exe pipeline/eval/eval_retrieval.py --index-root PILOT_INDEX_ROOT --videos VIDEO_ID ... --name PILOT_NAME
 ```
 
 Use `--index-dir PATH --videos VIDEO_ID` for a single exported index. `--questions` can select a reviewed question subset. New extraction must first be adapted into the stage-02/03/04 schema and isolated stage-05 index; new rerankers/tokenizers must be wired into the isolated backend used by the harness. There is **no existing command-line model/reranker switch**. Component and answer metrics below must be recorded separately because the harness does not yet compute them.

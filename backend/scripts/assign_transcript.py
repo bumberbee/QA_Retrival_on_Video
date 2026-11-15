@@ -19,8 +19,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app import storage  # noqa: E402
-from app.models import Transcript  # noqa: E402
+from app.shared import storage  # noqa: E402
+from app.shared.models import Transcript  # noqa: E402
 
 
 def main() -> None:
