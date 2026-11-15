@@ -1,7 +1,0 @@
-{
-  "historical_notebook_sha256": "1f93583a2d9676280e5a3ff59ee7965a435b7d12f53ba6bdad8758204cf3efd0",
-  "config": {
-    "soft_limit_seconds": 1650,
-    "only_native": true
-  }
-}
