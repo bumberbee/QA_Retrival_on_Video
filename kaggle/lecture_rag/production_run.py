@@ -1,4 +1,4 @@
-"""Prepare and operate only new PRIVATE 20261102 kernels via the authenticated CLI.
+"""Operate authorized PRIVATE production and demo kernels via the authenticated CLI.
 
 All remote downloads and the authoritative budget ledger live on D:.
 The conservative budget charges the full timeout even when a kernel ends early.
@@ -21,6 +21,11 @@ OUTPUT = Path('D:/thesis-data/run-20261102')
 OWNER = 'thnhtrungnguynmif'
 DATASETS = [OWNER + '/' + slug for slug in
             ('l25a-lecture-videos-media', 'vn-lecture-test12', 'slidespeech-train100')]
+VERIFICATION_LIMITS = {
+    OWNER + '/lecture-rag-demo-verify-attrib-chat-20261104': 1200,
+    OWNER + '/lecture-rag-demo-verify2-20261104': 1080,
+    OWNER + '/lecture-rag-demo-final2-20261104': 720,
+}
 
 
 def cli(*args, timeout=300):
@@ -51,8 +56,14 @@ def validate_metadata(meta):
         raise RuntimeError('T4 x2 machine shape required')
     if sorted(meta['dataset_sources']) != sorted(DATASETS):
         raise RuntimeError('Required three dataset attachments differ')
-    if not meta['id'].startswith(OWNER + '/') or '20261102' not in meta['id']:
-        raise RuntimeError('Only new owner slugs containing 20261102 are permitted')
+    verification = meta['id'] in VERIFICATION_LIMITS
+    demo = verification or re.fullmatch(re.escape(OWNER) + r'/lecture-rag-demo-pipeline-test-20261104(?:-attempt2)?', meta['id'])
+    if 'demo' in meta['id'].split('/')[-1] and not demo:
+        raise RuntimeError('Only the two authorized 20261104 demo slugs or the authorized attribution/chat verification slugs are permitted')
+    if verification and meta.get('kernel_sources') != [OWNER + '/lecture-rag-demo-math-l25-v008-20261104']:
+        raise RuntimeError('Verification must reuse the authorized L25_V008 index')
+    if not meta['id'].startswith(OWNER + '/') or ('20261102' not in meta['id'] and not demo):
+        raise RuntimeError('Only authorized production or 20261104 demo slugs are permitted')
 
 
 def build_bundle(kind, layout='dual', resume_from=None, checkpoint_kernel=None):
@@ -91,8 +102,22 @@ def verify_remote(directory, *, observed=None):
     local = json.loads((directory / 'kernel-metadata.json').read_text(encoding='utf8'))
     state, raw = status(local['id']) if observed is None else observed
     dest = OUTPUT / 'metadata' / local['id'].split('/')[1]
-    cli('kernels', 'pull', local['id'], '-p', dest, '-m')
-    remote = json.loads((dest / 'kernel-metadata.json').read_text(encoding='utf8'))
+    if local['id'] in VERIFICATION_LIMITS:
+        # Verify privacy without downloading an extra, unexecuted source notebook.
+        from kaggle.api.kaggle_api_extended import KaggleApi, ApiGetKernelRequest
+        api = KaggleApi()
+        api.authenticate()
+        request = ApiGetKernelRequest()
+        request.user_name, request.kernel_slug = local['id'].split('/')
+        with api.build_kaggle_client() as client:
+            metadata = client.kernels.kernels_api_client.get_kernel(request).metadata
+        remote = {**local, 'is_private': metadata.is_private, 'enable_gpu': metadata.enable_gpu,
+                  'enable_tpu': metadata.enable_tpu, 'enable_internet': metadata.enable_internet,
+                  'machine_shape': metadata.machine_shape, 'dataset_sources': metadata.dataset_data_sources,
+                  'kernel_sources': metadata.kernel_data_sources}
+    else:
+        cli('kernels', 'pull', local['id'], '-p', dest, '-m')
+        remote = json.loads((dest / 'kernel-metadata.json').read_text(encoding='utf8'))
     validate_metadata(remote)
     evidence = {'status': state, 'status_cli': raw, 'privacy_verified': True,
                 'metadata': remote, 'verified_utc': datetime.now(timezone.utc).isoformat()}
@@ -161,6 +186,13 @@ def launch(directory, timeout):
     validate_metadata(meta)
     ledger_path = OUTPUT / 'gpu-ledger.json'
     rows = json.loads(ledger_path.read_text(encoding='utf8')) if ledger_path.exists() else []
+    limit = VERIFICATION_LIMITS.get(meta['id'])
+    if limit is not None and timeout > limit:
+        raise RuntimeError(f'Attribution/chat verification limit: one GPU attempt, timeout at most {limit} seconds')
+    if '/lecture-rag-demo-pipeline-test-' in meta['id']:
+        if timeout > 1800 or sum('demo' in r['ref'].split('/')[-1] and
+                                 r.get('submitted', False) for r in rows) >= 2:
+            raise RuntimeError('Demo limit: at most two GPU attempts, timeout at most 1800 seconds')
     if any(r['ref'] == meta['id'] for r in rows):
         raise RuntimeError('Never overwrite an existing task kernel; choose a new slug')
     listing = cli('kernels', 'list', '--mine', '--search', meta['id'].split('/')[1], '--page-size', '100')
@@ -184,7 +216,8 @@ def launch(directory, timeout):
     # Mandatory immediate remote privacy check. Any public/unverified result raises.
     row.update(verify_remote(directory))
     write(ledger_path, rows)
-    print(json.dumps(row, ensure_ascii=False))
+    print(f"{row['ref']} | {row['status']} | private={row['privacy_verified']} | "
+          f"budget bound={bound:.6f} T4-hours")
 
 
 def stream_kernel_output(ref, dest, chunk=1 << 20):
