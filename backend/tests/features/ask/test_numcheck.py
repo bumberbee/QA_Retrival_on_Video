@@ -1,8 +1,16 @@
 from tests import _isolate  # noqa: F401 (must come before app imports)
+import json
 import unittest
 from fractions import Fraction
+from itertools import combinations
+from pathlib import Path
 
 from app.features.ask.numcheck import check_answer, extract_claims, safe_eval
+
+
+CARD_PROBABILITY = json.loads(
+    (Path(__file__).parent / "fixtures" / "card_probability.json").read_text(encoding="utf-8")
+)
 
 
 class SafeEvalTests(unittest.TestCase):
@@ -77,22 +85,75 @@ class ClaimTests(unittest.TestCase):
         self.assertEqual(text[slice(*claims[-1][2])], "= 36,3%")
         self.assertEqual([c.status for c in check_answer(text)], ["ok"] * 4)
 
-    def test_regression_incorrect_15_choose_4_and_99_over_667(self):
-        text = (
-            "Có 15 phần tử, chọn 4. Xác suất không chọn toàn bộ từ nhóm 12 là "
-            "1 - C(12,4)/C(15,4) = 99/667 = 0.148 = 14,8%."
-        )
-        checks = check_answer(text, ["Tập gồm 15 phần tử, nhóm có 12; chọn 4."])
+    def test_regression_real_saved_card_explanation(self):
+        checks = check_answer(CARD_PROBABILITY["wrong_explanation"],
+                              CARD_PROBABILITY["evidence_texts"])
         self.assertEqual(len(checks), 3)
-        self.assertEqual([c.status for c in checks], ["mismatch"] * 3)
-        self.assertEqual([c.computed_value for c in checks], [Fraction(58, 91)] * 3)
-        self.assertEqual(checks[0].claimed_value, Fraction(99, 667))
-        # The same incorrect fraction also fails for the uncomplemented ratio.
-        self.assertEqual(check_answer("C(12,4)/C(15,4) = 99/667")[0].status, "mismatch")
-        self.assertEqual(check_answer("C(15,4) = 99/667")[0].computed_value, Fraction(1365))
-        self.assertEqual(check_answer("C(15,4) = 99/667")[0].status, "mismatch")
-        self.assertNotEqual(Fraction(58, 91), Fraction(273, 667))
-        self.assertNotEqual(Fraction(33, 91), Fraction(99, 667))
+        self.assertEqual([c.status for c in checks], ["mismatch", "ok", "mismatch"])
+        # The original also miscalculates 3*1365*3003 as 12789105.
+        self.assertEqual(checks[0].computed_value, Fraction(12297285))
+        self.assertEqual(checks[0].claimed_value, Fraction(12789105))
+        self.assertEqual(checks[-1].computed_value, Fraction(12789105, 30045015))
+        self.assertEqual(checks[-1].claimed_value, Fraction(99, 667))
+        self.assertEqual(safe_eval(CARD_PROBABILITY["erroneous_expression"]),
+                         Fraction(273, 667))
+        source = CARD_PROBABILITY["source"]
+        self.assertEqual(source["file"], "D:/thesis-data/demo-notebook/final2/quality-review.json")
+        self.assertEqual(source["key"], "results[5].answer")
+
+    def test_regression_corrected_saved_card_explanation(self):
+        checks = check_answer(CARD_PROBABILITY["corrected_explanation"],
+                              CARD_PROBABILITY["evidence_texts"])
+        self.assertEqual(len(checks), 3)
+        self.assertEqual([c.status for c in checks], ["ok"] * 3)
+        self.assertEqual([c.computed_value for c in checks],
+                         [Fraction(4459455), Fraction(30045015), Fraction(99, 667)])
+        self.assertEqual(safe_eval(CARD_PROBABILITY["correct_expression"]), Fraction(99, 667))
+        # Correct the exclusion constraint as well as its arithmetic. Keeping
+        # C(15,4) and changing the final answer to 273/667 is not a valid repair.
+        self.assertIn(r"C_{12}^4", CARD_PROBABILITY["corrected_explanation"])
+        self.assertIn("12 tấm thẻ chẵn không chia hết cho 10", CARD_PROBABILITY["corrected_explanation"])
+
+    def test_card_count_independently_enumerates_odd_and_even_hands(self):
+        cards = range(1, 31)
+        odds = [card for card in cards if card % 2]
+        evens = [card for card in cards if not card % 2]
+        odd_hands = sum(1 for _ in combinations(odds, 5))
+        even_hands = sum(sum(card % 10 == 0 for card in hand) == 1
+                         for hand in combinations(evens, 5))
+        self.assertEqual(odd_hands, 3003)
+        self.assertEqual(even_hands, 1485)  # 3 choices times 495, excluding all {10,20,30}.
+        proof = CARD_PROBABILITY["brute_force"]
+        self.assertEqual(odd_hands * even_hands, proof["favorable_hands"])
+        self.assertEqual(Fraction(odd_hands * even_hands, proof["total_hands"]),
+                         Fraction(CARD_PROBABILITY["correct_answer"]))
+
+    def test_latex_numeric_chains_preserve_original_offsets(self):
+        text = r"Trước: 2+2 = 4; \[ P(A) = \frac{C_3^1 \times C_{12}^4 \times C_{15}^5}{C_{30}^{10}} = \frac{99}{667}. \] Sau: 1/2 = 0.5"
+        checks = check_answer(text)
+        self.assertEqual([c.status for c in checks], ["ok"] * 3)
+        self.assertEqual(checks[1].lhs_expr, "(C(3,1) * C(12,4) * C(15,5))/(C(30,10))")
+        self.assertEqual(text[slice(*checks[1].span)],
+                         r"\frac{C_3^1 \times C_{12}^4 \times C_{15}^5}{C_{30}^{10}} = \frac{99}{667}")
+        text = r"\[ 1/2 = \frac{99}{667} = 0.148 \]"
+        self.assertEqual([c.status for c in check_answer(text)], ["mismatch"] * 2)
+
+    def test_latex_unsupported_expressions_remain_unparsed(self):
+        cases = (
+            r"\[ x + 2 = 3 \]", r"\[ P(A) = evil(12) \]",
+            r"\[ 1 = \sqrt{1} \]", r"\[ C_{12}^x = 495 \]",
+            r"\[ \frac{1}{0} = 2 \]", r"\[ 1 = \frac{1}{2 \]",
+            r"\[ 2 = 2.__class__ \]", r"\[ 1 = __import__('os').system('bad') \]",
+        )
+        for text in cases:
+            with self.subTest(text=text):
+                checks = check_answer(text)
+                self.assertEqual(len(checks), 1)
+                self.assertEqual(checks[0].status, "unparsed")
+
+    def test_latex_claims_respect_global_count_limit(self):
+        text = r"\[ 1=1 \]" * 250
+        self.assertEqual(len(check_answer(text)), 200)
 
     def test_wrong_initial_fraction_cannot_launder_later_rounding(self):
         text = "1/2 = 99/667 = 0.148 = 14,8%"
