@@ -13,6 +13,7 @@ from app.shared.models import SlideReview, Transcript, VideoImportRequest, Video
 from app.shared import objects
 from app.features.videos import importer as video_import
 from app.features.videos.media import video_response
+from app.features.extract.jobs import enqueue_after_import
 
 
 def check_video_id(request: Request) -> None:
@@ -119,6 +120,7 @@ def upload_video(file: UploadFile):
                 dest.unlink(missing_ok=True)
                 storage.video_meta_path(video_id).unlink(missing_ok=True)
 
+    enqueue_after_import(video_id)
     return VideoInfo(
         video_id=video_id,
         filename=original_filename,

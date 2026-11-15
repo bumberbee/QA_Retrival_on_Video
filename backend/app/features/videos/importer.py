@@ -15,6 +15,7 @@ from urllib.parse import parse_qs, urlsplit, urlunsplit
 
 from app.shared import storage
 from app.shared.models import VideoImportStatus, VideoInfo
+from app.features.extract.jobs import enqueue_after_import
 
 logger = logging.getLogger(__name__)
 
@@ -341,7 +342,6 @@ def _run_import(import_id: str, source_url: str, platform: str) -> None:
                 source_url=source_url,
                 source_platform=platform,
             )
-        _update(import_id, status="completed", progress=100, video=video)
     except Exception as error:
         logger.warning("Video import %s failed: %s", import_id, type(error).__name__)
         if destination is not None:
@@ -349,3 +349,6 @@ def _run_import(import_id: str, source_url: str, platform: str) -> None:
         if metadata_path is not None:
             metadata_path.unlink(missing_ok=True)
         _update(import_id, status="failed", progress=None, error=_friendly_error(error))
+    else:
+        enqueue_after_import(video_id)
+        _update(import_id, status="completed", progress=100, video=video)

@@ -1,5 +1,10 @@
 export const STRINGS = {
   en: {
+    extracting: "Extracting video…",
+    extractRetry: "Extract video",
+    extractHint: "You can close this window. Questions become available when extraction finishes.",
+    extractStatuses: { checking: "Checking extraction…", queued: "Waiting for extraction", completed: "Ready for questions", failed: "Extraction failed", not_started: "Waiting to be extracted" },
+    extractStages: { s01: "Segment slides", s02: "Filter frames", s03: "OCR", s04: "Recognize speech", s05: "Align", s06: "Build index", import: "Import data" },
     railSubtitle: "Lecture video Q&A",
     askAcrossHint: "Also ask across this video",
     askingAcross: "Asking across",
@@ -274,6 +279,11 @@ export const STRINGS = {
       "Keep the video beside your conversation. Every answer has context.",
   },
   vi: {
+    extracting: "Đang trích xuất video…",
+    extractRetry: "Trích xuất video",
+    extractHint: "Bạn có thể đóng cửa sổ này. Có thể hỏi AI khi trích xuất hoàn tất.",
+    extractStatuses: { checking: "Đang kiểm tra trích xuất…", queued: "Đang chờ trích xuất", completed: "Sẵn sàng hỏi đáp", failed: "Trích xuất thất bại", not_started: "Chờ trích xuất" },
+    extractStages: { s01: "Tách slide", s02: "Lọc khung", s03: "OCR", s04: "Nhận dạng giọng nói", s05: "Đồng bộ", s06: "Tạo chỉ mục", import: "Nạp dữ liệu" },
     railSubtitle: "Hỏi đáp video bài giảng",
     askAcrossHint: "Hỏi cả video này",
     askingAcross: "Đang hỏi trên",

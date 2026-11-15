@@ -1,5 +1,5 @@
 export let API_BASE = (
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:8001/api"
+  import.meta.env.VITE_API_BASE_URL || "/api"
 ).replace(/\/$/, "");
 
 // Deployed build: the backend runs on a Vast.ai machine behind a temporary Cloudflare tunnel
@@ -58,6 +58,14 @@ export async function request(path, options = {}) {
 }
 
 const slideCache = new Map();
+
+export function invalidateSlides(videoId) {
+  slideCache.delete(videoId);
+}
+
+export function videoReady(video) {
+  return Boolean(video?.has_transcript && (!video.extraction || video.extraction.status === "completed"));
+}
 
 // Library previews and the player share one metadata request per video.
 export function getSlides(videoId) {

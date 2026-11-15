@@ -23,6 +23,8 @@ import Splitter, { useStoredSize } from "../../shared/components/Splitter";
 import { useMediaQuery } from "../../shared/lib/hooks";
 import { Dialog, EmptyState, Icon, Spinner } from "../../shared/components/UI";
 import VideoPlayer from "../player/VideoPlayer";
+import ExtractionProgress from "../extract/ExtractionProgress";
+import { extractionLabel } from "../extract/labels";
 
 const TIME = String.raw`\d{1,3}:[0-5]\d(?::[0-5]\d)?`;
 // "[02:10–02:38]", "[Slide seg_00005 · 02:10–02:38]", "[10:22 - 15:27]": one link to the start.
@@ -706,6 +708,8 @@ function Transcript({ segments, currentTime, onSeek, t }) {
 
 export default function Workspace({
   video,
+  ready = video.has_transcript,
+  onExtract,
   initialQuestion = "",
   initialChatOpen = false,
   initialTime = 0,
@@ -782,7 +786,7 @@ export default function Workspace({
       })
       .catch(() => {});
     return () => controller.abort();
-  }, [video.video_id]);
+  }, [video.video_id, video.extraction?.status]);
 
   const saveReview = useCallback(
     (slideKey, review) => {
@@ -810,7 +814,14 @@ export default function Workspace({
     return () => {
       active = false;
     };
-  }, [video.video_id, video.has_slides, slidesRetry]);
+  }, [video.video_id, video.has_slides, slidesRetry, video.extraction?.status]);
+
+  useEffect(() => {
+    if (video.extraction?.status === "completed") {
+      setOutline(null);
+      setTranscript(null);
+    }
+  }, [video.extraction?.status]);
 
   useEffect(() => {
     if (tab !== "structure" || outline) return;
@@ -869,7 +880,7 @@ export default function Workspace({
   const sendQuestion = useCallback(
     async (text, contextTime, retryId) => {
       const content = typeof text === "string" ? text.trim() : "";
-      if (!content || !video.has_transcript || qaRequest.current) return;
+      if (!content || !ready || qaRequest.current) return;
       const controller = new AbortController();
       qaRequest.current = controller;
       const time = contextTime ?? videoRef.current?.currentTime ?? 0;
@@ -954,7 +965,7 @@ export default function Workspace({
         }
       }
     },
-    [video.video_id, video.has_transcript, t.answerError, askVideoIds, setMessages],
+    [video.video_id, ready, t.answerError, askVideoIds, setMessages],
   );
 
   const retryQuestion = useCallback(
@@ -1010,7 +1021,7 @@ export default function Workspace({
     currentVideoId: video.video_id,
     scope: askVideoIds.length || 1,
     history: chat?.history,
-    ready: video.has_transcript,
+    ready,
     t,
   };
 
@@ -1036,16 +1047,19 @@ export default function Workspace({
               <div className="video-details-heading">
                 <span className="eyebrow">{t.nowWatching}</span>
                 <span
-                  className={`status-badge ${video.has_transcript ? "status-ready" : "status-waiting"}`}
+                  className={`status-badge ${ready ? "status-ready" : "status-waiting"}`}
                 >
                   <Icon
-                    name={video.has_transcript ? "sparkles" : "clock"}
+                    name={ready ? "sparkles" : "clock"}
                     size={13}
                   />
-                  {video.has_transcript ? t.ready : t.transcriptMissing}
+                  {video.extraction ? extractionLabel(video.extraction, t) : ready ? t.ready : t.transcriptMissing}
                 </span>
               </div>
               <h1 title={video.filename}>{videoTitle(video.filename)}</h1>
+              {video.extraction && video.extraction.status !== "completed" && (
+                <ExtractionProgress job={video.extraction} onRetry={onExtract} t={t} />
+              )}
               <div className="video-meta">
                 {duration > 0 && (
                   <span>
@@ -1403,9 +1417,9 @@ export default function Workspace({
               )}
               <button
                 className="button button-primary"
-                disabled={!video.has_transcript || asking}
+                disabled={!ready || asking}
                 onClick={askAboutSlide}
-                title={!video.has_transcript ? t.transcriptMissing : undefined}
+                title={!ready ? t.transcriptMissing : undefined}
               >
                 <Icon name="sparkles" size={17} />
                 {t.askSlide}
