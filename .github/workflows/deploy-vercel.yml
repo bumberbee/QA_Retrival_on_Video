@@ -1,0 +1,43 @@
+name: Deploy to Vercel (production)
+
+# Every push to master is deployed to production through the Vercel CLI with the account owner's token.
+# Needs one repository secret: VERCEL_TOKEN (created by the Vercel account owner, scoped to the team),
+# and two repository variables: VERCEL_ORG_ID and VERCEL_PROJECT_ID (from .vercel/project.json after `vercel link`).
+#
+# The commit author is NOT rewritten. On the Hobby plan Vercel may block a deployment whose commit author
+# is not the account owner; in that case let the owner (toilaMif) merge the PR, or move the team to Pro.
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+
+jobs:
+  deploy:
+    # never runs in a fork, where the secret does not exist anyway
+    if: github.repository == 'toilaMif/thesis-video-qa'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Log who authored the commit
+        run: git log -1 --format='github author=%an <%ae>'
+
+      - name: Deploy to Vercel production
+        run: npx vercel@latest deploy --prod --yes --token "$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
