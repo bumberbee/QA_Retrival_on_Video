@@ -8,21 +8,21 @@ Chọn Ubuntu có CUDA, GPU RTX 3090/4090 với 24 GB VRAM, khoảng 80 GB ổ �
 
 ## 2. Chép mã, dữ liệu và cấu hình
 
-Chuẩn bị ba tệp trên máy cá nhân:
+Chuẩn bị hai tệp trên máy cá nhân. Máy Vast bắt đầu với **kho dữ liệu trống**: chỉ có các video bạn thêm mới trên giao diện, được trích xuất ngay trên máy.
 
-- `thesis-code.tar.gz`: mã nguồn, gồm `backend/`, `frontend/`, `infra/`, `pipeline/` và các tài nguyên pipeline cần; loại bỏ `.git`, các venv, `node_modules`, `frontend/dist`, `.env`, dữ liệu và thư mục chạy pipeline cũ.
-- `app-data.tar.gz`: đóng gói **nội dung** thư mục dữ liệu hiện tại (khoảng 1,4 GB), gồm `videos/`, `transcripts/`, `keyframes/`, `slide_variants/` và `index/`.
+- `thesis-code.tar`: tạo bằng `git archive --format=tar -o thesis-code.tar master` (chỉ gồm file đã commit; `.gitattributes` giữ file `.sh`/`.py` ở dạng xuống dòng LF).
+- *(Tùy chọn)* `app-data.tar.gz`: chỉ khi muốn mang theo video đã trích xuất sẵn trên máy cá nhân.
 - `.env`: bản riêng cho demo, **bỏ toàn bộ khóa Kaggle** (`KAGGLE_USERNAME`, `KAGGLE_KEY` và các khóa liên quan). Không chép tệp thông tin đăng nhập khác. Đặt `LLM_PROVIDER=ollama`, `OLLAMA_MODEL=qwen2.5:7b`; hoặc dùng `LLM_PROVIDER=gemini` cùng khóa Gemini của bạn. Để trống mọi biến `SUPABASE_*` và `R2_*`; script cũng ép các biến này về rỗng.
 
 Ví dụ từ thư mục chứa ba tệp, thay cổng và IP bằng thông tin SSH trên Vast.ai:
 
 ```bash
-scp -P <port> thesis-code.tar.gz app-data.tar.gz .env root@<ip>:/workspace/
+scp -P <port> thesis-code.tar .env root@<ip>:/workspace/
 ssh -p <port> root@<ip>
 mkdir -p /workspace/Thesis /workspace/app-data
-tar -xzf /workspace/thesis-code.tar.gz -C /workspace/Thesis
-tar -xzf /workspace/app-data.tar.gz -C /workspace/app-data
-install -m 600 /workspace/.env /workspace/Thesis/.env
+tar -xf /workspace/thesis-code.tar -C /workspace/Thesis
+install -m 600 /workspace/.env /workspace/Thesis/.env && rm /workspace/.env
+# (Tùy chọn) tar -xzf /workspace/app-data.tar.gz -C /workspace/app-data
 ```
 
 Hai tarball nên chứa các thư mục nêu trên ngay ở cấp đầu, không lồng thêm một thư mục gốc. Không in nội dung `.env` hay đưa khóa vào lịch sử lệnh. Nếu đặt `ADMIN_TOKEN`, các thao tác ghi cần header `X-Admin-Token`; giao diện hiện tại phù hợp buổi demo cá nhân với `ADMIN_TOKEN` để trống. URL tunnel là công khai, chỉ chia sẻ với người tham gia demo.
