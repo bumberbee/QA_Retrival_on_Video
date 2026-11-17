@@ -1,6 +1,6 @@
 """A5: the fixed path S1 -> S2 -> S3 <-> S4 -> S5 -> S6 | S7. Code decides every step.
 
-No model is called here. S5 (generation) stays in ``features.ask``; this module either
+S5 (generation) stays in ``features.ask``; this module either
 hands it the evidence to answer from, or returns a final text (a template reply, a
 clarifying question or a refusal) that needs no generation at all. S6 (``verify``) is
 run by the caller on the generated answer.
@@ -36,6 +36,26 @@ THANKS = ("cam on", "thanks", "thank you")
 
 def enabled() -> bool:
     return os.getenv("LECTURE_AGENT", "").strip().lower() in {"1", "true", "on", "yes"}
+
+
+def regeneration_needed(report: dict) -> bool:
+    """S6 shares one retry: arithmetic first, otherwise contradiction; never uncertainty."""
+    return bool(report["mismatches"] or report.get("nli", {}).get("counts", {}).get("contradicted", 0))
+
+
+def prefer_regeneration(first: dict, second: dict) -> bool:
+    """Keep fewer numeric mismatches first, then fewer contradicted/unsupported claims.
+
+    A failed NLI check cannot make a candidate appear better. With NLI disabled,
+    this is precisely the existing strict comparison of numeric mismatch counts.
+    """
+    before, after = len(first["mismatches"]), len(second["mismatches"])
+    if before != after:
+        return after < before
+    if "nli" not in first or "nli" not in second:
+        return False
+    return tuple(second["nli"]["counts"][key] for key in ("contradicted", "unsupported")) < tuple(
+        first["nli"]["counts"][key] for key in ("contradicted", "unsupported"))
 
 
 @dataclass

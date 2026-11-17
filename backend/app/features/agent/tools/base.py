@@ -41,6 +41,7 @@ class ToolContext:
     scorer: Callable[[list[tuple[str, str]]], list[float]] | None = None
     budget: Budget = field(default_factory=Budget)
     searcher: Callable[..., dict] | None = None
+    nli_scorer: Callable[[list[tuple[str, str]]], list[tuple[float, float, float]]] | None = None
     _indexes: dict = field(default_factory=dict, init=False, repr=False)
     _index_lock: Any = field(default_factory=threading.Lock, init=False, repr=False)
 

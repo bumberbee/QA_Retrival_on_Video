@@ -72,6 +72,31 @@ No `main` fallback or download is attempted. Missing files/dependencies raise
 See `pipeline/notes/RERANK_PLAN.md` for the pending paired dev-120 measurement
 and Kaggle notebook builder recipe. No evaluation/model run was performed for A3.
 
+## Sentence support (A6 / Q10)
+
+The registered `nli` backend uses the lazy local ONNX scorer in `agent/nli.py`.
+Enable `LECTURE_NLI=on` before startup and provision `LECTURE_NLI_MODEL_DIR`;
+neither importing decisions nor disabled decisions load a model. It accepts
+`{"claim": sentence, "evidence": text}` or
+`{"claims": [sentences], "evidence_map": {"E1": {"text": text}}}`. Inject a
+probability scorer through `state["scorer"]` or `NLIBackend(scorer=...)`.
+
+Configured labels are `supported`, `unsupported`, `contradicted`, supplied by
+Q10 `nli_labels`. `p` is the selected claim's maximum entailment, and generic
+accept/reject/uncertain zones and confidence still use that support value.
+For several claims, choose the worst status (contradicted, then unsupported,
+then supported), breaking ties by lowest entailment. A contradiction may have
+an uncertain zone: the independent `reject_contradict` threshold controls its
+label. Injected policies control both thresholds. TODO A8: calibrate on dev.
+
+Disabled/missing NLI raises `NotConfigured`, preserving the existing fallback
+`unrelated` label, probability 1/3 and zero confidence byte-for-byte. The legacy
+Q10 `labels`/`fallback_label` remain in policy for this compatibility contract;
+configured NLI uses the separate three-way `nli_labels`. Invalid configured
+scorer outputs still surface as errors under the existing `decide` semantics.
+S6 catches any NLI error and preserves the answer; see `agent/README.md` for
+additive trace fields and the two new verdict reason codes.
+
 ## Router injection and state
 
 `route_question(question, state, *, encode=None, llm=None, backends=None,
@@ -117,7 +142,7 @@ earlier tie. `resolve_route` returns the exact A2b route table, or
 - Review the 20 authored examples per label with lecturers; no evaluation data
   was used to author them.
 - Agree Q6/Q11 meanings and labels: A2/A2b do not define them.
-- Provision/pin the reranker weights; configure NLI, mini-Jev/Jev and an LLM callable when available.
+- Provision/pin reranker and NLI weights; configure mini-Jev/Jev and an LLM callable when available.
 - The agent state machine (A5 part 1) is in `features/agent/graph.py`; frontend debug display is deferred.
 
 ## Interim Q8 without a reranker
