@@ -367,3 +367,22 @@ def test_stdout_count_translation_is_monotonic_and_logs_stay_on_stderr():
     stream.write("Qwen đọc slide 1/2\nOCR 1/10\nOCR 10/10\nordinary log\n")
     assert [row["progress"] for row in rows] == [.5, .99]
     assert "ordinary log" in logs.getvalue()
+
+
+def test_stage_events_carry_whole_run_progress_and_loading_phase():
+    assert sum(run_video.STAGE_WEIGHTS) == pytest.approx(1) and len(run_video.STAGE_WEIGHTS) == len(run_video.STAGES)
+    start = run_video.with_overall({"event": "stage", "stage": "s03_ocr", "status": "running", "progress": 0.0})
+    assert (start["overall"], start["phase"]) == (.15, "loading")
+    half = run_video.with_overall({"event": "stage", "stage": "s03_ocr", "status": "running", "progress": .5})
+    assert (half["overall"], half["phase"]) == (.35, "working")
+    done = run_video.with_overall({"event": "stage", "stage": "s06_index", "status": "completed", "progress": 1.0})
+    assert (done["overall"], done["phase"]) == (1.0, "working")
+    skipped = run_video.with_overall({"event": "stage", "stage": "s02_gate", "status": "skipped", "progress": 1.0})
+    assert skipped["phase"] == "working"
+
+
+def test_keyframe_and_ocr_readahead_counts_report_progress():
+    rows = []
+    stream = run_video.StageLogs(io.StringIO(), lambda **event: rows.append(event), "s01_segment")
+    stream.write("Keyframe 1/4: 0.00s\nOCR đọc trước 3/4\n")
+    assert [row["progress"] for row in rows] == [.25, .75]

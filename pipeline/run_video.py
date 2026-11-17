@@ -26,6 +26,21 @@ from pipeline.shared.source_paths import module_path
 
 ROOT = Path(__file__).resolve().parent
 STAGES = ("s01_segment", "s02_gate", "s03_ocr", "s04_asr", "s05_align", "s06_index")
+# Rough share of the run each stage takes, only to draw one bar for the whole extraction.
+STAGE_WEIGHTS = (0.10, 0.05, 0.40, 0.35, 0.05, 0.05)
+
+
+def with_overall(event):
+    """Add the whole-run fraction and the phase to a stage event.
+
+    A running stage that has not counted an item yet is loading (or downloading) its
+    model, which can take minutes: "loading" lets the UI say so instead of showing 0%.
+    """
+    position = STAGES.index(event["stage"])
+    progress = float(event.get("progress") or 0.0)
+    overall = sum(STAGE_WEIGHTS[:position]) + STAGE_WEIGHTS[position] * progress
+    phase = "loading" if event.get("status") == "running" and progress == 0 else "working"
+    return {**event, "overall": round(min(1.0, overall), 4), "phase": phase}
 
 
 def load_runtime():
@@ -84,7 +99,7 @@ class StageLogs(io.TextIOBase):
             self.pending += value
             while "\n" in self.pending:
                 line, self.pending = self.pending.split("\n", 1)
-                match = re.match(r"^(?:OCR|ASR|Qwen đọc slide) (\d+)/(\d+)", line)
+                match = re.match(r"^(?:OCR(?: đọc trước)?|ASR|Qwen đọc slide|Keyframe) (\d+)/(\d+)", line)
                 if match and int(match[2]):
                     progress = min(0.99, int(match[1]) / int(match[2]))
                     if progress > self.progress:
@@ -159,6 +174,12 @@ def _execute_stage(runtime, fn):
 
 def run(args, emit, stderr):
     """Return the video export path only after the production validator succeeds."""
+    report = emit
+
+    def emit(**event):
+        report(**(with_overall(event) if event.get("event") == "stage" and event.get("stage") in STAGES
+                  else event))
+
     runtime = load_runtime()
     device = "cuda:0" if args.device == "cuda" else "cpu"
     runtime.OUTPUT_ROOT = args.out / "export"
