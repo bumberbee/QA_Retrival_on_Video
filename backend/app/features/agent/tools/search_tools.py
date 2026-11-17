@@ -28,7 +28,8 @@ def _search(args: dict, ctx: ToolContext, sources: frozenset | None) -> dict:
             weight = weights[chunk["source_type"]]
             if weight == 0:
                 continue
-            item = evidence_item(chunk, video_id, title=slide.get("title", ""))
+            item = evidence_item(chunk, video_id)
+            item["title"] = item.get("title") or slide.get("title") or ""   # a chunk may carry an empty title
             if item["id"] in seen:
                 continue
             seen.add(item["id"])
