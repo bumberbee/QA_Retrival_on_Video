@@ -1,8 +1,9 @@
-"""A5 part 1: the fixed path S1 -> S2 -> S3 <-> S4 -> S5 | S7. Code decides every step.
+"""A5: the fixed path S1 -> S2 -> S3 <-> S4 -> S5 -> S6 | S7. Code decides every step.
 
 No model is called here. S5 (generation) stays in ``features.ask``; this module either
 hands it the evidence to answer from, or returns a final text (a template reply, a
-clarifying question or a refusal) that needs no generation at all.
+clarifying question or a refusal) that needs no generation at all. S6 (``verify``) is
+run by the caller on the generated answer.
 
 ``LECTURE_AGENT=on`` enables it for single-video questions; the default is the baseline.
 """
@@ -47,6 +48,7 @@ class AgentResult:
     text: str | None = None
     refusal: bool = False
     trace: dict = field(default_factory=dict)
+    budget: Budget | None = None      # the question's budget, for the LLM calls of S5/S6
 
 
 def _time(value) -> float | None:
@@ -96,7 +98,7 @@ def run(question: str, *, video_id: str, query: str | None = None, current_time:
     def finish(result: AgentResult) -> AgentResult:
         trace["budget"] = budget.snapshot()
         trace["seconds"] = round(time.perf_counter() - started, 4)
-        result.trace = trace
+        result.trace, result.budget = trace, budget
         return result
 
     # ---- S1 understand --------------------------------------------------------------

@@ -285,10 +285,13 @@ def _evidence_prompt(question: str, current_time: float | None, found: dict, con
             f"--- BẰNG CHỨNG ---\n{context}\n--- HẾT ---\n\n{follow}Câu hỏi: {question}\n{meant}")
 
 
-def _final_prompt(*args, **kwargs) -> str:
-    """_evidence_prompt stays as the demo notebook embeds it; switches are applied here.
-    ASK_CITE_REMINDER=on repeats the citation rule after the question, where a 7B model attends most."""
+def _final_prompt(*args, hint: str | None = None, **kwargs) -> str:
+    """_evidence_prompt stays as the demo notebook embeds it; additions are applied here.
+    ASK_CITE_REMINDER=on repeats the citation rule after the question, where a 7B model attends most.
+    hint is the agent's correction for a regeneration (S6)."""
     prompt = _evidence_prompt(*args, **kwargs)
+    if hint:
+        prompt += f"{hint}\n"
     return prompt + f"{CITE_REMINDER}\n" if postprocess.flag("ASK_CITE_REMINDER") else prompt
 
 
@@ -313,7 +316,7 @@ def _slide_images(found: dict) -> list:
 def answer_with_evidence(question: str, current_time: float | None, found: dict, context: str,
                          previous: str | None = None, *, timings: dict | None = None, **memory) -> str:
     """Answer from retrieved slide evidence (text + up to 2 slide images for Gemini).
-    memory: history (last turns), summary, rewritten (see _evidence_prompt)."""
+    memory: history (last turns), summary, rewritten (see _evidence_prompt), hint (see _final_prompt)."""
     name = provider()
     images = _slide_images(found) if name != "ollama" else []
     prompt = _final_prompt(question, current_time, found, context, previous, images=bool(images), **memory)

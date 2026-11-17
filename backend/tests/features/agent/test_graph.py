@@ -2,12 +2,13 @@ from tests import _isolate  # noqa: F401
 import json
 import os
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.features.agent import graph
+from app.features.agent import graph, verify
 from app.features.agent.tools import BudgetLimits
 from app.features.ask import llm
 from app.features.ask import router as qa
@@ -105,7 +106,7 @@ class PathTests(unittest.TestCase):
         self.assertEqual(untitled.text, f"{llm.REFUSAL} Phần gần nhất mình tìm được ở [01:05].")
 
     def test_weak_evidence_still_answers_but_is_not_verified(self):
-        result = run("Thầy giải thích vì sao dùng công thức đó", Searcher(search_result(0.83)))
+        result = run("Thầy giải thích vì sao dùng công thức đó", Searcher(search_result(0.845)))
         self.assertEqual(result.action, "answer")
         self.assertEqual(result.trace["q8"][0]["label"], "insufficient")
         self.assertFalse(result.trace["verified"])
@@ -113,7 +114,7 @@ class PathTests(unittest.TestCase):
 
 class RetryAndBudgetTests(unittest.TestCase):
     def test_a_weak_first_round_retries_with_the_typed_question(self):
-        searcher = Searcher(by_query={"đầy đủ hơn": search_result(0.82), "Vì sao vậy thầy": search_result(0.91)})
+        searcher = Searcher(by_query={"đầy đủ hơn": search_result(0.845), "Vì sao vậy thầy": search_result(0.91)})
         result = run("Vì sao vậy thầy", searcher, query="đầy đủ hơn", previous_question="Bayes là gì?")
         self.assertEqual([call[0] for call in searcher.calls], ["đầy đủ hơn", "Vì sao vậy thầy"])
         self.assertEqual([entry["label"] for entry in result.trace["q8"]], ["insufficient", "enough"])
@@ -121,16 +122,16 @@ class RetryAndBudgetTests(unittest.TestCase):
         self.assertEqual(result.trace["states"].count("S3_search"), 2)
 
     def test_the_better_round_is_kept_when_none_is_enough(self):
-        searcher = Searcher(by_query={"a b c": search_result(0.84), "Vì sao vậy thầy": search_result(0.81)})
+        searcher = Searcher(by_query={"a b c": search_result(0.848), "Vì sao vậy thầy": search_result(0.842)})
         result = run("Vì sao vậy thầy", searcher, query="a b c")
-        self.assertEqual((result.action, result.found["best_semantic"]), ("answer", 0.84))
+        self.assertEqual((result.action, result.found["best_semantic"]), ("answer", 0.848))
 
     def test_search_budget_and_failures_fall_back_to_the_baseline(self):
-        searcher = Searcher(by_query={"a b c": search_result(0.82), "Vì sao vậy thầy": search_result(0.91)})
+        searcher = Searcher(by_query={"a b c": search_result(0.845), "Vì sao vậy thầy": search_result(0.91)})
         limited = run("Vì sao vậy thầy", searcher, query="a b c",
                       limits=BudgetLimits(max_search_rounds=1))
         self.assertEqual(len(searcher.calls), 1)
-        self.assertEqual(limited.found["best_semantic"], 0.82)
+        self.assertEqual(limited.found["best_semantic"], 0.845)
         self.assertEqual(limited.trace["tools"][1]["error"], "search_budget: maximum search rounds reached")
 
         def broken(*args, **kwargs):
@@ -149,7 +150,7 @@ class GradeTests(unittest.TestCase):
 
     def test_similarity_thresholds_and_missing_scores(self):
         labels = [decide("Q8", {"best_semantic": score}, backend="similarity").label
-                  for score in (0.85, 0.849, 0.801, 0.80, -0.2)]
+                  for score in (0.85, 0.849, 0.841, 0.84, -0.2)]
         self.assertEqual(labels, ["enough", "insufficient", "insufficient", "irrelevant", "irrelevant"])
         self.assertEqual(decide("Q8", {"retrieval": {"best_semantic": 0.9}}, backend="similarity").label, "enough")
         missing = decide("Q8", {}, backend="similarity")
@@ -179,7 +180,10 @@ class AgentAPITests(unittest.TestCase):
         body, events, llm_calls, _, _ = self.ask("Xác suất có điều kiện là gì?")
         self.assertEqual(body["answer"], "Trả lời [01:05].")
         self.assertFalse(body["refusal"])
-        self.assertEqual(body["agent"]["states"][-1], "S5_answer")
+        self.assertEqual(body["agent"]["states"][-2:], ["S5_answer", "S6_check"])
+        self.assertEqual(body["agent"]["verification"], {"label": "verified", "reasons": [],
+                                                         "numeric_claims": 0, "numeric_checked": 0})
+        self.assertEqual(body["agent"]["budget"]["llm_calls"], 1)
         self.assertEqual(body["sources"][0]["segment_id"], f"{VIDEO}:s1")
         self.assertEqual([s["id"] for s in body["cited_sources"]], ["E1"])
         self.assertEqual(llm_calls, 2)
@@ -214,6 +218,101 @@ class AgentAPITests(unittest.TestCase):
         with patch.object(graph, "run", side_effect=RuntimeError("boom")), self.assertLogs(qa.logger, level="ERROR"):
             body, _, llm_calls, _, _ = self.ask("Xác suất có điều kiện là gì?")
         self.assertEqual((body["answer"], body["agent"], llm_calls), ("Trả lời [01:05].", None, 2))
+
+
+CARD = json.loads((Path(__file__).resolve().parents[1] / "ask/fixtures/card_probability.json")
+                  .read_text(encoding="utf-8"))
+
+
+class VerifyTests(unittest.TestCase):
+    def test_real_card_answer_is_a_mismatch_and_its_correction_is_not(self):
+        wrong = verify.check(CARD["wrong_explanation"], {})
+        self.assertTrue(wrong["mismatches"])
+        self.assertTrue(all(row["computed"] for row in wrong["mismatches"]))
+        self.assertEqual(verify.check(CARD["corrected_explanation"], {})["mismatches"], [])
+        text = verify.hint(wrong)
+        self.assertIn("không phải", text)
+        self.assertIn(wrong["mismatches"][0]["computed"], text)
+
+    def test_verdict_names_every_reason(self):
+        clean = {"claims": [{"status": "ok"}, {"status": "unparsed"}], "mismatches": []}
+        cited = {"cited_sources": [{"id": "E1"}], "invalid_citations": []}
+        self.assertEqual(verify.verdict(clean, cited, evidence_enough=True),
+                         {"label": "verified", "reasons": [], "numeric_claims": 2, "numeric_checked": 1})
+        bad = verify.verdict({"claims": [{"status": "mismatch"}], "mismatches": [{}]},
+                             {"cited_sources": [], "invalid_citations": ["E9"]}, evidence_enough=False)
+        self.assertEqual((bad["label"], bad["reasons"]), ("unverified", [
+            "weak_evidence", "numeric_mismatch", "invalid_citation", "no_citation"]))
+        inferred = verify.verdict(clean, {"cited_sources": [{"id": "E1", "inferred": True}]}, evidence_enough=True)
+        self.assertEqual(inferred["reasons"], ["inferred_citation"])
+
+    def test_citations_after_a_number_do_not_hide_the_claim(self):
+        for answer in ("Ta có 2 + 2 = 5 [01:05].", "Ta có 2 + 2 = 5 [E1].", "Ta có 2 + 2 = 5 [1:01:05] nhé."):
+            with self.subTest(answer=answer):
+                report = verify.check(answer, {})
+                self.assertEqual([(r["lhs"], r["rhs"], r["computed"]) for r in report["mismatches"]],
+                                 [("2 + 2", "5", "4")])
+
+    def test_checker_fault_is_reported_not_raised(self):
+        with patch.object(verify.numcheck, "check_answer", side_effect=RuntimeError("bad")):
+            self.assertEqual(verify.check("2 + 2 = 5", {}), {"claims": [], "mismatches": [],
+                                                            "error": "RuntimeError: bad"})
+
+
+class RegenerationAPITests(unittest.TestCase):
+    WRONG, RIGHT = "Ta có 2 + 2 = 5 [E1].", "Ta có 2 + 2 = 4 [E1]."
+
+    def ask(self, answers, limits=None):
+        """answers: the model's first answer and, when given, its answer to a regeneration."""
+        api = TestClient(app)
+        plan = {"conversation": None, "history": [], "query": "q", "prefer": frozenset(),
+                "rewritten": None, "follow_up": False, "previous": None, "summary": ""}
+        payload = {"video_id": VIDEO, "question": "Hai cộng hai bằng bao nhiêu?"}
+        prompts = []
+
+        def complete(parts):
+            prompts.append(parts[0])
+            return answers[-1] if "phép tính sai" in parts[0] else answers[0]   # the hint marks a regeneration
+
+        real_run = graph.run
+        with patch.dict(os.environ, {"LLM_PROVIDER": "gemini", "LECTURE_AGENT": "on"}),                 patch.object(qa.retrieval, "has_index", return_value=True),                 patch.object(qa.retrieval, "search", Searcher(search_result(0.9))),                 patch.object(qa.retrieval, "load_index", return_value=type("Index", (), {"model": "m"})()),                 patch.object(qa.retrieval, "default_encoder", return_value=None),                 patch.object(graph, "run", lambda *a, **kw: real_run(*a, limits=limits, **kw)),                 patch.object(qa, "prepare", return_value=plan), patch.object(qa, "remember") as remember,                 patch.object(llm.gemini, "complete_parts", side_effect=complete),                 patch.object(llm.gemini, "stream_parts", side_effect=lambda parts: iter([answers[0]])):
+            body = api.post("/api/qa", json=payload).json()
+            first = list(prompts)
+            del prompts[:]
+            events = [json.loads(line) for line in api.post("/api/qa/stream", json=payload).text.splitlines()]
+        return body, first, events, list(prompts), remember
+
+    def test_wrong_arithmetic_is_regenerated_once_with_the_exact_value(self):
+        body, prompts, events, stream_prompts, remember = self.ask([self.WRONG, self.RIGHT])
+        self.assertEqual(body["answer"], "Ta có 2 + 2 = 4 [01:05].")
+        self.assertEqual(len(prompts), 2)
+        self.assertNotIn("phép tính sai", prompts[0])
+        self.assertIn("2 + 2 = 4, không phải 5", prompts[1])
+        trace = body["agent"]
+        self.assertEqual(trace["states"][-2:], ["S6_check", "S6_regenerate"])
+        self.assertEqual([len(r["mismatches"]) for r in trace["s6"]], [1, 0])
+        self.assertEqual(trace["verification"]["label"], "verified")
+        self.assertEqual(trace["budget"]["llm_calls"], 2)
+        # Stream: the wrong text was shown, then replaced through the done event.
+        self.assertEqual("".join(e["text"] for e in events if e["type"] == "delta"), "Ta có 2 + 2 = 5 [01:05].")
+        self.assertEqual(events[-1]["answer"], body["answer"])
+        self.assertEqual(len(stream_prompts), 1)          # only the regeneration is a buffered call
+        self.assertEqual(remember.call_args.args[3], body["answer"])
+
+    def test_a_still_wrong_regeneration_keeps_the_first_answer_unverified(self):
+        body, prompts, events, _, _ = self.ask([self.WRONG, "Ta có 2 + 2 = 6 [E1]."])
+        self.assertEqual(body["answer"], "Ta có 2 + 2 = 5 [01:05].")
+        self.assertEqual(len(prompts), 2)
+        self.assertEqual(body["agent"]["verification"]["reasons"], ["numeric_mismatch"])
+        self.assertEqual([s["id"] for s in body["cited_sources"]], ["E1"])
+        self.assertNotIn("answer", events[-1])
+
+    def test_no_regeneration_without_llm_budget_or_when_the_answer_is_right(self):
+        body, prompts, _, _, _ = self.ask([self.WRONG, self.RIGHT], limits=BudgetLimits(max_llm_calls=1))
+        self.assertEqual((len(prompts), body["agent"]["verification"]["label"]), (1, "unverified"))
+        self.assertEqual(body["agent"]["states"][-1], "S6_check")
+        body, prompts, _, _, _ = self.ask([self.RIGHT])
+        self.assertEqual((len(prompts), body["agent"]["verification"]["label"]), (1, "verified"))
 
 
 if __name__ == "__main__":
