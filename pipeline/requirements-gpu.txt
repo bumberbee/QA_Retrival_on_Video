@@ -13,6 +13,9 @@ huggingface-hub==0.36.0
 sentence-transformers==5.7.0
 transformers==4.57.1
 accelerate==1.11.0
+# Preinstalled on Kaggle; SigLIP tokenizer needs them on plain hosts.
+sentencepiece
+protobuf
 # Builder ranges/unversioned hybrid extras resolved here to fixed compatible releases.
 # Qwen production mode does not load EasyOCR or Unlimited-OCR.
 easyocr==1.7.2
