@@ -64,8 +64,8 @@ Q8:
   accept: 0.6
   reject: 0.2
   similarity:        # interim E5-cosine thresholds, used when no reranker score exists
-    accept: 0.85     # TODO A8: one lecture answered questions at >= 0.89, others at 0.81-0.87
-    reject: 0.80
+    accept: 0.85     # not calibrated: 17 of 110 answerable dev questions fall below it
+    reject: 0.84     # dev-120: refuses 9/110 answerable (8.2%), catches 6/10 unanswerable; see Q8_SIMILARITY.md
 Q9:
   backend: reranker
   kind: binary
