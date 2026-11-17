@@ -144,8 +144,9 @@ export function videoTitle(filename) {
 
 
 // POST /qa/stream: calls onSources with the evidence slides, then onText with each piece of the answer. Returns false when the video
-// has no index (the caller then uses POST /qa), true once the answer is complete.
-export async function streamAnswer(body, signal, onText, onSources, onMeta) {
+// has no index (the caller then uses POST /qa), true once the answer is complete. onDone gets the last event; its
+// "answer" is set when the server added source timestamps to the text already streamed.
+export async function streamAnswer(body, signal, onText, onSources, onMeta, onDone) {
   const response = await fetch(`${API_BASE}/qa/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Client-Id": clientId() },
@@ -171,6 +172,7 @@ export async function streamAnswer(body, signal, onText, onSources, onMeta) {
       if (event.type === "delta") onText(event.text);
       else if (event.type === "sources") onSources?.(event.sources);
       else if (event.type === "meta") onMeta?.(event);
+      else if (event.type === "done") onDone?.(event);
       else if (event.type === "error") throw new Error(event.detail);
     }
   }
