@@ -25,7 +25,8 @@ def emit(event):
 
 print("diagnostic log", file=sys.stderr, flush=True)
 print("not JSON", flush=True)
-emit({"event": "stage", "stage": "s03_ocr", "status": "running", "progress": 0.42})
+emit({"event": "stage", "stage": "s03_ocr", "status": "running", "progress": 0.42,
+      "overall": 0.318, "phase": "working"})
 release = os.getenv("FAKE_PIPELINE_RELEASE")
 if release:
     deadline = time.monotonic() + 5

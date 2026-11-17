@@ -20,6 +20,7 @@ import urllib.request
 
 from app.shared.models import Transcript
 from app.shared.llm import gemini
+from app.features.ask import postprocess
 
 DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434"
 DEFAULT_OLLAMA_MODEL = "qwen2.5:7b"
@@ -28,6 +29,7 @@ DEFAULT_OLLAMA_MODEL = "qwen2.5:7b"
 REFUSAL = "Mình chưa tìm thấy đủ bằng chứng trong bài giảng để trả lời câu này."
 TEXT_ONLY_NOTE = "Bằng chứng gồm chữ trên slide (OCR, có thể sai số hoặc sai dấu) và lời giảng của giáo viên; bạn không xem được ảnh slide."
 IMAGE_NOTE = "Với công thức và con số, ưu tiên đọc trên ảnh slide; khi OCR và ảnh khác nhau, theo ảnh."
+CITE_REMINDER = "Nhớ: sau mỗi ý, ghi mã nguồn của đoạn bằng chứng đã dùng, ví dụ [E1]."
 CITE_RULE = "Trích dẫn bằng mã nguồn trong ngoặc vuông, ví dụ [E2], ngay sau ý dùng đoạn đó; không tự viết mốc thời gian."
 OLLAMA_TIMING_FIELDS = ("load_duration", "prompt_eval_count", "prompt_eval_duration",
                         "eval_count", "eval_duration")
@@ -74,10 +76,7 @@ class CitationRenderer:
             return ""
         if evidence_id not in self.cited_ids:
             self.cited_ids.append(evidence_id)
-        seconds = max(0, int(source["t_start"]))
-        stamp = (f"{seconds // 3600}:{seconds // 60 % 60:02d}:{seconds % 60:02d}"
-                 if seconds >= 3600 else f"{seconds // 60:02d}:{seconds % 60:02d}")
-        return f"[{stamp}]"
+        return f"[{postprocess.stamp(source['t_start'])}]"
 
     def feed(self, piece: str, *, final: bool = False) -> str:
         text = self.pending + piece
@@ -286,6 +285,18 @@ def _evidence_prompt(question: str, current_time: float | None, found: dict, con
             f"--- BẰNG CHỨNG ---\n{context}\n--- HẾT ---\n\n{follow}Câu hỏi: {question}\n{meant}")
 
 
+def _final_prompt(*args, **kwargs) -> str:
+    """_evidence_prompt stays as the demo notebook embeds it; switches are applied here.
+    ASK_CITE_REMINDER=on repeats the citation rule after the question, where a 7B model attends most."""
+    prompt = _evidence_prompt(*args, **kwargs)
+    return prompt + f"{CITE_REMINDER}\n" if postprocess.flag("ASK_CITE_REMINDER") else prompt
+
+
+def _refusal_stripper(found: dict) -> postprocess.RefusalStripper:
+    return postprocess.RefusalStripper(
+        REFUSAL, postprocess.flag("ASK_STRIP_REFUSAL") and postprocess.strong_evidence(found))
+
+
 def _slide_images(found: dict) -> list:
     parts = []
     for slide in found["slides"][:2]:
@@ -305,14 +316,15 @@ def answer_with_evidence(question: str, current_time: float | None, found: dict,
     memory: history (last turns), summary, rewritten (see _evidence_prompt)."""
     name = provider()
     images = _slide_images(found) if name != "ollama" else []
-    prompt = _evidence_prompt(question, current_time, found, context, previous, images=bool(images), **memory)
+    prompt = _final_prompt(question, current_time, found, context, previous, images=bool(images), **memory)
     if name == "ollama":
         answer = _ollama(prompt, timings=timings)
     else:
         answer = _gemini_answer(lambda: gemini.complete_parts([prompt] + images), timings)
     renderer = CitationRenderer(found.get("evidence_map", {}))
-    answer = renderer.feed(answer, final=True)
-    found.update(renderer.metadata())
+    stripper = _refusal_stripper(found)
+    answer = stripper.feed(renderer.feed(answer, final=True), final=True)
+    found.update(renderer.metadata(), refusal_stripped=stripper.stripped)
     return answer
 
 
@@ -321,18 +333,19 @@ def stream_with_evidence(question: str, current_time: float | None, found: dict,
     """Same answer as answer_with_evidence, yielded piece by piece as the model writes it."""
     name = provider()
     images = _slide_images(found) if name != "ollama" else []
-    prompt = _evidence_prompt(question, current_time, found, context, previous, images=bool(images), **memory)
+    prompt = _final_prompt(question, current_time, found, context, previous, images=bool(images), **memory)
     pieces = (_ollama_stream(prompt, timings=timings) if name == "ollama" else
               _gemini_stream([prompt] + images, timings))
     renderer = CitationRenderer(found.get("evidence_map", {}))
+    stripper = _refusal_stripper(found)
     for piece in pieces:
-        rendered = renderer.feed(piece)
+        rendered = stripper.feed(renderer.feed(piece))
         if rendered:
             yield rendered
-    tail = renderer.feed("", final=True)
+    tail = stripper.feed(renderer.feed("", final=True), final=True)
     if tail:
         yield tail
-    found.update(renderer.metadata())
+    found.update(renderer.metadata(), refusal_stripped=stripper.stripped)
 
 
 def _gemini_answer(complete, timings: dict | None) -> str:

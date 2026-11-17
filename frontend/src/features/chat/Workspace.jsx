@@ -929,6 +929,12 @@ export default function Workspace({
             rewritten = meta.rewritten || null;
             if (meta.conversation_id) chat?.onConversation?.(meta.conversation_id);
           },
+          (done) => {
+            if (typeof done.answer === "string")
+              setMessages((items) =>
+                items.map((item) => (item.id === answerId ? { ...item, text: done.answer } : item)),
+              );
+          },
         );
         if (!streamed) {
           const data = await request("/qa", {

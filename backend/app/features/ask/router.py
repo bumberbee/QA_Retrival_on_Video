@@ -10,7 +10,7 @@ from pydantic import Field
 
 from app.shared import storage
 from app.shared.models import AnswerSource, AskRequest, AskResponse
-from app.features.ask import llm
+from app.features.ask import llm, postprocess
 from app.features.search import retrieval
 from app.features.conversations import sessions
 
@@ -57,6 +57,24 @@ def find_evidence(req: AskRequest, query: str, prefer: frozenset = frozenset()) 
             "trích dẫn bằng mã nguồn của từng đoạn.)\n\n")
     context, _ = retrieval.build_context_with_ids(found)
     return found, note + context
+
+
+def attribute_answer(req: AskRequest, found: dict, answer: str, timings: dict) -> str:
+    """ASK_ATTRIBUTE=on: give an answer the model left uncited its closest evidence spans.
+    Never fails the answer; inferred sources are marked as such in cited_sources."""
+    if not postprocess.flag("ASK_ATTRIBUTE") or found.get("cited_sources"):
+        return answer
+    started = time.perf_counter()
+    try:
+        encoder = retrieval.default_encoder(retrieval.load_index(req.video_id).model)
+        answer, inferred = postprocess.attribute(answer, found, encoder, refusal=llm.REFUSAL)
+        if inferred:
+            found["cited_sources"] = inferred
+    except Exception:
+        logger.exception("Answer attribution failed")
+    finally:
+        timings["attribution_seconds"] = time.perf_counter() - started
+    return answer
 
 
 def source_dict(slide: dict) -> dict:
@@ -149,6 +167,7 @@ def ask_question(req: AskRequest, x_client_id: str | None = Header(default=None)
             timings["retrieval_seconds"] = time.perf_counter() - retrieval_started
             answer = llm.answer_with_evidence(req.question, req.current_time, found, context,
                                               previous=plan["previous"], timings=timings, **memory(plan))
+            answer = attribute_answer(req, found, answer, timings)
             sources = [AnswerSource(**source_dict(s)) for s in found["slides"]]
             remember(req, x_client_id, plan, answer, [s.model_dump() for s in sources],
                      time.perf_counter() - started)
@@ -180,7 +199,7 @@ def ask_question(req: AskRequest, x_client_id: str | None = Header(default=None)
 @router.post("/stream")
 def ask_question_stream(req: AskRequest, x_client_id: str | None = Header(default=None)):
     """The evidence answer as NDJSON lines: {"type": "sources"}, then {"type": "delta"} pieces,
-    then {"type": "done"} or {"type": "error"}. Videos without an index use POST /api/qa."""
+    then {"type": "done"} (with the final "answer" when it differs from the deltas) or {"type": "error"}. Videos without an index use POST /api/qa."""
     started = time.perf_counter()
     validate_video_ids(req)
     if not retrieval.has_index(req.video_id):
@@ -205,7 +224,9 @@ def ask_question_stream(req: AskRequest, x_client_id: str | None = Header(defaul
                                                   plan["previous"], timings=timings, **memory(plan)):
                 answer.append(piece)
                 yield json.dumps({"type": "delta", "text": piece}, ensure_ascii=False) + "\n"
-            remember(req, x_client_id, plan, "".join(answer), sources, time.perf_counter() - started)
+            streamed = "".join(answer)
+            final = attribute_answer(req, found, streamed, timings)
+            remember(req, x_client_id, plan, final, sources, time.perf_counter() - started)
             success = True
         except ResourceExhausted:
             yield json.dumps({"type": "error", "detail": "Đã hết quota Gemini API miễn phí cho hôm nay."},
@@ -222,6 +243,8 @@ def ask_question_stream(req: AskRequest, x_client_id: str | None = Header(defaul
         finally:
             timings["request_total_seconds"] = time.perf_counter() - started
             log_answer(backend, req, timings, stream=True, mode="evidence", success=success)
-        yield json.dumps({"type": "done", "timings": timings, **citation_metadata(found)}, ensure_ascii=False) + "\n"
+        # "answer" is present only when attribution changed the text already streamed.
+        yield json.dumps({"type": "done", "timings": timings, **citation_metadata(found),
+                          **({"answer": final} if final != streamed else {})}, ensure_ascii=False) + "\n"
 
     return StreamingResponse(lines(), media_type="application/x-ndjson")

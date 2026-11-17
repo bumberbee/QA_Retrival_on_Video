@@ -37,6 +37,12 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _fraction(value) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        return None
+    return max(0, min(1, value))
+
+
 def pipeline_command(video: Path, video_id: str, work: Path) -> list[str]:
     language = os.getenv("LECTURE_EXTRACT_LANGUAGE", "auto").strip().lower()
     device = os.getenv("LECTURE_EXTRACT_DEVICE", "").strip().lower()
@@ -129,7 +135,8 @@ class ExtractionQueue:
     def _run(self, video_id: str) -> None:
         stage = None
         try:
-            self._update(video_id, status="extracting", stage=None, progress=0, error=None)
+            self._update(video_id, status="extracting", stage=None, progress=0, overall=0,
+                         phase=None, error=None)
             video = storage.find_video_file(video_id)
             if not video:
                 raise FileNotFoundError("Video not found")
@@ -159,10 +166,13 @@ class ExtractionQueue:
                                 candidate = event.get("stage")
                                 if isinstance(candidate, str) and candidate.split("_")[0] in STAGE_NAMES:
                                     stage = candidate
-                                value = event.get("progress")
-                                progress = (max(0, min(1, value)) if isinstance(value, (int, float))
-                                            and math.isfinite(value) else None)
-                                self._update(video_id, stage=stage, progress=progress)
+                                phase = event.get("phase")
+                                changes = {"stage": stage, "progress": _fraction(event.get("progress")),
+                                           "phase": phase if phase in ("loading", "working") else None}
+                                overall = _fraction(event.get("overall"))
+                                if overall is not None:   # older pipelines do not report it
+                                    changes["overall"] = overall
+                                self._update(video_id, **changes)
                             elif event.get("event") == "done":
                                 export = event.get("export_dir")
                                 if isinstance(export, str):
@@ -189,9 +199,9 @@ class ExtractionQueue:
                             self._process = None
             if returncode != 0 or not done or pipeline_error:
                 raise RuntimeError("Pipeline did not finish successfully")
-            self._update(video_id, status="importing", stage="import", progress=0)
+            self._update(video_id, status="importing", stage="import", progress=0, phase=None)
             import_video(expected_export, video_id=video_id, require_index=True, replace_transcript=True)
-            self._update(video_id, status="completed", stage=None, progress=1, error=None)
+            self._update(video_id, status="completed", stage=None, progress=1, overall=1, error=None)
         except Exception as error:
             logger.warning("Extraction %s failed: %s", video_id, type(error).__name__)
             name = STAGE_NAMES.get((stage or "").split("_")[0])
@@ -200,7 +210,7 @@ class ExtractionQueue:
                        f"Trích xuất video thất bại{f' ở bước {name}' if name else ''}. "
                        "Kiểm tra PIPELINE_PYTHON và nhật ký máy chủ, rồi thử lại.")
             try:
-                self._update(video_id, status="failed", stage=stage, progress=None, error=message)
+                self._update(video_id, status="failed", stage=stage, progress=None, phase=None, error=message)
             except OSError:
                 logger.error("Could not persist failed extraction %s", video_id)
 

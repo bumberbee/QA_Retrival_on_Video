@@ -92,6 +92,8 @@ def test_all_transitions_progress_and_real_export_import(extraction_queue, monke
     assert finished(extraction_queue).status == "completed"
     assert [job.status for job in seen] == ["queued", "extracting", "extracting", "extracting", "importing", "completed"]
     assert any(job.stage == "s03_ocr" and job.progress == 0.42 for job in seen)
+    assert any(job.stage == "s03_ocr" and job.overall == 0.318 and job.phase == "working" for job in seen)
+    assert (seen[1].overall, seen[-1].overall, seen[-1].phase) == (0, 1, None)
     assert storage.load_transcript(VIDEO_ID).segments[0].text == "Test lecture"
     assert storage.list_keyframes(VIDEO_ID) == ["seg_00000.jpg"]
     assert storage.load_slide_variants(VIDEO_ID)["variants"]["F_fast_pipeline"]["slides"][0]["image"] == "fast/state_00000.jpg"

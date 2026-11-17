@@ -59,6 +59,10 @@ export LECTURE_EXTRACT_DEVICE=${LECTURE_EXTRACT_DEVICE:-cuda}
 export LLM_PROVIDER=${LLM_PROVIDER:-ollama}
 export OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:7b}
 export OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://127.0.0.1:11434}
+# Answer repairs for the demo (off by default in the backend; set to "off" in .env to compare).
+export ASK_STRIP_REFUSAL=${ASK_STRIP_REFUSAL:-on}
+export ASK_ATTRIBUTE=${ASK_ATTRIBUTE:-on}
+export ASK_CITE_REMINDER=${ASK_CITE_REMINDER:-on}
 
 # GPU layout: with 2+ GPUs, extraction uses EXTRACT_GPU and Ollama uses OLLAMA_GPU, so answering
 # stays fast while a video is extracted. With 1 GPU they share it and Ollama unloads between answers.
