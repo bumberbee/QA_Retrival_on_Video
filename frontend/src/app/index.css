@@ -3832,3 +3832,12 @@ p {
   font-size: 11.5px;
   font-style: italic;
 }
+.answer-verification {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 4px 0 0;
+  font-size: 11.5px;
+}
+.answer-verification.is-verified { color: var(--accent-ink); }
+.answer-verification.is-unverified { color: var(--danger); }
