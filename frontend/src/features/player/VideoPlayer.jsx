@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { API_BASE } from "../../shared/lib/api";
+import { API_BASE, videoTitle } from "../../shared/lib/api";
 import { usePreference } from "../../shared/lib/hooks";
 import { Icon } from "../../shared/components/UI";
 
@@ -44,6 +44,10 @@ export default function VideoPlayer({
   poster,
   onTimeChange,
   onDurationChange,
+  toolbarCenter,
+  contentMode = "video",
+  slidesContent,
+  transcriptContent,
   t,
 }) {
   const [error, setError] = useState(false);
@@ -71,8 +75,6 @@ export default function VideoPlayer({
         setReady(true);
       }
     }
-    // A cached video can load metadata before a lazy view commits. Read its
-    // current state as well as listening for future media events.
     player.addEventListener("loadedmetadata", syncMetadata);
     player.addEventListener("durationchange", syncMetadata);
     player.addEventListener("canplay", syncMetadata);
@@ -96,7 +98,6 @@ export default function VideoPlayer({
         return false;
       const before = player.currentTime;
       const target = Math.max(0, Math.min(player.duration, before + seconds));
-      // Assigning currentTime preserves the current playing / paused state.
       player.currentTime = target;
       onTimeChange(Math.floor(target));
       const amount = Math.round(Math.abs(target - before));
@@ -159,7 +160,6 @@ export default function VideoPlayer({
     if (event.pointerType !== "touch" || !ready || error) return;
     const bounds = event.currentTarget.getBoundingClientRect();
     const x = (event.clientX - bounds.left) / bounds.width;
-    // Leave the native timeline and controls at the bottom to the browser.
     if (event.clientY >= bounds.bottom - 58 || (x >= 0.4 && x <= 0.6)) {
       tap.current = null;
       return;
@@ -176,80 +176,99 @@ export default function VideoPlayer({
   }
 
   return (
-    <>
-      <div className="video-player" onPointerUpCapture={handleTouchTap}>
-        <video
-          key={version}
-          ref={videoRef}
-          src={source}
-          controls
-          playsInline
-          preload="metadata"
-          poster={poster}
-          aria-label={video.filename}
-          onTimeUpdate={(event) =>
-            onTimeChange(Math.floor(event.currentTarget.currentTime))
-          }
-          onLoadedMetadata={(event) => {
-            const player = event.currentTarget;
-            if (Number.isFinite(player.duration))
-              onDurationChange(player.duration);
-            player.playbackRate = Number(speed);
-            setReady(true);
-          }}
-          onRateChange={(event) => {
-            const value = String(event.currentTarget.playbackRate);
-            if (SPEEDS.includes(value)) setSpeed(value);
-          }}
-          onError={() => {
-            setError(true);
-            setReady(false);
-          }}
-        />
-        {feedback && (
-          <div
-            key={feedback.sequence}
-            className={`seek-feedback seek-${feedback.direction}`}
-            aria-hidden="true"
-          >
-            <Icon
-              name={feedback.direction === "forward" ? "chevron" : "back"}
-              size={26}
-            />
-            <span>
-              {feedback.amount} {t.secondsShort}
-            </span>
+    <div className="player-composite">
+      <div className="player-screen-area">
+        <div
+          className="video-player"
+          style={contentMode !== "video" ? { display: "none" } : undefined}
+          onPointerUpCapture={handleTouchTap}
+        >
+          <video
+            key={version}
+            ref={videoRef}
+            src={source}
+            controls
+            playsInline
+            preload="metadata"
+            poster={poster}
+            aria-label={video.filename}
+            onTimeUpdate={(event) =>
+              onTimeChange(Math.floor(event.currentTarget.currentTime))
+            }
+            onLoadedMetadata={(event) => {
+              const player = event.currentTarget;
+              if (Number.isFinite(player.duration))
+                onDurationChange(player.duration);
+              player.playbackRate = Number(speed);
+              setReady(true);
+            }}
+            onRateChange={(event) => {
+              const value = String(event.currentTarget.playbackRate);
+              if (SPEEDS.includes(value)) setSpeed(value);
+            }}
+            onError={() => {
+              setError(true);
+              setReady(false);
+            }}
+          />
+          {feedback && (
+            <div
+              key={feedback.sequence}
+              className={`seek-feedback seek-${feedback.direction}`}
+              aria-hidden="true"
+            >
+              <Icon
+                name={feedback.direction === "forward" ? "chevron" : "back"}
+                size={26}
+              />
+              <span>
+                {feedback.amount} {t.secondsShort}
+              </span>
+            </div>
+          )}
+          {error && (
+            <div className="playback-error" role="alert">
+              <Icon name="warning" size={28} />
+              <p>{t.playbackError}</p>
+              <div>
+                <button
+                  className="button button-secondary"
+                  onClick={() => {
+                    setError(false);
+                    setReady(false);
+                    setVersion((value) => value + 1);
+                  }}
+                >
+                  <Icon name="refresh" size={15} />
+                  {t.reloadVideo}
+                </button>
+                <a
+                  className="button button-secondary"
+                  href={source}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <Icon name="external" size={15} />
+                  {t.openOriginal}
+                </a>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {contentMode === "slides" && (
+          <div className="composite-content-panel">
+            {slidesContent}
           </div>
         )}
-        {error && (
-          <div className="playback-error" role="alert">
-            <Icon name="warning" size={28} />
-            <p>{t.playbackError}</p>
-            <div>
-              <button
-                className="button button-secondary"
-                onClick={() => {
-                  setError(false);
-                  setReady(false);
-                  setVersion((value) => value + 1);
-                }}
-              >
-                <Icon name="refresh" size={15} />
-                {t.reloadVideo}
-              </button>
-              <a
-                className="button button-secondary"
-                href={source}
-                target="_blank"
-                rel="noreferrer"
-              >
-                <Icon name="external" size={15} />
-                {t.openOriginal}
-              </a>
-            </div>
+
+        {contentMode === "transcript" && (
+          <div className="composite-content-panel">
+            {transcriptContent}
           </div>
         )}
       </div>
+
       <div
         className="playback-toolbar"
         role="group"
@@ -285,6 +304,7 @@ export default function VideoPlayer({
             <span>10{t.secondsShort}</span>
           </span>
         </div>
+        {toolbarCenter && <div className="toolbar-center">{toolbarCenter}</div>}
         <div className="playback-speed">
           <label htmlFor={speedId}>{t.speed}</label>
           <select
@@ -301,9 +321,14 @@ export default function VideoPlayer({
           </select>
         </div>
       </div>
+
+      <div className="player-bottom-info">
+        <span className="player-filename">{videoTitle(video.filename)}</span>
+      </div>
+
       <span className="sr-only" aria-live="polite" aria-atomic="true">
         {announcement}
       </span>
-    </>
+    </div>
   );
 }

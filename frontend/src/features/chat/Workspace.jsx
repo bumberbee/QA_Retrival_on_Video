@@ -249,10 +249,15 @@ function ChatPanel({
   ready,
   onClose,
   history,
+  lang,
   t,
 }) {
   const textareaRef = useRef(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [isLiveMode, setIsLiveMode] = useState(false);
+  const [liveInput, setLiveInput] = useState("");
+  const [micActive, setMicActive] = useState(false);
+  const recognitionRef = useRef(null);
   const messagesRef = useRef(null);
   const nearBottom = useRef(true);
 
@@ -276,55 +281,177 @@ function ChatPanel({
     }
   }, [messages, asking]);
 
+  function handleLiveSubmit(event) {
+    event?.preventDefault();
+    if (!liveInput.trim() || asking || !ready) return;
+    onAsk(liveInput.trim());
+    setLiveInput("");
+  }
+
+  function toggleMic() {
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert(lang === "vi" ? "Trình duyệt không hỗ trợ nhận diện giọng nói." : "Speech recognition not supported in this browser.");
+      return;
+    }
+    if (micActive) {
+      recognitionRef.current?.stop();
+      setMicActive(false);
+      return;
+    }
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.lang = lang === "vi" ? "vi-VN" : "en-US";
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.onstart = () => setMicActive(true);
+      recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        if (transcript) {
+          setLiveInput(transcript);
+          onAsk(transcript);
+        }
+      };
+      recognition.onerror = () => setMicActive(false);
+      recognition.onend = () => setMicActive(false);
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch {
+      setMicActive(false);
+    }
+  }
+
+  // Nếu đang ở chế độ Hỏi Trung (Live Mode) nằm gọn trong frame này:
+  if (isLiveMode) {
+    const userMessages = messages.filter((m) => m.role === "user");
+    const aiMessages = messages.filter((m) => m.role === "ai");
+    const latestUser = userMessages.length > 0 ? userMessages[userMessages.length - 1] : null;
+    const latestAi = aiMessages.length > 0 ? aiMessages[aiMessages.length - 1] : null;
+
+    return (
+      <section className="chat-panel chat-panel--live" aria-label="Hỏi Trung">
+        <div className="live-frame-body">
+          {/* Tin nhắn user ở góc trên bên phải */}
+          <div className="live-frame-user-slot">
+            {latestUser && (
+              <div className="live-user-pill">
+                {latestUser.text}
+              </div>
+            )}
+          </div>
+
+          {/* Lời chào hoặc câu trả lời của AI ở góc trên bên trái */}
+          <div className="live-frame-ai-slot">
+            <p className="live-ai-text">
+              {asking
+                ? (lang === "vi" ? "Đang suy nghĩ..." : "Thinking...")
+                : latestAi
+                  ? latestAi.text
+                  : (lang === "vi"
+                      ? "Chào bạn, hôm nay bạn muốn mình trò chuyện về chủ đề gì nhỉ?"
+                      : "Hi! What would you like to chat about today?")}
+            </p>
+          </div>
+
+          {/* Quả cầu phát sáng Gemini Live Orb ở giữa phía dưới */}
+          <div className="live-frame-orb-wrapper">
+            <div className={`live-orb ${asking ? "is-asking" : micActive ? "is-listening" : ""}`}>
+              <div className="live-orb-inner" />
+            </div>
+          </div>
+
+          {/* Thanh input ở đáy */}
+          <form className="live-frame-bottom-bar" onSubmit={handleLiveSubmit}>
+            <button type="button" className="live-add-btn" title="Thêm">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+            </button>
+
+            <input
+              type="text"
+              className="live-input-field"
+              value={liveInput}
+              onChange={(e) => setLiveInput(e.target.value)}
+              placeholder={lang === "vi" ? "Nhập" : "Type..."}
+              autoFocus
+            />
+
+            <button
+              type="button"
+              className={`live-mic-btn ${micActive ? "active" : ""}`}
+              onClick={toggleMic}
+              title={micActive ? "Tắt mic" : "Bật mic"}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                <line x1="12" y1="19" x2="12" y2="22" />
+                <line x1="2" y1="2" x2="22" y2="22" />
+              </svg>
+            </button>
+
+            <button
+              type="button"
+              className="live-close-btn"
+              onClick={() => setIsLiveMode(false)}
+              title="Quay lại giao diện chat"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </form>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="chat-panel" aria-label={t.assistant}>
       <div className="chat-panel-header">
-        <span className="assistant-icon">
-          <Icon name="sparkles" size={21} />
-        </span>
-        <div>
-          <h2>{t.assistant}</h2>
-          <p>{scope > 1 ? `${t.askingAcross} ${scope} ${t.videosWord}` : t.assistantSubtitle}</p>
+        <h2 className="chat-panel-title">
+          {lang === "vi" ? "Hỏi về video này" : "Ask about this video"}
+        </h2>
+        <div className="chat-panel-actions">
+          {history && (
+            <div className="chat-session-actions">
+              <button
+                className="icon-button"
+                onClick={() => setHistoryOpen((value) => !value)}
+                aria-expanded={historyOpen}
+                aria-label={t.chatHistory}
+                title={t.chatHistory}
+              >
+                <Icon name="clock" size={17} />
+              </button>
+              <button
+                className="icon-button"
+                onClick={() => {
+                  setHistoryOpen(false);
+                  history.onNew();
+                }}
+                aria-label={t.newChat}
+                title={t.newChat}
+                disabled={!messages.length}
+              >
+                <Icon name="plus" size={17} />
+              </button>
+            </div>
+          )}
+          {onClose && (
+            <button
+              className="icon-button"
+              onClick={onClose}
+              aria-label={t.close}
+              title={t.close}
+            >
+              <Icon name="close" size={18} />
+            </button>
+          )}
         </div>
-        {history && (
-          <div className="chat-session-actions">
-            <button
-              className="icon-button"
-              onClick={() => setHistoryOpen((value) => !value)}
-              aria-expanded={historyOpen}
-              aria-label={t.chatHistory}
-              title={t.chatHistory}
-            >
-              <Icon name="clock" size={18} />
-            </button>
-            <button
-              className="icon-button"
-              onClick={() => {
-                setHistoryOpen(false);
-                history.onNew();
-              }}
-              aria-label={t.newChat}
-              title={t.newChat}
-              disabled={!messages.length}
-            >
-              <Icon name="plus" size={18} />
-            </button>
-          </div>
-        )}
-        {onClose ? (
-          <button
-            className="icon-button"
-            onClick={onClose}
-            aria-label={t.close}
-          >
-            <Icon name="close" />
-          </button>
-        ) : (
-          <span
-            className={`assistant-status ${ready ? "is-ready" : ""}`}
-            title={ready ? t.ready : t.transcriptMissing}
-          />
-        )}
       </div>
       {history && historyOpen && (
         <ChatHistory
@@ -359,31 +486,38 @@ function ChatPanel({
           />
         ) : messages.length === 0 ? (
           <div className="chat-welcome">
-            <div className="chat-welcome-art">
-              <span />
-              <Icon name="sparkles" size={32} />
-              <span />
-            </div>
-            <h3>{t.chatWelcome}</h3>
-            <p>{t.chatDescription}</p>
+            <div className="chat-welcome-star">✦</div>
+            <p className="chat-welcome-greeting">
+              {lang === "vi"
+                ? "Xin chào! Bạn có thắc mắc về nội dung đang xem? Tôi sẵn sàng giúp bạn."
+                : "Hi! Have questions about what you're watching? I'm here to help."}
+            </p>
+            <p className="chat-welcome-prompt">
+              {lang === "vi"
+                ? "Bạn chưa biết nên hỏi gì? Hãy thử hỏi về:"
+                : "Not sure what to ask? Try asking about:"}
+            </p>
             <div className="question-suggestions">
-              {t.suggestions.map((suggestion, index) => (
+              {(lang === "vi"
+                ? [
+                  { label: "Tóm tắt video này", q: "Tóm tắt video này." },
+                  { label: "Những ý chính là gì?", q: "Những ý chính cần ghi nhớ trong video này là gì?" },
+                  { label: "Giải thích các khái niệm quan trọng", q: "Giải thích các khái niệm quan trọng được nhắc đến trong bài giảng." },
+                ]
+                : [
+                  { label: "Summarize this video", q: "Summarize this video." },
+                  { label: "Suggest related topics", q: "Suggest related topics to this lecture." },
+                  { label: "What are the key points?", q: "What are the main key points in this video?" },
+                  { label: "Explain key concepts", q: "Explain key concepts mentioned in this lecture." },
+                ]
+              ).map((item, index) => (
                 <button
                   key={index}
+                  className="suggestion-pill"
                   disabled={asking}
-                  onClick={() => onAsk(t.suggestionQuestions[index])}
+                  onClick={() => onAsk(item.q)}
                 >
-                  <span className="suggestion-icon">
-                    <Icon
-                      name={["transcript", "sparkles", "clock"][index]}
-                      size={18}
-                    />
-                  </span>
-                  <span>
-                    <strong>{suggestion}</strong>
-                    <small>{t.suggestionHints[index]}</small>
-                  </span>
-                  <Icon name="arrow" size={16} />
+                  {item.label}
                 </button>
               ))}
             </div>
@@ -415,7 +549,13 @@ function ChatPanel({
         )}
       </div>
       <div className="chat-composer">
+        <p className="composer-disclaimer">
+          {lang === "vi"
+            ? "AI có thể mắc sai sót, vì vậy hãy xác minh thông tin. Tìm hiểu thêm"
+            : t.chatFootnote}
+        </p>
         <form
+          className="composer-pill-form"
           onSubmit={(event) => {
             event.preventDefault();
             onAsk(question);
@@ -423,11 +563,11 @@ function ChatPanel({
         >
           <textarea
             ref={textareaRef}
-            rows={2}
+            rows={1}
             value={question}
             onChange={(event) => setQuestion(event.target.value)}
             aria-label={t.askPlaceholder}
-            placeholder={t.askPlaceholder}
+            placeholder={lang === "vi" ? "Đặt câu hỏi…" : t.askPlaceholder}
             disabled={!ready || asking}
             onKeyDown={(event) => {
               if (
@@ -441,23 +581,26 @@ function ChatPanel({
               }
             }}
           />
-          <div className="composer-actions">
-            <span>
-              <Icon name="sparkles" size={13} />
-              {t.ai}
-            </span>
-            <button
-              className="send-button"
-              type="submit"
-              disabled={asking || !ready || !question.trim()}
-              aria-label={t.send}
-              title={t.enterHint}
-            >
-              {asking ? <Spinner /> : <Icon name="send" size={19} />}
-            </button>
-          </div>
+          <button
+            className="send-button-pill"
+            type="submit"
+            disabled={asking || !ready || !question.trim()}
+            aria-label={t.send}
+            title={t.enterHint}
+          >
+            {asking ? <Spinner /> : <Icon name="send" size={17} />}
+          </button>
         </form>
-        <p>{t.chatFootnote}</p>
+        <button
+          type="button"
+          className="composer-gemini-badge"
+          onClick={() => setIsLiveMode(true)}
+          title={lang === "vi" ? "Chuyển sang chế độ Hỏi Trung" : "Switch to Ask Trung mode"}
+        >
+          <span>{lang === "vi" ? "Hỏi" : "Ask"}</span>
+          <span className="gemini-star">✦</span>
+          <span>Trung</span>
+        </button>
       </div>
     </section>
   );
@@ -470,97 +613,48 @@ const SlideThumbnail = memo(function SlideThumbnail({
   active,
   onOpen,
   meta,
-  verdict,
-  onRate,
   t,
 }) {
   const [failed, setFailed] = useState(false);
   return (
-    <div className={`slide-card ${verdict ? `rated rated-${verdict}` : ""}`}>
-    <button
-      className={`slide-thumbnail ${active ? "active" : ""}`}
-      onClick={() => onOpen(index)}
-      aria-label={`${t.slide} ${index + 1}`}
-      aria-current={active ? "true" : undefined}
-    >
-      <span className="slide-image">
-        {failed ? (
-          <Icon name="slides" size={25} />
-        ) : (
-          <img
-            src={slideUrl(videoId, name)}
-            alt=""
-            loading="lazy"
-            decoding="async"
-            onError={() => setFailed(true)}
-          />
+    <div className="slide-card">
+      <button
+        className={`slide-thumbnail ${active ? "active" : ""}`}
+        onClick={() => onOpen(index)}
+        aria-label={`${t.slide} ${index + 1}`}
+        aria-current={active ? "true" : undefined}
+      >
+        <span className="slide-image">
+          {failed ? (
+            <Icon name="slides" size={25} />
+          ) : (
+            <img
+              src={slideUrl(videoId, name)}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              onError={() => setFailed(true)}
+            />
+          )}
+          <span className="slide-expand">
+            <Icon name="expand" size={17} />
+          </span>
+        </span>
+        <span className="slide-caption">
+          <span>
+            {t.slide} {String(index + 1).padStart(2, "0")}
+          </span>
+          {active && <span className="active-slide-dot" />}
+        </span>
+        {meta && (
+          <span className="slide-meta">
+            <span>{meta}</span>
+          </span>
         )}
-        <span className="slide-expand">
-          <Icon name="expand" size={17} />
-        </span>
-      </span>
-      <span className="slide-caption">
-        <span>
-          {t.slide} {String(index + 1).padStart(2, "0")}
-        </span>
-        {active && <span className="active-slide-dot" />}
-      </span>
-      {meta && (
-        <span className="slide-meta">
-          <span>{meta}</span>
-        </span>
-      )}
-    </button>
-    {onRate && <SlideRating verdict={verdict} onRate={onRate} t={t} />}
+      </button>
     </div>
   );
 });
-
-// One click for a good slide; errors open a short list of types.
-function SlideRating({ verdict, onRate, t }) {
-  const [open, setOpen] = useState(false);
-  const hasError = verdict && verdict !== "good";
-  return (
-    <div className="slide-rating">
-      <div className="slide-rating-row">
-        <button
-          className={`rate-button rate-good ${verdict === "good" ? "selected" : ""}`}
-          aria-pressed={verdict === "good"}
-          onClick={() => {
-            setOpen(false);
-            onRate(verdict === "good" ? null : "good");
-          }}
-        >
-          ✓ {t.reviewGood}
-        </button>
-        <button
-          className={`rate-button rate-bad ${hasError ? "selected" : ""}`}
-          aria-expanded={open}
-          onClick={() => setOpen((value) => !value)}
-        >
-          ✕ {hasError ? t[VERDICT_LABELS[verdict]] : t.reviewHasError}
-        </button>
-      </div>
-      {open && (
-        <div className="slide-rating-errors" role="group" aria-label={t.reviewHasError}>
-          {ERROR_VERDICTS.map((value) => (
-            <button
-              key={value}
-              className={`rate-chip ${verdict === value ? "selected" : ""}`}
-              aria-pressed={verdict === value}
-              onClick={() => {
-                setOpen(false);
-                onRate(verdict === value ? null : value);
-              }}
-            >
-              {t[VERDICT_LABELS[value]]}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 const VERDICT_LABELS = {
   good: "reviewGood",
@@ -570,7 +664,6 @@ const VERDICT_LABELS = {
   not_slide: "reviewNotSlide",
   other: "reviewOther",
 };
-const ERROR_VERDICTS = ["wrong_merge", "extra_split", "bad_image", "not_slide", "other"];
 const VERDICTS = Object.entries(VERDICT_LABELS);
 
 function SlideReviewPanel({ videoId, item, review, onSave, onSeek, t }) {
@@ -723,6 +816,8 @@ export default function Workspace({
   initialTime = 0,
   askVideoIds = [],
   chat,
+  chatOpen: propChatOpen,
+  setChatOpen: propSetChatOpen,
   onOpenSource,
   lang,
   t,
@@ -737,12 +832,16 @@ export default function Workspace({
   });
   const [slidesRetry, setSlidesRetry] = useState(0);
   const [tab, setTab] = useState(video.has_slides ? "slides" : "transcript");
+  const [contentMode, setContentMode] = useState("video"); // "video" | "slides" | "transcript"
+  const [liveChatOpen, setLiveChatOpen] = useState(false);
   const [transcript, setTranscript] = useState(null);
   const [transcriptError, setTranscriptError] = useState(false);
   const [transcriptRetry, setTranscriptRetry] = useState(0);
   const [outline, setOutline] = useState(null);
   const [lightbox, setLightbox] = useState(null);
-  const [chatOpen, setChatOpen] = useState(initialChatOpen);
+  const [localChatOpen, setLocalChatOpen] = useState(initialChatOpen);
+  const isChatOpen = propChatOpen !== undefined ? propChatOpen : localChatOpen;
+  const toggleChat = propSetChatOpen || setLocalChatOpen;
   // App keeps the conversation, so it survives switching to a video a source points at.
   const [ownMessages, setOwnMessages] = useState([]);
   const messages = chat ? chat.messages : ownMessages;
@@ -769,14 +868,14 @@ export default function Workspace({
       : [];
   const activeSlide = timedSlides
     ? Math.max(
-        0,
-        timedSlides.findLastIndex((item) => item.start_sec <= currentTime),
-      )
+      0,
+      timedSlides.findLastIndex((item) => item.start_sec <= currentTime),
+    )
     : slides?.length && duration
       ? Math.min(
-          slides.length - 1,
-          Math.floor((currentTime / duration) * slides.length),
-        )
+        slides.length - 1,
+        Math.floor((currentTime / duration) * slides.length),
+      )
       : null;
   const variantReviews = (variantName && reviews[variantName]) || {};
 
@@ -792,7 +891,7 @@ export default function Workspace({
         setVariantName(data.default);
         setReviews(saved || {});
       })
-      .catch(() => {});
+      .catch(() => { });
     return () => controller.abort();
   }, [video.video_id, video.extraction?.status]);
 
@@ -882,7 +981,7 @@ export default function Workspace({
     );
     element.currentTime = time;
     setCurrentTime(Math.floor(time));
-    element.play().catch(() => {});
+    element.play().catch(() => { });
   }, []);
 
   const sendQuestion = useCallback(
@@ -896,9 +995,9 @@ export default function Workspace({
         retryId
           ? items.filter((item) => item.id !== retryId)
           : [
-              ...items,
-              { id: crypto.randomUUID(), role: "user", text: content },
-            ],
+            ...items,
+            { id: crypto.randomUUID(), role: "user", text: content },
+          ],
       );
       if (!retryId) setQuestion("");
       setAsking(true);
@@ -926,8 +1025,8 @@ export default function Workspace({
             setMessages((items) =>
               items.some((item) => item.id === answerId)
                 ? items.map((item) =>
-                    item.id === answerId ? { ...item, text: item.text + text } : item,
-                  )
+                  item.id === answerId ? { ...item, text: item.text + text } : item,
+                )
                 : [...items, { id: answerId, role: "ai", text, sources, rewritten }],
             ),
           (found) => {
@@ -1009,14 +1108,14 @@ export default function Workspace({
         ? (index / slides.length) * duration
         : (videoRef.current?.currentTime ?? 0);
     setLightbox(null);
-    if (!desktopChat) setChatOpen(true);
+    toggleChat(true);
     sendQuestion(
       `${t.slideQuestion} (${t.slide} ${index + 1}, ${t.approximateTime}: ${formatDuration(time)})`,
       time,
     );
   }
 
-  const tabKeys = ["slides", "transcript", "structure"];
+  const tabKeys = ["slides", "transcript"];
 
   function handleTabKeys(event) {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
@@ -1047,7 +1146,9 @@ export default function Workspace({
     currentVideoId: video.video_id,
     scope: askVideoIds.length || 1,
     history: chat?.history,
+    onOpenLive: () => setLiveChatOpen(true),
     ready,
+    lang,
     t,
   };
 
@@ -1055,298 +1156,147 @@ export default function Workspace({
     <div className="workspace-page page-enter">
       <div
         className="study-layout"
-        style={desktopChat ? { gridTemplateColumns: `minmax(0, 1fr) 5px ${chatWidth}px` } : undefined}
+        style={desktopChat && isChatOpen ? { gridTemplateColumns: `minmax(0, 1fr) 5px ${chatWidth}px` } : { gridTemplateColumns: "minmax(0, 1fr)" }}
       >
         <div className="study-main" style={{ "--player-h": `${playerHeight}px` }}>
-          <section className="player-section" aria-label={video.filename}>
+          <section className="player-section player-section--full" aria-label={video.filename}>
             <VideoPlayer
               video={video}
               videoRef={videoRef}
-              poster={
-                slides?.[0] ? slideUrl(video.video_id, slides[0]) : undefined
-              }
+              poster={slides?.[0] ? slideUrl(video.video_id, slides[0]) : undefined}
               onTimeChange={setCurrentTime}
               onDurationChange={setMediaDuration}
-              t={t}
-            />
-            <div className="video-details">
-              <div className="video-details-heading">
-                <span className="eyebrow">{t.nowWatching}</span>
-                <span
-                  className={`status-badge ${ready ? "status-ready" : "status-waiting"}`}
-                >
-                  <Icon
-                    name={ready ? "sparkles" : "clock"}
-                    size={13}
-                  />
-                  {video.extraction ? extractionLabel(video.extraction, t) : ready ? t.ready : t.transcriptMissing}
-                </span>
-              </div>
-              <h1 title={video.filename}>{videoTitle(video.filename)}</h1>
-              {video.extraction && video.extraction.status !== "completed" && (
-                <ExtractionProgress job={video.extraction} onRetry={onExtract} t={t} />
-              )}
-              <div className="video-meta">
-                {duration > 0 && (
-                  <span>
-                    <Icon name="clock" size={14} />
-                    {formatDuration(duration)}
-                  </span>
-                )}
-                {video.uploaded_at && (
-                  <span>
-                    {t.uploaded} {formatDate(video.uploaded_at, lang)}
-                  </span>
-                )}
-                <span className="current-time">
-                  <span />
-                  {formatDuration(currentTime)}
-                  <small>{t.currentMoment}</small>
-                </span>
-              </div>
-            </div>
-          </section>
-          <Splitter
-            direction="y"
-            size={playerHeight}
-            onResize={setPlayerHeight}
-            onReset={resetPlayerHeight}
-            label={t.resizePanel}
-          />
-
-          <section className="video-resources">
-            <div
-              className="resource-tabs"
-              role="tablist"
-              aria-label={`${t.slides} / ${t.transcript} / ${t.structure}`}
-              onKeyDown={handleTabKeys}
-            >
-              {[
-                ["slides", t.slides, "slides"],
-                ["transcript", t.transcript, "transcript"],
-                ["structure", t.structure, "book"],
-              ].map(([key, label, icon]) => (
-                <button
-                  key={key}
-                  id={`${key}-tab`}
-                  role="tab"
-                  aria-selected={tab === key}
-                  aria-controls={`${key}-panel`}
-                  tabIndex={tab === key ? 0 : -1}
-                  className={tab === key ? "active" : ""}
-                  onClick={() => setTab(key)}
-                >
-                  <Icon name={icon} size={18} />
-                  {label}
-                  {key === "slides" && slides?.length > 0 && (
-                    <span>{slides.length}</span>
-                  )}
-                </button>
-              ))}
-            </div>
-            <div
-              id="slides-panel"
-              role="tabpanel"
-              aria-labelledby="slides-tab"
-              hidden={tab !== "slides"}
-              tabIndex={0}
-            >
-              {slidesResult.error ? (
-                <EmptyState icon="warning" title={t.slidesError} compact>
-                  <button
-                    className="button button-secondary"
-                    onClick={() => {
-                      setSlidesResult({ items: null, error: false });
-                      setSlidesRetry((value) => value + 1);
-                    }}
-                  >
-                    {t.retry}
-                  </button>
-                </EmptyState>
-              ) : slides === null ? (
-                <div
-                  className="slides-loading"
-                  role="status"
-                  aria-label={t.loadingSlides}
-                >
-                  {[0, 1, 2, 3, 4, 5].map((item) => (
-                    <div key={item} />
+              contentMode={contentMode}
+              toolbarCenter={
+                <div className="mode-btn-group">
+                  {[
+                    { key: "video", label: "Video", icon: "play" },
+                    { key: "slides", label: "Slide", icon: "slides" },
+                    { key: "transcript", label: lang === "vi" ? "Lời giảng" : "Transcript", icon: "transcript" },
+                  ].map(({ key, label, icon }) => (
+                    <button
+                      key={key}
+                      className={`mode-btn ${contentMode === key ? "active" : ""}`}
+                      onClick={() => setContentMode(key)}
+                    >
+                      <Icon name={icon} size={14} />
+                      {label}
+                    </button>
                   ))}
                 </div>
-              ) : slides.length === 0 ? (
-                <EmptyState
-                  icon="slides"
-                  title={t.noSlides}
-                  description={t.noSlidesDescription}
-                  compact
-                />
-              ) : (
-                <>
-                  {variants && (
-                    <div className="variant-picker">
-                      <label htmlFor="slide-variant">{t.slideVariant}</label>
-                      <select
-                        id="slide-variant"
-                        value={variantName}
-                        onChange={(event) => {
-                          setVariantName(event.target.value);
-                          setLightbox(null);
-                          setReviewStatus("");
-                        }}
-                      >
-                        {Object.entries(variants.variants).map(
-                          ([name, value]) => (
+              }
+              slidesContent={
+                slidesResult.error ? (
+                  <EmptyState icon="warning" title={t.slidesError} compact>
+                    <button
+                      className="button button-secondary"
+                      onClick={() => {
+                        setSlidesResult({ items: null, error: false });
+                        setSlidesRetry((v) => v + 1);
+                      }}
+                    >
+                      {t.retry}
+                    </button>
+                  </EmptyState>
+                ) : slides === null ? (
+                  <div className="slides-loading" role="status" aria-label={t.loadingSlides}>
+                    {[0, 1, 2, 3, 4, 5].map((item) => (
+                      <div key={item} />
+                    ))}
+                  </div>
+                ) : slides.length === 0 ? (
+                  <EmptyState icon="slides" title={t.noSlides} description={t.noSlidesDescription} compact />
+                ) : (
+                  <div className="slides-panel-inner">
+                    {variants && (
+                      <div className="variant-picker">
+                        <label htmlFor="slide-variant">{t.slideVariant}</label>
+                        <select
+                          id="slide-variant"
+                          value={variantName}
+                          onChange={(event) => {
+                            setVariantName(event.target.value);
+                            setLightbox(null);
+                            setReviewStatus("");
+                          }}
+                        >
+                          {Object.entries(variants.variants).map(([name, value]) => (
                             <option key={name} value={name}>
                               {value.label} ({value.slides.length})
                             </option>
-                          ),
-                        )}
-                      </select>
-                      <span className="variant-progress">
-                        {Object.keys(variantReviews).length}/{slides.length}{" "}
-                        {t.reviewedCount}
-                      </span>
-                      {reviewStatus === t.reviewError && (
-                        <span className="review-error" role="alert">
-                          {t.reviewError}
+                          ))}
+                        </select>
+                        <span className="variant-progress">
+                          {Object.keys(variantReviews).length}/{slides.length} {t.reviewedCount}
                         </span>
-                      )}
+                      </div>
+                    )}
+                    <div className="slides-grid">
+                      {slides.map((name, index) => (
+                        <SlideThumbnail
+                          key={`${variantName}-${index}-${name}`}
+                          videoId={video.video_id}
+                          name={name}
+                          index={index}
+                          active={index === activeSlide}
+                          onOpen={setLightbox}
+                          meta={
+                            timedSlides &&
+                            `${formatDuration(timedSlides[index].start_sec)}–${formatDuration(timedSlides[index].end_sec)} · ${timedSlides[index].states.length} ${t.revealStates}`
+                          }
+                          t={t}
+                        />
+                      ))}
                     </div>
-                  )}
-                  <p className="resource-note">
-                    <Icon name="clock" size={14} />
-                    {timedSlides ? t.timedSlides : t.estimatedSlides}
-                  </p>
-                  <div className="slides-grid">
-                    {slides.map((name, index) => (
-                      <SlideThumbnail
-                        key={`${variantName}-${index}-${name}`}
-                        videoId={video.video_id}
-                        name={name}
-                        index={index}
-                        active={index === activeSlide}
-                        onOpen={setLightbox}
-                        meta={
-                          timedSlides &&
-                          `${formatDuration(timedSlides[index].start_sec)}–${formatDuration(timedSlides[index].end_sec)} · ${timedSlides[index].states.length} ${t.revealStates}`
-                        }
-                        verdict={
-                          timedSlides &&
-                          variantReviews[timedSlides[index].key]?.verdict
-                        }
-                        onRate={
-                          timedSlides &&
-                          ((value) =>
-                            saveReview(timedSlides[index].key, {
-                              verdict: value,
-                              note: variantReviews[timedSlides[index].key]?.note || "",
-                            }))
-                        }
-                        t={t}
-                      />
-                    ))}
                   </div>
-                </>
-              )}
-            </div>
-            <div
-              id="transcript-panel"
-              role="tabpanel"
-              aria-labelledby="transcript-tab"
-              hidden={tab !== "transcript"}
-              tabIndex={0}
-            >
-              {!video.has_transcript ? (
-                <EmptyState
-                  icon="transcript"
-                  title={t.noTranscriptTitle}
-                  description={t.noTranscriptDescription}
-                  compact
-                />
-              ) : transcriptError ? (
-                <EmptyState icon="warning" title={t.transcriptError} compact>
-                  <button
-                    className="button button-secondary"
-                    onClick={() => {
-                      setTranscriptError(false);
-                      setTranscriptRetry((value) => value + 1);
-                    }}
-                  >
-                    {t.retry}
-                  </button>
-                </EmptyState>
-              ) : !transcript ? (
-                <div className="resource-loading">
-                  <Spinner label={t.loadingTranscript} />
-                  <span>{t.loadingTranscript}</span>
-                </div>
-              ) : (
-                <Transcript
-                  segments={transcript.segments}
-                  currentTime={currentTime}
-                  onSeek={seekTo}
-                  t={t}
-                />
-              )}
-            </div>
-            <div
-              id="structure-panel"
-              role="tabpanel"
-              aria-labelledby="structure-tab"
-              hidden={tab !== "structure"}
-              tabIndex={0}
-            >
-              {outline === null ? (
-                <div className="resource-loading">
-                  <Spinner label={t.loading} />
-                </div>
-              ) : outline.length === 0 ? (
-                <EmptyState icon="book" title={t.structureEmpty} compact />
-              ) : (
-                <ol className="outline-list">
-                  {outline.map((item, index) => {
-                    const playing = currentTime >= item.start && currentTime < item.end;
-                    return (
-                      <li key={item.segment_id}>
-                        <button
-                          className={`outline-item ${playing ? "active" : ""} ${item.kind === "ad" ? "is-ad" : ""}`}
-                          onClick={() => seekTo(item.start)}
-                          aria-current={playing ? "true" : undefined}
-                        >
-                          <span className="outline-index">{index + 1}</span>
-                          <span className="outline-time">
-                            {formatDuration(item.start)}–{formatDuration(item.end)}
-                          </span>
-                          <span className="outline-title">
-                            {item.kind === "ad" ? t.outlineAd : item.title || `${t.slide} ${index + 1}`}
-                          </span>
-                          {item.words > 0 && (
-                            <span className="outline-words">
-                              {item.words} {t.outlineSpeech}
-                            </span>
-                          )}
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ol>
-              )}
-            </div>
+                )
+              }
+              transcriptContent={
+                !video.has_transcript ? (
+                  <EmptyState icon="transcript" title={t.noTranscriptTitle} description={t.noTranscriptDescription} compact />
+                ) : transcriptError ? (
+                  <EmptyState icon="warning" title={t.transcriptError} compact>
+                    <button
+                      className="button button-secondary"
+                      onClick={() => {
+                        setTranscriptError(false);
+                        setTranscriptRetry((v) => v + 1);
+                      }}
+                    >
+                      {t.retry}
+                    </button>
+                  </EmptyState>
+                ) : !transcript ? (
+                  <div className="resource-loading">
+                    <Spinner label={t.loadingTranscript} />
+                    <span>{t.loadingTranscript}</span>
+                  </div>
+                ) : (
+                  <div className="transcript-panel-inner">
+                    <Transcript segments={transcript.segments} currentTime={currentTime} onSeek={seekTo} t={t} />
+                  </div>
+                )
+              }
+              t={t}
+            />
+            {video.extraction && video.extraction.status !== "completed" && (
+              <ExtractionProgress job={video.extraction} onRetry={onExtract} t={t} />
+            )}
           </section>
         </div>
-        {desktopChat && (
+        {desktopChat && isChatOpen && (
           <Splitter size={chatWidth} onResize={setChatWidth} onReset={resetChatWidth} invert label={t.resizePanel} />
         )}
-        {desktopChat && (
+        {desktopChat && isChatOpen && (
           <div className="desktop-chat">
-            <ChatPanel {...chatProps} />
+            <ChatPanel {...chatProps} onClose={() => toggleChat(false)} />
           </div>
         )}
       </div>
       {!desktopChat && (
         <button
           className="mobile-chat-button"
-          onClick={() => setChatOpen(true)}
+          onClick={() => toggleChat(true)}
           aria-haspopup="dialog"
         >
           <Icon name="sparkles" size={19} />
@@ -1355,13 +1305,13 @@ export default function Workspace({
         </button>
       )}
       <Dialog
-        open={!desktopChat && chatOpen}
-        onClose={() => setChatOpen(false)}
+        open={!desktopChat && isChatOpen}
+        onClose={() => toggleChat(false)}
         title={t.assistant}
         showClose={false}
         className="chat-dialog"
       >
-        <ChatPanel {...chatProps} onClose={() => setChatOpen(false)} />
+        <ChatPanel {...chatProps} onClose={() => toggleChat(false)} />
       </Dialog>
       <Dialog
         open={lightbox !== null}
