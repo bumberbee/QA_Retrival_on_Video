@@ -142,6 +142,14 @@ const ChatMessage = memo(function ChatMessage({ message, onSeek, onRetry, onSour
             {t.understoodAs}: {message.rewritten}
           </p>
         )}
+        {!user && message.verification && (
+          <p className={`answer-verification ${message.verification.label === "verified" ? "is-verified" : "is-unverified"}`}>
+            <Icon name={message.verification.label === "verified" ? "checkCircle" : "warning"} size={12} />
+            {message.verification.label === "verified" ? t.verified : t.unverified}
+            {message.verification.reasons?.length > 0 &&
+              `: ${message.verification.reasons.map((reason) => t.verificationReasons[reason] || reason).join(", ")}`}
+          </p>
+        )}
         {!user && message.sources?.length > 0 && (
           <div className="answer-sources">
             <span>{t.sources}</span>
@@ -930,9 +938,14 @@ export default function Workspace({
             if (meta.conversation_id) chat?.onConversation?.(meta.conversation_id);
           },
           (done) => {
-            if (typeof done.answer === "string")
+            const verification = done.agent?.verification;
+            if (typeof done.answer === "string" || verification)
               setMessages((items) =>
-                items.map((item) => (item.id === answerId ? { ...item, text: done.answer } : item)),
+                items.map((item) =>
+                  item.id === answerId
+                    ? { ...item, text: typeof done.answer === "string" ? done.answer : item.text, verification }
+                    : item,
+                ),
               );
           },
         );
@@ -947,7 +960,14 @@ export default function Workspace({
           if (!controller.signal.aborted)
             setMessages((items) => [
               ...items,
-              { id: answerId, role: "ai", text: data.answer, sources: data.sources, rewritten: data.rewritten },
+              {
+                id: answerId,
+                role: "ai",
+                text: data.answer,
+                sources: data.sources,
+                rewritten: data.rewritten,
+                verification: data.agent?.verification,
+              },
             ]);
           if (data.conversation_id) chat?.onConversation?.(data.conversation_id);
         }

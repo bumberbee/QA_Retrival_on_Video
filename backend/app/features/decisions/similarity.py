@@ -6,11 +6,11 @@ from collections.abc import Mapping
 from .config import load_policy
 from .types import BackendResult, NotConfigured
 
-DEFAULTS = {"accept": 0.85, "reject": 0.80}
+DEFAULTS = {"accept": 0.85, "reject": 0.84}
 
 
 class SimilarityBackend:
-    """Thresholds live under Q8.similarity in the policy. TODO A8: calibrate on dev.
+    """Thresholds live under Q8.similarity in the policy (pipeline/notes/Q8_SIMILARITY.md).
 
     p is the cosine itself (evidence support), not a calibrated class probability,
     and the policy's reranker accept/reject zones do not apply to it: use the label.

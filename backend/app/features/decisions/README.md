@@ -123,7 +123,8 @@ earlier tie. `resolve_route` returns the exact A2b route table, or
 ## Interim Q8 without a reranker
 
 `decide("Q8", found, backend="similarity")` grades evidence by the search's best E5 cosine
-(`best_semantic`), with thresholds under `Q8.similarity` in the policy (accept 0.85, reject 0.80).
-They come from one lecture and are not calibrated (A8). `p` is the cosine, so the policy's
+(`best_semantic`), with thresholds under `Q8.similarity` in the policy (accept 0.85, reject 0.84).
+The reject threshold was chosen on dev-120 (`pipeline/notes/Q8_SIMILARITY.md`); the signal is weak
+and the reranker should replace it. `p` is the cosine, so the policy's
 reranker zones do not apply to it: read the label. The agent uses the reranker backend when the
 search carries `best_rerank` and this one otherwise.

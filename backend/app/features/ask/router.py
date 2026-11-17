@@ -10,7 +10,7 @@ from pydantic import Field
 
 from app.shared import storage
 from app.shared.models import AnswerSource, AskRequest, AskResponse
-from app.features.agent import graph as agent
+from app.features.agent import graph as agent, verify
 from app.features.ask import llm, postprocess
 from app.features.search import retrieval
 from app.features.conversations import sessions
@@ -87,6 +87,36 @@ def evidence_for(req: AskRequest, plan: dict):
     if step is None:
         return (None, *find_evidence(req, plan["query"], plan["prefer"]))
     return step, step.found, step.context
+
+
+def recheck(step, found: dict, answer: str, regenerate) -> tuple[str, dict]:
+    """S6: check the arithmetic of the answer; one regeneration with a hint when it is wrong and
+    the question's budget allows. Returns the answer to keep and its report."""
+    step.budget.reserve_llm_call()            # the generation that produced `answer`
+    step.trace["states"].append("S6_check")
+    report = verify.check(answer, found)
+    step.trace["s6"] = [report]
+    if not report["mismatches"] or step.budget.reserve_llm_call() is not None:
+        return answer, report
+    step.trace["states"].append("S6_regenerate")
+    kept = {key: found.get(key) for key in ("cited_sources", "invalid_citations", "refusal_stripped")}
+    try:
+        second = regenerate(verify.hint(report))
+    except Exception:
+        logger.exception("Regeneration failed; keeping the first answer")
+        found.update(kept)
+        return answer, report
+    second_report = verify.check(second, found)
+    step.trace["s6"].append(second_report)
+    if len(second_report["mismatches"]) < len(report["mismatches"]):
+        return second, second_report
+    found.update(kept)                         # the regeneration replaced the citation metadata
+    return answer, report
+
+
+def conclude(step, found: dict, report: dict) -> None:
+    step.trace["verification"] = verify.verdict(report, found, evidence_enough=bool(step.trace.get("verified")))
+    step.trace["budget"] = step.budget.snapshot()
 
 
 def agent_metadata(step) -> dict:
@@ -209,9 +239,17 @@ def ask_question(req: AskRequest, x_client_id: str | None = Header(default=None)
                 answer = step.text
                 sources = [AnswerSource(**source_dict(s)) for s in direct_sources(step)]
             else:
-                answer = llm.answer_with_evidence(req.question, req.current_time, found, context,
-                                                  previous=plan["previous"], timings=timings, **memory(plan))
+                def generate(hint=None):
+                    return llm.answer_with_evidence(req.question, req.current_time, found, context,
+                                                    previous=plan["previous"], timings=timings,
+                                                    hint=hint, **memory(plan))
+
+                answer = generate()
+                if step:
+                    answer, report = recheck(step, found, answer, generate)
                 answer = attribute_answer(req, found, answer, timings)
+                if step:
+                    conclude(step, found, report)
                 sources = [AnswerSource(**source_dict(s)) for s in found["slides"]]
             remember(req, x_client_id, plan, answer, [s.model_dump() for s in sources],
                      time.perf_counter() - started)
@@ -271,8 +309,16 @@ def ask_question_stream(req: AskRequest, x_client_id: str | None = Header(defaul
             for piece in pieces:
                 answer.append(piece)
                 yield json.dumps({"type": "delta", "text": piece}, ensure_ascii=False) + "\n"
-            streamed = "".join(answer)
-            final = streamed if direct else attribute_answer(req, found, streamed, timings)
+            streamed = final = "".join(answer)
+            if step and not direct:
+                # The first answer is already on screen; a corrected one replaces it through "done".
+                final, report = recheck(step, found, streamed, lambda hint: llm.answer_with_evidence(
+                    req.question, req.current_time, found, context, previous=plan["previous"],
+                    timings=timings, hint=hint, **memory(plan)))
+            if not direct:
+                final = attribute_answer(req, found, final, timings)
+            if step and not direct:
+                conclude(step, found, report)
             remember(req, x_client_id, plan, final, sources, time.perf_counter() - started)
             success = True
         except ResourceExhausted:
@@ -290,7 +336,7 @@ def ask_question_stream(req: AskRequest, x_client_id: str | None = Header(defaul
         finally:
             timings["request_total_seconds"] = time.perf_counter() - started
             log_answer(backend, req, timings, stream=True, mode="evidence", success=success, step=step)
-        # "answer" is present only when attribution changed the text already streamed.
+        # "answer" is present only when attribution or a regeneration changed the text already streamed.
         yield json.dumps({"type": "done", "timings": timings, **citation_metadata(found), **agent_metadata(step),
                           **({"answer": final} if final != streamed else {})}, ensure_ascii=False) + "\n"
 
