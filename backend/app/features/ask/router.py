@@ -10,6 +10,7 @@ from pydantic import Field
 
 from app.shared import storage
 from app.shared.models import AnswerSource, AskRequest, AskResponse
+from app.features.agent import graph as agent
 from app.features.ask import llm, postprocess
 from app.features.search import retrieval
 from app.features.conversations import sessions
@@ -28,6 +29,8 @@ class QAAnswerResponse(AskResponse):
     cited_sources: list[dict] = Field(default_factory=list)
     invalid_citations: list[str] = Field(default_factory=list)
     timings: dict = Field(default_factory=dict)
+    refusal: bool = False             # LECTURE_AGENT: the agent refused without generating
+    agent: dict | None = None         # LECTURE_AGENT: states, decisions and tool calls of this answer
 
 
 def citation_metadata(found: dict) -> dict:
@@ -37,12 +40,14 @@ def citation_metadata(found: dict) -> dict:
 
 
 def log_answer(backend: dict, req: AskRequest, timings: dict, *, stream: bool,
-               mode: str, success: bool) -> None:
+               mode: str, success: bool, step=None) -> None:
     # Preserve the existing stdout logging without depending on a root INFO handler.
     print(json.dumps({"event": "qa_answer", "provider": backend["provider"],
                       "model": backend["model"], "video_id": req.video_id,
                       "stream": stream, "mode": mode,
-                      "status": "ok" if success else "error", "timings": timings}), flush=True)
+                      "status": "ok" if success else "error", "timings": timings,
+                      **({"question": req.question, "agent": step.trace} if step else {})},
+                     ensure_ascii=False), flush=True)
 
 
 def find_evidence(req: AskRequest, query: str, prefer: frozenset = frozenset()) -> tuple[dict, str]:
@@ -57,6 +62,40 @@ def find_evidence(req: AskRequest, query: str, prefer: frozenset = frozenset()) 
             "trích dẫn bằng mã nguồn của từng đoạn.)\n\n")
     context, _ = retrieval.build_context_with_ids(found)
     return found, note + context
+
+
+def agent_step(req: AskRequest, plan: dict):
+    """LECTURE_AGENT=on, one video: the agent's evidence or its final text. None = baseline path
+    (switch off, several videos, or the agent failed: it must never cost the user an answer)."""
+    if not agent.enabled() or list(dict.fromkeys(req.video_ids or [req.video_id])) != [req.video_id]:
+        return None
+    try:
+        history = plan["history"]
+        step = agent.run(req.question, video_id=req.video_id, query=plan["query"], current_time=req.current_time,
+                         previous_question=history[-1]["question"] if history else req.previous_question,
+                         prefer=plan["prefer"], rewritten=plan["rewritten"],
+                         encoder=retrieval.default_encoder(retrieval.load_index(req.video_id).model))
+    except Exception:
+        logger.exception("Agent failed; using the baseline path")
+        return None
+    return step if step.action == "direct" or step.found else None
+
+
+def evidence_for(req: AskRequest, plan: dict):
+    """(agent step or None, found, context) for one question."""
+    step = agent_step(req, plan)
+    if step is None:
+        return (None, *find_evidence(req, plan["query"], plan["prefer"]))
+    return step, step.found, step.context
+
+
+def agent_metadata(step) -> dict:
+    return {"refusal": step.refusal, "agent": step.trace} if step else {}
+
+
+def direct_sources(step) -> list:
+    """A refusal points at the closest slide it found; other direct replies cite nothing."""
+    return step.found.get("slides", [])[:1] if step.refusal else []
 
 
 def attribute_answer(req: AskRequest, found: dict, answer: str, timings: dict) -> str:
@@ -158,17 +197,22 @@ def ask_question(req: AskRequest, x_client_id: str | None = Header(default=None)
     sources: list[AnswerSource] = []
     plan = None
     found = {}
+    step = None
     success = False
     try:
         if use_index:
             plan = prepare(req, x_client_id)
             retrieval_started = time.perf_counter()
-            found, context = find_evidence(req, plan["query"], plan["prefer"])
+            step, found, context = evidence_for(req, plan)
             timings["retrieval_seconds"] = time.perf_counter() - retrieval_started
-            answer = llm.answer_with_evidence(req.question, req.current_time, found, context,
-                                              previous=plan["previous"], timings=timings, **memory(plan))
-            answer = attribute_answer(req, found, answer, timings)
-            sources = [AnswerSource(**source_dict(s)) for s in found["slides"]]
+            if step and step.action == "direct":
+                answer = step.text
+                sources = [AnswerSource(**source_dict(s)) for s in direct_sources(step)]
+            else:
+                answer = llm.answer_with_evidence(req.question, req.current_time, found, context,
+                                                  previous=plan["previous"], timings=timings, **memory(plan))
+                answer = attribute_answer(req, found, answer, timings)
+                sources = [AnswerSource(**source_dict(s)) for s in found["slides"]]
             remember(req, x_client_id, plan, answer, [s.model_dump() for s in sources],
                      time.perf_counter() - started)
         else:
@@ -189,11 +233,12 @@ def ask_question(req: AskRequest, x_client_id: str | None = Header(default=None)
     finally:
         timings["request_total_seconds"] = time.perf_counter() - started
         log_answer(backend, req, timings, stream=False,
-                   mode="evidence" if use_index else "transcript", success=success)
+                   mode="evidence" if use_index else "transcript", success=success, step=step)
 
     return QAAnswerResponse(answer=answer, sources=sources, mode="evidence" if use_index else "transcript",
                             conversation_id=((plan or {}).get("conversation") or {}).get("id"),
-                            rewritten=(plan or {}).get("rewritten"), timings=timings, **citation_metadata(found))
+                            rewritten=(plan or {}).get("rewritten"), timings=timings, **citation_metadata(found),
+                            **agent_metadata(step))
 
 
 @router.post("/stream")
@@ -206,10 +251,11 @@ def ask_question_stream(req: AskRequest, x_client_id: str | None = Header(defaul
         raise HTTPException(404, "Video này chưa có chỉ mục, dùng /api/qa")
     plan = prepare(req, x_client_id)
     retrieval_started = time.perf_counter()
-    found, context = find_evidence(req, plan["query"], plan["prefer"])
+    step, found, context = evidence_for(req, plan)
     timings = {"retrieval_seconds": time.perf_counter() - retrieval_started,
                "total_seconds": 0.0, "ttft_seconds": None, "ttft_is_buffered": False}
-    sources = [source_dict(s) for s in found["slides"]]
+    direct = step is not None and step.action == "direct"
+    sources = [source_dict(s) for s in (direct_sources(step) if direct else found["slides"])]
 
     def lines():
         backend = llm.describe()
@@ -220,12 +266,13 @@ def ask_question_stream(req: AskRequest, x_client_id: str | None = Header(defaul
         answer = []
         success = False
         try:
-            for piece in llm.stream_with_evidence(req.question, req.current_time, found, context,
-                                                  plan["previous"], timings=timings, **memory(plan)):
+            pieces = [step.text] if direct else llm.stream_with_evidence(
+                req.question, req.current_time, found, context, plan["previous"], timings=timings, **memory(plan))
+            for piece in pieces:
                 answer.append(piece)
                 yield json.dumps({"type": "delta", "text": piece}, ensure_ascii=False) + "\n"
             streamed = "".join(answer)
-            final = attribute_answer(req, found, streamed, timings)
+            final = streamed if direct else attribute_answer(req, found, streamed, timings)
             remember(req, x_client_id, plan, final, sources, time.perf_counter() - started)
             success = True
         except ResourceExhausted:
@@ -242,9 +289,9 @@ def ask_question_stream(req: AskRequest, x_client_id: str | None = Header(defaul
             return
         finally:
             timings["request_total_seconds"] = time.perf_counter() - started
-            log_answer(backend, req, timings, stream=True, mode="evidence", success=success)
+            log_answer(backend, req, timings, stream=True, mode="evidence", success=success, step=step)
         # "answer" is present only when attribution changed the text already streamed.
-        yield json.dumps({"type": "done", "timings": timings, **citation_metadata(found),
+        yield json.dumps({"type": "done", "timings": timings, **citation_metadata(found), **agent_metadata(step),
                           **({"answer": final} if final != streamed else {})}, ensure_ascii=False) + "\n"
 
     return StreamingResponse(lines(), media_type="application/x-ndjson")

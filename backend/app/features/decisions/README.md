@@ -118,4 +118,12 @@ earlier tie. `resolve_route` returns the exact A2b route table, or
   was used to author them.
 - Agree Q6/Q11 meanings and labels: A2/A2b do not define them.
 - Provision/pin the reranker weights; configure NLI, mini-Jev/Jev and an LLM callable when available.
-- API, agent state machine and frontend debug integration are intentionally deferred.
+- The agent state machine (A5 part 1) is in `features/agent/graph.py`; frontend debug display is deferred.
+
+## Interim Q8 without a reranker
+
+`decide("Q8", found, backend="similarity")` grades evidence by the search's best E5 cosine
+(`best_semantic`), with thresholds under `Q8.similarity` in the policy (accept 0.85, reject 0.80).
+They come from one lecture and are not calibrated (A8). `p` is the cosine, so the policy's
+reranker zones do not apply to it: read the label. The agent uses the reranker backend when the
+search carries `best_rerank` and this one otherwise.
