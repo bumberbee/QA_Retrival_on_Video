@@ -8,6 +8,7 @@ from .config import load_policy
 from .rules import RulesBackend
 from .reranker import RerankerBackend
 from .semantic import SemanticBackend, semantic_backend
+from .similarity import SimilarityBackend
 from .types import BackendResult, Decision, NotConfigured
 
 POLICY = load_policy()
@@ -22,7 +23,7 @@ class UnconfiguredBackend:
 
 
 BACKENDS = {"rules": RulesBackend(), "semantic": SemanticBackend(),
-            "reranker": RerankerBackend(POLICY),
+            "reranker": RerankerBackend(POLICY), "similarity": SimilarityBackend(POLICY),
             **{name: UnconfiguredBackend(name) for name in ("nli", "minijev", "jev")}}
 
 
