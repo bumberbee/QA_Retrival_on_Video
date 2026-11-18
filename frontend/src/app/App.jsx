@@ -36,6 +36,8 @@ export default function App() {
   const [uploadError, setUploadError] = useState("");
   const [uploadFilename, setUploadFilename] = useState("");
   const [uploadedVideo, setUploadedVideo] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(true);
   const uploadRequest = useRef(null);
   const desktop = useMediaQuery("(min-width: 1100px)");
   const t = STRINGS[lang];
@@ -115,6 +117,7 @@ export default function App() {
       prompt: options.prompt || "",
       focusChat: Boolean(options.focusChat),
     });
+    if (options.focusChat) setChatOpen(true);
     setMobileNav(false);
     window.scrollTo({ top: 0, behavior: "instant" });
   }
@@ -130,6 +133,7 @@ export default function App() {
         ]),
       );
       setConversationId(conversation.id);
+      setChatOpen(true);
       const ids = conversation.video_ids || [];
       setCheckedIds(ids.length > 1 ? ids : []);
       const target = videoList?.find((item) => item.video_id === conversation.video_id);
@@ -224,34 +228,80 @@ export default function App() {
   };
 
   return (
-    <div
-      className="app-shell one-page"
-      style={desktop ? { gridTemplateColumns: `${railWidth}px 5px minmax(0, 1fr)` } : undefined}
-    >
+    <div className="app-shell one-page">
       <a className="skip-link" href="#main-content">
         {t.skip}
       </a>
-      {desktop ? (
-        <aside className="rail-column">
-          <VideoRail {...railProps} />
-        </aside>
-      ) : null}
-      {desktop ? (
-        <Splitter size={railWidth} onResize={setRailWidth} onReset={resetRailWidth} label={t.resizePanel} />
-      ) : (
-        <>
-          <header className="topbar mobile-topbar">
-            <button
-              className="icon-button"
-              aria-label={t.menu}
-              aria-expanded={mobileNav}
-              aria-haspopup="dialog"
-              onClick={() => setMobileNav(true)}
-            >
-              <Icon name="menu" />
-            </button>
-            <b className="mobile-title">{currentVideo ? videoTitle(currentVideo.filename) : "Multimodal Lecture RAG"}</b>
-          </header>
+      <header className="app-topbar">
+        <div className="topbar-left">
+          <button
+            className={`icon-button topbar-icon-btn ${sidebarOpen ? "active" : ""}`}
+            onClick={() => (desktop ? setSidebarOpen((v) => !v) : setMobileNav(true))}
+            title={sidebarOpen ? (lang === "vi" ? "Thu gọn danh sách video" : "Collapse video list") : (lang === "vi" ? "Mở danh sách video" : "Open video list")}
+            aria-label={t.menu}
+          >
+            <Icon name="menu" size={18} />
+          </button>
+          <div className="topbar-divider" />
+          <span className="topbar-brand">
+            <span className="brand-dot" />
+            <b>Video Q&A</b>
+          </span>
+          {currentVideo && (
+            <span className="topbar-current-video" title={currentVideo.filename}>
+              <span className="crumb-sep">/</span>
+              <span className="video-name">{videoTitle(currentVideo.filename)}</span>
+            </span>
+          )}
+        </div>
+        <div className="topbar-right">
+          <button
+            className={`topbar-btn topbar-ai-btn ${chatOpen ? "active" : ""}`}
+            onClick={() => setChatOpen((v) => !v)}
+            title={chatOpen ? "Thu gọn khung hỏi đáp AI" : "Mở khung hỏi đáp AI"}
+          >
+            <Icon name="sparkles" size={16} />
+            <span>{chatOpen ? "Thu gọn AI" : (t.ask || "Hỏi AI")}</span>
+          </button>
+          <div className="topbar-divider" />
+          <button
+            className="icon-button"
+            onClick={() => setLang(lang === "vi" ? "en" : "vi")}
+            title={lang === "vi" ? "Switch to English" : "Chuyển sang Tiếng Việt"}
+          >
+            <Icon name="globe" size={16} />
+            <span className="lang-tag">{lang.toUpperCase()}</span>
+          </button>
+          <button
+            className="icon-button"
+            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            title={t.switchTheme}
+          >
+            <Icon name={theme === "dark" ? "sun" : "moon"} size={17} />
+          </button>
+          <button
+            className="icon-button"
+            onClick={openHelp}
+            title={t.howItWorks}
+          >
+            <Icon name="help" size={17} />
+          </button>
+        </div>
+      </header>
+
+      <div
+        className="app-body"
+        style={desktop && sidebarOpen ? { gridTemplateColumns: `${railWidth}px 5px minmax(0, 1fr)` } : { gridTemplateColumns: "minmax(0, 1fr)" }}
+      >
+        {desktop && sidebarOpen ? (
+          <aside className="rail-column">
+            <VideoRail {...railProps} onClose={() => setSidebarOpen(false)} />
+          </aside>
+        ) : null}
+        {desktop && sidebarOpen ? (
+          <Splitter size={railWidth} onResize={setRailWidth} onReset={resetRailWidth} label={t.resizePanel} />
+        ) : null}
+        {!desktop && (
           <Dialog
             open={mobileNav}
             onClose={() => setMobileNav(false)}
@@ -261,54 +311,56 @@ export default function App() {
           >
             <VideoRail {...railProps} onClose={() => setMobileNav(false)} />
           </Dialog>
-        </>
-      )}
-      <main id="main-content" tabIndex={-1} className="one-page-main">
-        {currentVideo ? (
-          <Suspense
-            fallback={
-              <div className="workspace-loading">
-                <Spinner label={t.loading} />
-              </div>
-            }
-          >
-            <Workspace
-              key={currentVideo.video_id}
-              video={currentVideo}
-              ready={videoReady(currentVideo) && checkedIds.every((id) => videoReady(sortedVideos?.find((video) => video.video_id === id)))}
-              onExtract={() => startExtraction(currentVideo.video_id)}
-              initialQuestion={workspaceStart.prompt}
-              initialChatOpen={workspaceStart.focusChat}
-              initialTime={startTime}
-              askVideoIds={checkedIds}
-              chat={{
-                messages,
-                setMessages,
-                conversationId,
-                onConversation: setConversationId,
-                history: {
-                  currentId: conversationId,
-                  onNew: () => {
-                    setMessages([]);
-                    setConversationId(null);
-                  },
-                  onOpen: openConversation,
-                },
-              }}
-              onOpenSource={(videoId, time) => {
-                const target = videoList?.find((item) => item.video_id === videoId);
-                if (target) selectVideo(target, { time });
-              }}
-              lang={lang}
-              t={t}
-            />
-          </Suspense>
-        ) : (
-          <div className="workspace-loading">
-            {loading ? <Spinner label={t.loading} /> : <p>{libraryError ? t.libraryError : t.noResults}</p>}
-          </div>
         )}
-      </main>
+        <main id="main-content" tabIndex={-1} className="one-page-main">
+          {currentVideo ? (
+            <Suspense
+              fallback={
+                <div className="workspace-loading">
+                  <Spinner label={t.loading} />
+                </div>
+              }
+            >
+              <Workspace
+                key={currentVideo.video_id}
+                video={currentVideo}
+                ready={videoReady(currentVideo) && checkedIds.every((id) => videoReady(sortedVideos?.find((video) => video.video_id === id)))}
+                onExtract={() => startExtraction(currentVideo.video_id)}
+                initialQuestion={workspaceStart.prompt}
+                initialChatOpen={workspaceStart.focusChat}
+                initialTime={startTime}
+                askVideoIds={checkedIds}
+                chat={{
+                  messages,
+                  setMessages,
+                  conversationId,
+                  onConversation: setConversationId,
+                  history: {
+                    currentId: conversationId,
+                    onNew: () => {
+                      setMessages([]);
+                      setConversationId(null);
+                    },
+                    onOpen: openConversation,
+                  },
+                }}
+                chatOpen={chatOpen}
+                setChatOpen={setChatOpen}
+                onOpenSource={(videoId, time) => {
+                  const target = videoList?.find((item) => item.video_id === videoId);
+                  if (target) selectVideo(target, { time });
+                }}
+                lang={lang}
+                t={t}
+              />
+            </Suspense>
+          ) : (
+            <div className="workspace-loading">
+              {loading ? <Spinner label={t.loading} /> : <p>{libraryError ? t.libraryError : t.noResults}</p>}
+            </div>
+          )}
+        </main>
+      </div>
       {!uploadOpen && videoImport.job && (
         <div className="import-status-toast" role="status">
           <button onClick={() => { setImportMode("link"); setUploadOpen(true); }}>

@@ -13,7 +13,7 @@ function normalize(value) {
     .replace(/[_-]+/g, " ");
 }
 
-const RailCard = memo(function RailCard({ video, active, checked, onSelect, onToggle, onExtract, t }) {
+const RailCard = memo(function RailCard({ video, active, checked, hasMultiSelect, onSelect, onToggle, onExtract, t }) {
   const [ref, visible] = useVisible();
   const [thumbnail, setThumbnail] = useState(null);
   useEffect(() => {
@@ -31,7 +31,7 @@ const RailCard = memo(function RailCard({ video, active, checked, onSelect, onTo
   return (
     <div
       ref={ref}
-      className={`rail-card ${active ? "active" : ""} ${checked ? "checked" : ""} ${ready ? "is-ready" : "is-waiting"}`}
+      className={`rail-card ${active ? "active" : ""} ${checked ? "checked" : ""} ${ready ? "is-ready" : "is-waiting"} ${hasMultiSelect ? "multi-select" : ""}`}
     >
       <button
         className="rail-card-main"
@@ -40,14 +40,17 @@ const RailCard = memo(function RailCard({ video, active, checked, onSelect, onTo
         title={video.filename}
       >
       <span className="rail-thumb">
-        {thumbnail ? <img src={thumbnail} alt="" loading="lazy" decoding="async" /> : <Icon name="video" size={26} />}
+        {thumbnail ? <img src={thumbnail} alt="" loading="lazy" decoding="async" /> : <Icon name="video" size={24} />}
         {duration && <span className="rail-duration">{duration}</span>}
       </span>
       <span className="rail-card-body">
         <span className="rail-card-title">{videoTitle(video.filename)}</span>
         <span className="rail-card-status">
-          {video.extraction ? extractionLabel(video.extraction, t) : ready ? t.ready : t.transcriptMissing}
-          {["extracting", "importing"].includes(video.extraction?.status) && typeof video.extraction.progress === "number" && ` · ${Math.round(video.extraction.progress * 100)}%`}
+          <span className={`status-dot ${ready ? "dot-ready" : "dot-waiting"}`} />
+          <span className="status-text">
+            {video.extraction ? extractionLabel(video.extraction, t) : ready ? t.ready : t.transcriptMissing}
+            {["extracting", "importing"].includes(video.extraction?.status) && typeof video.extraction.progress === "number" && ` · ${Math.round(video.extraction.progress * 100)}%`}
+          </span>
         </span>
       </span>
       </button>
@@ -179,7 +182,8 @@ export default function VideoRail({
               key={video.video_id}
               video={video}
               active={video.video_id === selectedId}
-              checked={checkedIds.length ? checkedIds.includes(video.video_id) : video.video_id === selectedId}
+              checked={checkedIds.length > 0 && checkedIds.includes(video.video_id)}
+              hasMultiSelect={checkedIds.length > 0}
               onSelect={onSelect}
               onToggle={onToggle}
               onExtract={onExtract}
