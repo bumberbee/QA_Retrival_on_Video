@@ -89,28 +89,37 @@ def evidence_for(req: AskRequest, plan: dict):
     return step, step.found, step.context
 
 
-def recheck(step, found: dict, answer: str, regenerate) -> tuple[str, dict]:
-    """S6: check the arithmetic of the answer; one regeneration with a hint when it is wrong and
+def recheck(step, found: dict, answer: str, regenerate, *, scorer=None) -> tuple[str, dict]:
+    """S6: arithmetic and optional NLI; one shared regeneration with a correction hint when
     the question's budget allows. Returns the answer to keep and its report."""
     step.budget.reserve_llm_call()            # the generation that produced `answer`
     step.trace["states"].append("S6_check")
-    report = verify.check(answer, found)
+    report = verify.check(answer, found, scorer=scorer)
     step.trace["s6"] = [report]
-    if not report["mismatches"] or step.budget.reserve_llm_call() is not None:
+    if not agent.regeneration_needed(report) or step.budget.reserve_llm_call() is not None:
         return answer, report
     step.trace["states"].append("S6_regenerate")
     kept = {key: found.get(key) for key in ("cited_sources", "invalid_citations", "refusal_stripped")}
+    # Preserve the corresponding raw citations when the second answer is rejected.
+    if "nli_answer" in found:
+        kept["nli_answer"] = found["nli_answer"]
+
+    def restore():
+        found.update(kept)
+        if "nli_answer" not in kept:
+            found.pop("nli_answer", None)
+
     try:
         second = regenerate(verify.hint(report))
     except Exception:
         logger.exception("Regeneration failed; keeping the first answer")
-        found.update(kept)
+        restore()
         return answer, report
-    second_report = verify.check(second, found)
+    second_report = verify.check(second, found, scorer=scorer)
     step.trace["s6"].append(second_report)
-    if len(second_report["mismatches"]) < len(report["mismatches"]):
+    if agent.prefer_regeneration(report, second_report):
         return second, second_report
-    found.update(kept)                         # the regeneration replaced the citation metadata
+    restore()                                 # the regeneration replaced the citation metadata
     return answer, report
 
 

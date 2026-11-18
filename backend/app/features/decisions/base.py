@@ -7,6 +7,7 @@ from time import perf_counter
 from .config import load_policy
 from .rules import RulesBackend
 from .reranker import RerankerBackend
+from .nli import NLIBackend
 from .semantic import SemanticBackend, semantic_backend
 from .similarity import SimilarityBackend
 from .types import BackendResult, Decision, NotConfigured
@@ -24,7 +25,8 @@ class UnconfiguredBackend:
 
 BACKENDS = {"rules": RulesBackend(), "semantic": SemanticBackend(),
             "reranker": RerankerBackend(POLICY), "similarity": SimilarityBackend(POLICY),
-            **{name: UnconfiguredBackend(name) for name in ("nli", "minijev", "jev")}}
+            "nli": NLIBackend(POLICY),
+            **{name: UnconfiguredBackend(name) for name in ("minijev", "jev")}}
 
 
 def confidence(p: float, n: int, kind: str) -> float:
@@ -74,6 +76,8 @@ def decide(name: str, state: dict, *, backend: str | None = None,
     selected = backend or entry["backend"]
     if selected == "reranker" and isinstance(backends.get(selected), RerankerBackend):
         backends = {**backends, "reranker": RerankerBackend(policy)}
+    if selected == "nli" and isinstance(backends.get(selected), NLIBackend):
+        backends = {**backends, "nli": NLIBackend(policy, scorer=backends[selected].scorer)}
     encode = state.get("encode")
     if encode is None and state.get("encoder") is not None:
         encode = state["encoder"].encode
@@ -94,6 +98,10 @@ def decide(name: str, state: dict, *, backend: str | None = None,
     if result is None:
         selected = "fallback"
         result = BackendResult(entry["fallback_label"], 1 / len(entry["labels"]))
+    elif name == "Q10" and selected == "nli":
+        # Keep the original unrelated/uniform prior byte-identical when disabled
+        # or unconfigured. Configured Q10 uses the A6 labels, still three choices.
+        entry = {**entry, "labels": entry.get("nli_labels", entry["labels"])}
     if result.label not in entry["labels"]:
         raise ValueError(f"Invalid {name} label: {result.label}")
     return Decision(name, result.label, result.p,

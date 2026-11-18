@@ -21,6 +21,7 @@ import urllib.request
 from app.shared.models import Transcript
 from app.shared.llm import gemini
 from app.features.ask import postprocess
+from app.features.agent import nli
 
 DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434"
 DEFAULT_OLLAMA_MODEL = "qwen2.5:7b"
@@ -66,6 +67,7 @@ class CitationRenderer:
         self.cited_ids: list[str] = []
         self.invalid_citations: list[str] = []
         self.pending = ""
+        self.nli_parts = [] if nli.enabled() else None
 
     def _replace(self, match) -> str:
         evidence_id = match.group(1)
@@ -79,6 +81,8 @@ class CitationRenderer:
         return f"[{postprocess.stamp(source['t_start'])}]"
 
     def feed(self, piece: str, *, final: bool = False) -> str:
+        if self.nli_parts is not None:
+            self.nli_parts.append(piece)
         text = self.pending + piece
         self.pending = ""
         if not final:
@@ -90,7 +94,17 @@ class CitationRenderer:
 
     def metadata(self) -> dict:
         return {"cited_sources": [{"id": eid, **self.evidence_map[eid]} for eid in self.cited_ids],
-                "invalid_citations": list(self.invalid_citations)}
+                "invalid_citations": list(self.invalid_citations),
+                **({"nli_answer": "".join(self.nli_parts)} if self.nli_parts is not None else {})}
+
+
+def _citation_metadata(renderer: CitationRenderer, stripper: postprocess.RefusalStripper) -> dict:
+    metadata = renderer.metadata()
+    if stripper.stripped and "nli_answer" in metadata:
+        # Check only the retained answer, after the optional leading-refusal repair.
+        raw_stripper = postprocess.RefusalStripper(REFUSAL, active=True)
+        metadata["nli_answer"] = raw_stripper.feed(metadata["nli_answer"], final=True)
+    return metadata
 
 
 class LLMUnavailable(RuntimeError):
@@ -327,7 +341,7 @@ def answer_with_evidence(question: str, current_time: float | None, found: dict,
     renderer = CitationRenderer(found.get("evidence_map", {}))
     stripper = _refusal_stripper(found)
     answer = stripper.feed(renderer.feed(answer, final=True), final=True)
-    found.update(renderer.metadata(), refusal_stripped=stripper.stripped)
+    found.update(_citation_metadata(renderer, stripper), refusal_stripped=stripper.stripped)
     return answer
 
 
@@ -348,7 +362,7 @@ def stream_with_evidence(question: str, current_time: float | None, found: dict,
     tail = stripper.feed(renderer.feed("", final=True), final=True)
     if tail:
         yield tail
-    found.update(renderer.metadata(), refusal_stripped=stripper.stripped)
+    found.update(_citation_metadata(renderer, stripper), refusal_stripped=stripper.stripped)
 
 
 def _gemini_answer(complete, timings: dict | None) -> str:

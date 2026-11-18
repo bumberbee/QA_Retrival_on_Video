@@ -1,0 +1,4 @@
+claim,evidence,label
+"Xác suất bằng một.","Xác suất bằng một.",supported
+"Bài giảng nói về thiên văn.","Bài giảng nói về xác suất.",unsupported
+"Xác suất bằng không.","FAKE_CONTRADICT: Xác suất bằng một.",contradicted
