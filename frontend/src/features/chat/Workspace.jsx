@@ -3,6 +3,7 @@ import {
   useCallback,
   useDeferredValue,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -245,7 +246,6 @@ function ChatPanel({
   onRetry,
   onSource,
   currentVideoId,
-  scope,
   ready,
   onClose,
   history,
@@ -831,9 +831,9 @@ export default function Workspace({
     error: false,
   });
   const [slidesRetry, setSlidesRetry] = useState(0);
-  const [tab, setTab] = useState(video.has_slides ? "slides" : "transcript");
+  const [tab] = useState(video.has_slides ? "slides" : "transcript");
   const [contentMode, setContentMode] = useState("video"); // "video" | "slides" | "transcript"
-  const [liveChatOpen, setLiveChatOpen] = useState(false);
+  const contentTabsId = useId();
   const [transcript, setTranscript] = useState(null);
   const [transcriptError, setTranscriptError] = useState(false);
   const [transcriptRetry, setTranscriptRetry] = useState(0);
@@ -852,7 +852,7 @@ export default function Workspace({
   const [asking, setAsking] = useState(false);
   const desktopChat = useMediaQuery("(min-width: 900px)");
   const [chatWidth, setChatWidth, resetChatWidth] = useStoredSize("chat", 380, 280, 720);
-  const [playerHeight, setPlayerHeight, resetPlayerHeight] = useStoredSize("player", 400, 160, 900);
+  const [playerHeight] = useStoredSize("player", 400, 160, 900);
   const [variants, setVariants] = useState(null);
   const [variantName, setVariantName] = useState(null);
   const [reviews, setReviews] = useState({});
@@ -1115,20 +1115,20 @@ export default function Workspace({
     );
   }
 
-  const tabKeys = ["slides", "transcript"];
+  const tabKeys = ["video", "slides", "transcript"];
 
   function handleTabKeys(event) {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
-    const index = tabKeys.indexOf(tab);
+    const index = tabKeys.indexOf(contentMode);
     const nextTab =
       event.key === "Home"
         ? tabKeys[0]
         : event.key === "End"
           ? tabKeys[tabKeys.length - 1]
           : tabKeys[(index + (event.key === "ArrowRight" ? 1 : tabKeys.length - 1)) % tabKeys.length];
-    setTab(nextTab);
-    document.getElementById(`${nextTab}-tab`)?.focus();
+    setContentMode(nextTab);
+    document.getElementById(`${contentTabsId}-${nextTab}-tab`)?.focus();
   }
 
   const chatProps = {
@@ -1144,9 +1144,7 @@ export default function Workspace({
         ? onOpenSource?.(source.video_id, source.start)
         : seekTo(source.start),
     currentVideoId: video.video_id,
-    scope: askVideoIds.length || 1,
     history: chat?.history,
-    onOpenLive: () => setLiveChatOpen(true),
     ready,
     lang,
     t,
@@ -1167,8 +1165,14 @@ export default function Workspace({
               onTimeChange={setCurrentTime}
               onDurationChange={setMediaDuration}
               contentMode={contentMode}
+              contentTabsId={contentTabsId}
               toolbarCenter={
-                <div className="mode-btn-group">
+                <div
+                  className="mode-btn-group"
+                  role="tablist"
+                  aria-label={t.videoContent}
+                  onKeyDown={handleTabKeys}
+                >
                   {[
                     { key: "video", label: "Video", icon: "play" },
                     { key: "slides", label: "Slide", icon: "slides" },
@@ -1176,7 +1180,12 @@ export default function Workspace({
                   ].map(({ key, label, icon }) => (
                     <button
                       key={key}
+                      id={`${contentTabsId}-${key}-tab`}
                       className={`mode-btn ${contentMode === key ? "active" : ""}`}
+                      role="tab"
+                      aria-selected={contentMode === key}
+                      aria-controls={`${contentTabsId}-${key}-panel`}
+                      tabIndex={contentMode === key ? 0 : -1}
                       onClick={() => setContentMode(key)}
                     >
                       <Icon name={icon} size={14} />

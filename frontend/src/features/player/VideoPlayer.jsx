@@ -46,6 +46,7 @@ export default function VideoPlayer({
   onDurationChange,
   toolbarCenter,
   contentMode = "video",
+  contentTabsId,
   slidesContent,
   transcriptContent,
   t,
@@ -179,7 +180,10 @@ export default function VideoPlayer({
     <div className="player-composite">
       <div className="player-screen-area">
         <div
+          id={contentTabsId ? `${contentTabsId}-video-panel` : undefined}
           className="video-player"
+          role={contentTabsId ? "tabpanel" : undefined}
+          aria-labelledby={contentTabsId ? `${contentTabsId}-video-tab` : undefined}
           style={contentMode !== "video" ? { display: "none" } : undefined}
           onPointerUpCapture={handleTouchTap}
         >
@@ -257,13 +261,23 @@ export default function VideoPlayer({
         </div>
 
         {contentMode === "slides" && (
-          <div className="composite-content-panel">
+          <div
+            id={contentTabsId ? `${contentTabsId}-slides-panel` : undefined}
+            className="composite-content-panel"
+            role={contentTabsId ? "tabpanel" : undefined}
+            aria-labelledby={contentTabsId ? `${contentTabsId}-slides-tab` : undefined}
+          >
             {slidesContent}
           </div>
         )}
 
         {contentMode === "transcript" && (
-          <div className="composite-content-panel">
+          <div
+            id={contentTabsId ? `${contentTabsId}-transcript-panel` : undefined}
+            className="composite-content-panel"
+            role={contentTabsId ? "tabpanel" : undefined}
+            aria-labelledby={contentTabsId ? `${contentTabsId}-transcript-tab` : undefined}
+          >
             {transcriptContent}
           </div>
         )}
